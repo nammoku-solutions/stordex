@@ -133,9 +133,40 @@ DATABASE_URL="<Neon URL>" npm run db:seed
 ### 2-4. クライアント共有
 発行された URL（例 `https://stordex-dev.vercel.app`）をクライアントに共有。
 
+### 2-5. ヘルパースクリプト
+
+`scripts/start-staging.sh` で Neon DB の準備や `develop` push トリガを 1 コマンドで実行できます。
+
+```bash
+./scripts/start-staging.sh                  # スキーマ反映 + Seed（標準）
+./scripts/start-staging.sh --schema         # スキーマだけ反映
+./scripts/start-staging.sh --seed           # Seed だけ
+./scripts/start-staging.sh --studio         # Prisma Studio で staging DB を直接見る
+./scripts/start-staging.sh --deploy         # develop ブランチに push → Vercel CI/CD 起動
+./scripts/start-staging.sh --status         # 直近の Staging deploy ワークフロー一覧
+```
+
+> **アプリ本体のデプロイ自体は GitHub Actions が `develop` への push を検知して自動実行** します（[.github/workflows/deploy-staging.yml](.github/workflows/deploy-staging.yml)）。本スクリプトはあくまで Neon DB の準備と push 操作の補助です。
+
 ---
 
 ## 3. Production 環境（AWS Aurora + Lambda）
+
+### 3-1. デプロイは CI/CD（main push）
+
+本番デプロイは **`main` ブランチへの push** で GitHub Actions ([.github/workflows/deploy-prod.yml](.github/workflows/deploy-prod.yml)) が起動し、**GitHub Environment "production" の手動承認後** に SST が AWS にデプロイします。
+
+```bash
+git switch main
+git merge --ff-only develop   # develop で動作確認済みのものだけを main に
+git push origin main          # → Actions が起動 → 承認 → 本番反映
+```
+
+> 本番用の `start-prod.sh` のようなローカル実行スクリプトは **意図的に用意していません**。  
+> 本番への直接接続は事故の元なので、必ず CI/CD 経由で行ってください。  
+> 緊急時の DB 操作だけは `npm run db:push:prod` 等が `.env.prod` を読んで実行できますが、原則使用しないこと。
+
+### 3-2. 詳細手順
 
 詳細は [AWS_DEPLOY.md](AWS_DEPLOY.md) を参照。
 
