@@ -3,6 +3,9 @@
 物流・卸売業向けのマルチテナント受発注・在庫管理 SaaS。  
 レガシーの Windows Forms C# アプリ（[original-app/](original-app/)）を Web アプリとして再構築したものです。
 
+**所有・提供元**: Nammoku Solutions  
+**サポート**: support@nammoku-solutions.com
+
 ## 目次
 
 - [技術スタック](#技術スタック)
@@ -229,6 +232,32 @@ npx sst deploy --stage prod
 - 各マスタは `(tenantId, code)` 複合ユニーク制約 → テナントごとに独立したコード体系
 - 行単位 RLS（PostgreSQL Row Level Security）は将来的な追加候補
 
-## ライセンス
+## 新規顧客のオンボーディング（招待トークン制）
 
-Internal use only.
+Stordex は **有償サービス** のため、自由なセルフサインアップは無効化されています。  
+公開 URL `/signup` にトークン無しでアクセスすると、お問い合わせ案内のみ表示されます。  
+入金確認後、運用者（Nammoku Solutions）が以下のコマンドで招待トークンを発行し、URL を顧客にメール送付します。
+
+```bash
+# 例: 南紀運輸様、テナントID固定、メール固定、有効期限14日
+npm run issue-token -- \
+  --company "南紀運輸" \
+  --slug "nanki" \
+  --email "owner@nanki.example.com" \
+  --plan "standard" \
+  --days 14
+```
+
+出力された URL（`https://app.example.com/signup?token=xxxx`）を顧客に送付。  
+顧客はその URL からのみ新規テナント登録できます。
+
+仕組み:
+- `SignupInvitation` テーブル（`prisma/schema.prisma`）でトークンを管理
+- `/api/signup` がトークン検証 → 1 回限り使用、期限切れ拒否、`allowedTenantSlug`／`allowedEmail` の事前固定可
+- 将来 Stripe を導入する場合は、Stripe Webhook (checkout.session.completed) からこのトークン発行 API を叩くだけで自動化可能
+
+## ライセンス・著作権
+
+Copyright © Nammoku Solutions. All rights reserved.  
+本ソフトウェアは Nammoku Solutions が所有する有償サービスです。  
+無断複製・再配布・リバースエンジニアリングを禁じます。
