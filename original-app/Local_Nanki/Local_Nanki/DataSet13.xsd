@@ -1,0 +1,131 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<xs:schema id="DataSet13" targetNamespace="http://tempuri.org/DataSet13.xsd" xmlns:mstns="http://tempuri.org/DataSet13.xsd" xmlns="http://tempuri.org/DataSet13.xsd" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata" xmlns:msprop="urn:schemas-microsoft-com:xml-msprop" attributeFormDefault="qualified" elementFormDefault="qualified">
+  <xs:annotation>
+    <xs:appinfo source="urn:schemas-microsoft-com:xml-msdatasource">
+      <DataSource DefaultConnectionIndex="0" FunctionsComponentName="QueriesTableAdapter" Modifier="AutoLayout, AnsiClass, Class, Public" SchemaSerializationMode="IncludeSchema" xmlns="urn:schemas-microsoft-com:xml-msdatasource">
+        <Connections />
+        <Tables />
+        <Sources />
+      </DataSource>
+    </xs:appinfo>
+  </xs:annotation>
+  <xs:element name="DataSet13" msdata:IsDataSet="true" msdata:UseCurrentLocale="true" msprop:EnableTableAdapterManager="true" msprop:Generator_DataSetName="DataSet13" msprop:Generator_UserDSName="DataSet13">
+    <xs:complexType>
+      <xs:choice minOccurs="0" maxOccurs="unbounded">
+        <xs:element name="DataTable1" msprop:Generator_TableClassName="DataTable1DataTable" msprop:Generator_TableVarName="tableDataTable1" msprop:Generator_TablePropName="DataTable1" msprop:Generator_RowDeletingName="DataTable1RowDeleting" msprop:Generator_RowChangingName="DataTable1RowChanging" msprop:Generator_RowEvHandlerName="DataTable1RowChangeEventHandler" msprop:Generator_RowDeletedName="DataTable1RowDeleted" msprop:Generator_UserTableName="DataTable1" msprop:Generator_RowChangedName="DataTable1RowChanged" msprop:Generator_RowEvArgName="DataTable1RowChangeEvent" msprop:Generator_RowClassName="DataTable1Row">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="郵便" msprop:Generator_ColumnVarNameInTable="column郵便" msprop:Generator_ColumnPropNameInRow="郵便" msprop:Generator_ColumnPropNameInTable="郵便Column" msprop:Generator_UserColumnName="郵便" type="xs:string" minOccurs="0" />
+              <xs:element name="自社名" msprop:Generator_ColumnVarNameInTable="column自社名" msprop:Generator_ColumnPropNameInRow="自社名" msprop:Generator_ColumnPropNameInTable="自社名Column" msprop:Generator_UserColumnName="自社名" type="xs:string" minOccurs="0" />
+              <xs:element name="住所1" msprop:Generator_ColumnVarNameInTable="column住所1" msprop:Generator_ColumnPropNameInRow="住所1" msprop:Generator_ColumnPropNameInTable="住所1Column" msprop:Generator_UserColumnName="住所1" type="xs:string" minOccurs="0" />
+              <xs:element name="住所2" msprop:Generator_ColumnVarNameInTable="column住所2" msprop:Generator_ColumnPropNameInRow="住所2" msprop:Generator_ColumnPropNameInTable="住所2Column" msprop:Generator_UserColumnName="住所2" type="xs:string" minOccurs="0" />
+              <xs:element name="住所3" msprop:Generator_ColumnVarNameInTable="column住所3" msprop:Generator_ColumnPropNameInRow="住所3" msprop:Generator_ColumnPropNameInTable="住所3Column" msprop:Generator_UserColumnName="住所3" type="xs:string" minOccurs="0" />
+              <xs:element name="振込先" msprop:Generator_ColumnVarNameInTable="column振込先" msprop:Generator_ColumnPropNameInRow="振込先" msprop:Generator_ColumnPropNameInTable="振込先Column" msprop:Generator_UserColumnName="振込先" type="xs:string" minOccurs="0" />
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="DataTable2" msprop:Generator_TableClassName="DataTable2DataTable" msprop:Generator_TableVarName="tableDataTable2" msprop:Generator_RowChangedName="DataTable2RowChanged" msprop:Generator_TablePropName="DataTable2" msprop:Generator_RowDeletingName="DataTable2RowDeleting" msprop:Generator_RowChangingName="DataTable2RowChanging" msprop:Generator_RowEvHandlerName="DataTable2RowChangeEventHandler" msprop:Generator_RowDeletedName="DataTable2RowDeleted" msprop:Generator_RowClassName="DataTable2Row" msprop:Generator_UserTableName="DataTable2" msprop:Generator_RowEvArgName="DataTable2RowChangeEvent">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="税率" msdata:Caption="自社名" msprop:Generator_ColumnVarNameInTable="column税率" msprop:Generator_ColumnPropNameInRow="税率" msprop:Generator_ColumnPropNameInTable="税率Column" msprop:Generator_UserColumnName="税率" type="xs:string" minOccurs="0" />
+              <xs:element name="見積書_xFF11_担当者" msprop:Generator_ColumnVarNameInTable="column見積書１担当者" msprop:Generator_ColumnPropNameInRow="見積書１担当者" msprop:Generator_ColumnPropNameInTable="見積書１担当者Column" msprop:Generator_UserColumnName="見積書１担当者" type="xs:string" minOccurs="0" />
+              <xs:element name="見積書_xFF11_TEL" msprop:Generator_ColumnVarNameInTable="column見積書１TEL" msprop:Generator_ColumnPropNameInRow="見積書１TEL" msprop:Generator_ColumnPropNameInTable="見積書１TELColumn" msprop:Generator_UserColumnName="見積書１TEL" type="xs:string" minOccurs="0" />
+              <xs:element name="見積書_xFF12_担当者" msprop:Generator_ColumnVarNameInTable="column見積書２担当者" msprop:Generator_ColumnPropNameInRow="見積書２担当者" msprop:Generator_ColumnPropNameInTable="見積書２担当者Column" msprop:Generator_UserColumnName="見積書２担当者" type="xs:string" minOccurs="0" />
+              <xs:element name="見積書_xFF12_TEL" msprop:Generator_ColumnVarNameInTable="column見積書２TEL" msprop:Generator_ColumnPropNameInRow="見積書２TEL" msprop:Generator_ColumnPropNameInTable="見積書２TELColumn" msprop:Generator_UserColumnName="見積書２TEL" type="xs:string" minOccurs="0" />
+              <xs:element name="見積書_xFF13_担当者" msprop:Generator_ColumnVarNameInTable="column見積書３担当者" msprop:Generator_ColumnPropNameInRow="見積書３担当者" msprop:Generator_ColumnPropNameInTable="見積書３担当者Column" msprop:Generator_UserColumnName="見積書３担当者" type="xs:string" minOccurs="0" />
+              <xs:element name="見積書_xFF13_TEL" msprop:Generator_ColumnVarNameInTable="column見積書３TEL" msprop:Generator_ColumnPropNameInRow="見積書３TEL" msprop:Generator_ColumnPropNameInTable="見積書３TELColumn" msprop:Generator_UserColumnName="見積書３TEL" type="xs:string" minOccurs="0" />
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="DataTable3" msprop:Generator_TableClassName="DataTable3DataTable" msprop:Generator_TableVarName="tableDataTable3" msprop:Generator_TablePropName="DataTable3" msprop:Generator_RowDeletingName="DataTable3RowDeleting" msprop:Generator_RowChangingName="DataTable3RowChanging" msprop:Generator_RowEvHandlerName="DataTable3RowChangeEventHandler" msprop:Generator_RowDeletedName="DataTable3RowDeleted" msprop:Generator_UserTableName="DataTable3" msprop:Generator_RowChangedName="DataTable3RowChanged" msprop:Generator_RowEvArgName="DataTable3RowChangeEvent" msprop:Generator_RowClassName="DataTable3Row">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="旧バージョン" msprop:Generator_ColumnVarNameInTable="column旧バージョン" msprop:Generator_ColumnPropNameInRow="旧バージョン" msprop:Generator_ColumnPropNameInTable="旧バージョンColumn" msprop:Generator_UserColumnName="旧バージョン" type="xs:string" minOccurs="0" />
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="DataTable4" msprop:Generator_TableClassName="DataTable4DataTable" msprop:Generator_TableVarName="tableDataTable4" msprop:Generator_RowChangedName="DataTable4RowChanged" msprop:Generator_TablePropName="DataTable4" msprop:Generator_RowDeletingName="DataTable4RowDeleting" msprop:Generator_RowChangingName="DataTable4RowChanging" msprop:Generator_RowEvHandlerName="DataTable4RowChangeEventHandler" msprop:Generator_RowDeletedName="DataTable4RowDeleted" msprop:Generator_RowClassName="DataTable4Row" msprop:Generator_UserTableName="DataTable4" msprop:Generator_RowEvArgName="DataTable4RowChangeEvent">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="新バージョン" msprop:Generator_ColumnVarNameInTable="column新バージョン" msprop:Generator_ColumnPropNameInRow="新バージョン" msprop:Generator_ColumnPropNameInTable="新バージョンColumn" msprop:Generator_UserColumnName="新バージョン" type="xs:string" minOccurs="0" />
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="DataTable5" msprop:Generator_TableClassName="DataTable5DataTable" msprop:Generator_TableVarName="tableDataTable5" msprop:Generator_TablePropName="DataTable5" msprop:Generator_RowDeletingName="DataTable5RowDeleting" msprop:Generator_RowChangingName="DataTable5RowChanging" msprop:Generator_RowEvHandlerName="DataTable5RowChangeEventHandler" msprop:Generator_RowDeletedName="DataTable5RowDeleted" msprop:Generator_UserTableName="DataTable5" msprop:Generator_RowChangedName="DataTable5RowChanged" msprop:Generator_RowEvArgName="DataTable5RowChangeEvent" msprop:Generator_RowClassName="DataTable5Row">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="郵便" msprop:Generator_ColumnVarNameInTable="column郵便" msprop:Generator_ColumnPropNameInRow="郵便" msprop:Generator_ColumnPropNameInTable="郵便Column" msprop:Generator_UserColumnName="郵便" type="xs:string" minOccurs="0" />
+              <xs:element name="自社名" msprop:Generator_ColumnVarNameInTable="column自社名" msprop:Generator_ColumnPropNameInRow="自社名" msprop:Generator_ColumnPropNameInTable="自社名Column" msprop:Generator_UserColumnName="自社名" type="xs:string" minOccurs="0" />
+              <xs:element name="住所1" msprop:Generator_ColumnVarNameInTable="column住所1" msprop:Generator_ColumnPropNameInRow="住所1" msprop:Generator_ColumnPropNameInTable="住所1Column" msprop:Generator_UserColumnName="住所1" type="xs:string" minOccurs="0" />
+              <xs:element name="住所2" msprop:Generator_ColumnVarNameInTable="column住所2" msprop:Generator_ColumnPropNameInRow="住所2" msprop:Generator_ColumnPropNameInTable="住所2Column" msprop:Generator_UserColumnName="住所2" type="xs:string" minOccurs="0" />
+              <xs:element name="住所3" msprop:Generator_ColumnVarNameInTable="column住所3" msprop:Generator_ColumnPropNameInRow="住所3" msprop:Generator_ColumnPropNameInTable="住所3Column" msprop:Generator_UserColumnName="住所3" type="xs:string" minOccurs="0" />
+              <xs:element name="振込先" msprop:Generator_ColumnVarNameInTable="column振込先" msprop:Generator_ColumnPropNameInRow="振込先" msprop:Generator_ColumnPropNameInTable="振込先Column" msprop:Generator_UserColumnName="振込先" type="xs:string" minOccurs="0" />
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="DataTable6" msprop:Generator_TableClassName="DataTable6DataTable" msprop:Generator_TableVarName="tableDataTable6" msprop:Generator_TablePropName="DataTable6" msprop:Generator_RowDeletingName="DataTable6RowDeleting" msprop:Generator_RowChangingName="DataTable6RowChanging" msprop:Generator_RowEvHandlerName="DataTable6RowChangeEventHandler" msprop:Generator_RowDeletedName="DataTable6RowDeleted" msprop:Generator_UserTableName="DataTable6" msprop:Generator_RowChangedName="DataTable6RowChanged" msprop:Generator_RowEvArgName="DataTable6RowChangeEvent" msprop:Generator_RowClassName="DataTable6Row">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="郵便" msprop:Generator_ColumnVarNameInTable="column郵便" msprop:Generator_ColumnPropNameInRow="郵便" msprop:Generator_ColumnPropNameInTable="郵便Column" msprop:Generator_UserColumnName="郵便" type="xs:string" minOccurs="0" />
+              <xs:element name="自社名" msprop:Generator_ColumnVarNameInTable="column自社名" msprop:Generator_ColumnPropNameInRow="自社名" msprop:Generator_ColumnPropNameInTable="自社名Column" msprop:Generator_UserColumnName="自社名" type="xs:string" minOccurs="0" />
+              <xs:element name="住所1" msprop:Generator_ColumnVarNameInTable="column住所1" msprop:Generator_ColumnPropNameInRow="住所1" msprop:Generator_ColumnPropNameInTable="住所1Column" msprop:Generator_UserColumnName="住所1" type="xs:string" minOccurs="0" />
+              <xs:element name="住所2" msprop:Generator_ColumnVarNameInTable="column住所2" msprop:Generator_ColumnPropNameInRow="住所2" msprop:Generator_ColumnPropNameInTable="住所2Column" msprop:Generator_UserColumnName="住所2" type="xs:string" minOccurs="0" />
+              <xs:element name="住所3" msprop:Generator_ColumnVarNameInTable="column住所3" msprop:Generator_ColumnPropNameInRow="住所3" msprop:Generator_ColumnPropNameInTable="住所3Column" msprop:Generator_UserColumnName="住所3" type="xs:string" minOccurs="0" />
+              <xs:element name="振込先" msprop:Generator_ColumnVarNameInTable="column振込先" msprop:Generator_ColumnPropNameInRow="振込先" msprop:Generator_ColumnPropNameInTable="振込先Column" msprop:Generator_UserColumnName="振込先" type="xs:string" minOccurs="0" />
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="DataTable51" msprop:Generator_TableClassName="DataTable51DataTable" msprop:Generator_TableVarName="tableDataTable51" msprop:Generator_TablePropName="DataTable51" msprop:Generator_RowDeletingName="DataTable51RowDeleting" msprop:Generator_RowChangingName="DataTable51RowChanging" msprop:Generator_RowEvHandlerName="DataTable51RowChangeEventHandler" msprop:Generator_RowDeletedName="DataTable51RowDeleted" msprop:Generator_UserTableName="DataTable51" msprop:Generator_RowChangedName="DataTable51RowChanged" msprop:Generator_RowEvArgName="DataTable51RowChangeEvent" msprop:Generator_RowClassName="DataTable51Row">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="郵便" msprop:Generator_ColumnVarNameInTable="column郵便" msprop:Generator_ColumnPropNameInRow="郵便" msprop:Generator_ColumnPropNameInTable="郵便Column" msprop:Generator_UserColumnName="郵便" type="xs:string" minOccurs="0" />
+              <xs:element name="自社名" msprop:Generator_ColumnVarNameInTable="column自社名" msprop:Generator_ColumnPropNameInRow="自社名" msprop:Generator_ColumnPropNameInTable="自社名Column" msprop:Generator_UserColumnName="自社名" type="xs:string" minOccurs="0" />
+              <xs:element name="住所1" msprop:Generator_ColumnVarNameInTable="column住所1" msprop:Generator_ColumnPropNameInRow="住所1" msprop:Generator_ColumnPropNameInTable="住所1Column" msprop:Generator_UserColumnName="住所1" type="xs:string" minOccurs="0" />
+              <xs:element name="住所2" msprop:Generator_ColumnVarNameInTable="column住所2" msprop:Generator_ColumnPropNameInRow="住所2" msprop:Generator_ColumnPropNameInTable="住所2Column" msprop:Generator_UserColumnName="住所2" type="xs:string" minOccurs="0" />
+              <xs:element name="住所3" msprop:Generator_ColumnVarNameInTable="column住所3" msprop:Generator_ColumnPropNameInRow="住所3" msprop:Generator_ColumnPropNameInTable="住所3Column" msprop:Generator_UserColumnName="住所3" type="xs:string" minOccurs="0" />
+              <xs:element name="振込先" msprop:Generator_ColumnVarNameInTable="column振込先" msprop:Generator_ColumnPropNameInRow="振込先" msprop:Generator_ColumnPropNameInTable="振込先Column" msprop:Generator_UserColumnName="振込先" type="xs:string" minOccurs="0" />
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="DataTable7" msprop:Generator_TableClassName="DataTable7DataTable" msprop:Generator_TableVarName="tableDataTable7" msprop:Generator_RowChangedName="DataTable7RowChanged" msprop:Generator_TablePropName="DataTable7" msprop:Generator_RowDeletingName="DataTable7RowDeleting" msprop:Generator_RowChangingName="DataTable7RowChanging" msprop:Generator_RowEvHandlerName="DataTable7RowChangeEventHandler" msprop:Generator_RowDeletedName="DataTable7RowDeleted" msprop:Generator_RowClassName="DataTable7Row" msprop:Generator_UserTableName="DataTable7" msprop:Generator_RowEvArgName="DataTable7RowChangeEvent">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="郵便" msprop:Generator_ColumnVarNameInTable="column郵便" msprop:Generator_ColumnPropNameInRow="郵便" msprop:Generator_ColumnPropNameInTable="郵便Column" msprop:Generator_UserColumnName="郵便" type="xs:string" minOccurs="0" />
+              <xs:element name="自社名" msprop:Generator_ColumnVarNameInTable="column自社名" msprop:Generator_ColumnPropNameInRow="自社名" msprop:Generator_ColumnPropNameInTable="自社名Column" msprop:Generator_UserColumnName="自社名" type="xs:string" minOccurs="0" />
+              <xs:element name="住所1" msprop:Generator_ColumnVarNameInTable="column住所1" msprop:Generator_ColumnPropNameInRow="住所1" msprop:Generator_ColumnPropNameInTable="住所1Column" msprop:Generator_UserColumnName="住所1" type="xs:string" minOccurs="0" />
+              <xs:element name="住所2" msprop:Generator_ColumnVarNameInTable="column住所2" msprop:Generator_ColumnPropNameInRow="住所2" msprop:Generator_ColumnPropNameInTable="住所2Column" msprop:Generator_UserColumnName="住所2" type="xs:string" minOccurs="0" />
+              <xs:element name="住所3" msprop:Generator_ColumnVarNameInTable="column住所3" msprop:Generator_ColumnPropNameInRow="住所3" msprop:Generator_ColumnPropNameInTable="住所3Column" msprop:Generator_UserColumnName="住所3" type="xs:string" minOccurs="0" />
+              <xs:element name="振込先" msprop:Generator_ColumnVarNameInTable="column振込先" msprop:Generator_ColumnPropNameInRow="振込先" msprop:Generator_ColumnPropNameInTable="振込先Column" msprop:Generator_UserColumnName="振込先" type="xs:string" minOccurs="0" />
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="DataTable52" msprop:Generator_TableClassName="DataTable52DataTable" msprop:Generator_TableVarName="tableDataTable52" msprop:Generator_RowChangedName="DataTable52RowChanged" msprop:Generator_TablePropName="DataTable52" msprop:Generator_RowDeletingName="DataTable52RowDeleting" msprop:Generator_RowChangingName="DataTable52RowChanging" msprop:Generator_RowEvHandlerName="DataTable52RowChangeEventHandler" msprop:Generator_RowDeletedName="DataTable52RowDeleted" msprop:Generator_RowClassName="DataTable52Row" msprop:Generator_UserTableName="DataTable52" msprop:Generator_RowEvArgName="DataTable52RowChangeEvent">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="郵便" msprop:Generator_ColumnVarNameInTable="column郵便" msprop:Generator_ColumnPropNameInRow="郵便" msprop:Generator_ColumnPropNameInTable="郵便Column" msprop:Generator_UserColumnName="郵便" type="xs:string" minOccurs="0" />
+              <xs:element name="自社名" msprop:Generator_ColumnVarNameInTable="column自社名" msprop:Generator_ColumnPropNameInRow="自社名" msprop:Generator_ColumnPropNameInTable="自社名Column" msprop:Generator_UserColumnName="自社名" type="xs:string" minOccurs="0" />
+              <xs:element name="住所1" msprop:Generator_ColumnVarNameInTable="column住所1" msprop:Generator_ColumnPropNameInRow="住所1" msprop:Generator_ColumnPropNameInTable="住所1Column" msprop:Generator_UserColumnName="住所1" type="xs:string" minOccurs="0" />
+              <xs:element name="住所2" msprop:Generator_ColumnVarNameInTable="column住所2" msprop:Generator_ColumnPropNameInRow="住所2" msprop:Generator_ColumnPropNameInTable="住所2Column" msprop:Generator_UserColumnName="住所2" type="xs:string" minOccurs="0" />
+              <xs:element name="住所3" msprop:Generator_ColumnVarNameInTable="column住所3" msprop:Generator_ColumnPropNameInRow="住所3" msprop:Generator_ColumnPropNameInTable="住所3Column" msprop:Generator_UserColumnName="住所3" type="xs:string" minOccurs="0" />
+              <xs:element name="振込先" msprop:Generator_ColumnVarNameInTable="column振込先" msprop:Generator_ColumnPropNameInRow="振込先" msprop:Generator_ColumnPropNameInTable="振込先Column" msprop:Generator_UserColumnName="振込先" type="xs:string" minOccurs="0" />
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="DataTable8" msprop:Generator_TableClassName="DataTable8DataTable" msprop:Generator_TableVarName="tableDataTable8" msprop:Generator_TablePropName="DataTable8" msprop:Generator_RowDeletingName="DataTable8RowDeleting" msprop:Generator_RowChangingName="DataTable8RowChanging" msprop:Generator_RowEvHandlerName="DataTable8RowChangeEventHandler" msprop:Generator_RowDeletedName="DataTable8RowDeleted" msprop:Generator_UserTableName="DataTable8" msprop:Generator_RowChangedName="DataTable8RowChanged" msprop:Generator_RowEvArgName="DataTable8RowChangeEvent" msprop:Generator_RowClassName="DataTable8Row">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="振込先" msdata:Caption="郵便" msprop:Generator_ColumnVarNameInTable="column振込先" msprop:Generator_ColumnPropNameInRow="振込先" msprop:Generator_ColumnPropNameInTable="振込先Column" msprop:Generator_UserColumnName="振込先" type="xs:string" minOccurs="0" />
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="DataTable81" msprop:Generator_TableClassName="DataTable81DataTable" msprop:Generator_TableVarName="tableDataTable81" msprop:Generator_TablePropName="DataTable81" msprop:Generator_RowDeletingName="DataTable81RowDeleting" msprop:Generator_RowChangingName="DataTable81RowChanging" msprop:Generator_RowEvHandlerName="DataTable81RowChangeEventHandler" msprop:Generator_RowDeletedName="DataTable81RowDeleted" msprop:Generator_UserTableName="DataTable81" msprop:Generator_RowChangedName="DataTable81RowChanged" msprop:Generator_RowEvArgName="DataTable81RowChangeEvent" msprop:Generator_RowClassName="DataTable81Row">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="振込先" msdata:Caption="郵便" msprop:Generator_ColumnVarNameInTable="column振込先" msprop:Generator_ColumnPropNameInRow="振込先" msprop:Generator_ColumnPropNameInTable="振込先Column" msprop:Generator_UserColumnName="振込先" type="xs:string" minOccurs="0" />
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:choice>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

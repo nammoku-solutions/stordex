@@ -1,0 +1,452 @@
+// Stordex Prisma schema — multi-tenant SaaS for order & inventory management.
+// All tenant-scoped tables include `tenantId` and a composite uniqueness with
+// human-friendly codes so each tenant has its own namespace.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+  STAFF
+}
+
+enum OrderStatus {
+  DRAFT
+  CONFIRMED
+  SHIPPED
+  COMPLETED
+  CANCELLED
+}
+
+enum MovementType {
+  INBOUND
+  OUTBOUND
+  ADJUSTMENT
+}
+
+enum QuotationStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  ORDERED
+  RECEIVED
+  CANCELLED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PAID
+  CANCELLED
+}
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  plan      String   @default("standard")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users          User[]
+  customers      Customer[]
+  suppliers      Supplier[]
+  items          Item[]
+  orders         Order[]
+  movements      InventoryMovement[]
+  quotations     Quotation[]
+  purchaseOrders PurchaseOrder[]
+  invoices       Invoice[]
+  businessUnits  BusinessUnit[]
+  warehouses     Warehouse[]
+}
+
+// 倉庫（複数拠点対応）
+model Warehouse {
+  id        String   @id @default(cuid())
+  tenantId  String
+  code      String
+  name      String
+  address   String?
+  note      String?
+  isDefault Boolean  @default(false)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant    Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  movements InventoryMovement[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+}
+
+// 事業所（複数事業所対応 — レガシーアプリの請求書発行元情報）
+model BusinessUnit {
+  id         String   @id @default(cuid())
+  tenantId   String
+  name       String
+  postalCode String?
+  address    String?
+  phone      String?
+  fax        String?
+  email      String?
+  bankInfo   String? // 振込先情報
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invoices Invoice[]
+
+  @@index([tenantId])
+}
+
+model User {
+  id           String   @id @default(cuid())
+  tenantId     String
+  email        String
+  passwordHash String
+  name         String
+  role         UserRole @default(STAFF)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, email])
+  @@index([email])
+}
+
+model Customer {
+  id           String   @id @default(cuid())
+  tenantId     String
+  code         String
+  name         String
+  nameKana     String?
+  nameEn       String? // 英語表記
+  postalCode   String?
+  address      String?
+  phone        String?
+  fax          String?
+  email        String?
+  contact      String?
+  // 翌日注文（受注当日納品ではなく翌日納品が基本）
+  nextDayOrder Boolean  @default(false)
+  // 営業所
+  branch       String?
+  // 顧客グループ（請求書まとめ単位）
+  groupName    String?
+  note         String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orders     Order[]
+  quotations Quotation[]
+  invoices   Invoice[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, name])
+}
+
+model Supplier {
+  id         String   @id @default(cuid())
+  tenantId   String
+  code       String
+  name       String
+  nameKana   String?
+  postalCode String?
+  address    String?
+  phone      String?
+  fax        String?
+  email      String?
+  contact    String?
+  note       String?
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  items          Item[]
+  purchaseOrders PurchaseOrder[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, name])
+}
+
+model Item {
+  id            String   @id @default(cuid())
+  tenantId      String
+  code          String
+  name          String
+  nameKana      String?
+  nameEn        String? // 英語表記
+  unit          String   @default("個")
+  // 規格（サイズ・荷姿など）
+  spec          String?
+  // 産地
+  origin        String?
+  // 1ケース入数（在庫表のｹｰｽ入数）
+  caseQty       Int?
+  // 発注単位（1CS / 1KG / 10P 等）
+  orderUnit     String?
+  // 輸入品フラグ
+  isImported    Boolean  @default(false)
+  // 入荷曜日表示（例: "火" / "金" / "火・金"）
+  deliveryCycle String?
+  // バーコード/JAN
+  barcode       String?
+  // 在庫数量
+  stock         Int      @default(0)
+  // 発注点（これを下回るとアラート）
+  reorderPoint  Int      @default(0)
+  // ピーク発注点（繁忙期の最低在庫）
+  reorderPeak   Int?
+  // 仕入単価
+  costPrice     Int      @default(0)
+  // 販売単価
+  salesPrice    Int      @default(0)
+  supplierId    String?
+  category      String?
+  note          String?
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supplier           Supplier?           @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  orderItems         OrderItem[]
+  movements          InventoryMovement[]
+  quotationItems     QuotationItem[]
+  purchaseOrderItems PurchaseOrderItem[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, name])
+}
+
+model Order {
+  id          String      @id @default(cuid())
+  tenantId    String
+  orderNumber String
+  customerId  String
+  orderDate   DateTime    @default(now())
+  dueDate     DateTime?
+  status      OrderStatus @default(DRAFT)
+  subtotal    Int         @default(0)
+  taxRate     Int         @default(10)
+  tax         Int         @default(0)
+  total       Int         @default(0)
+  // 発注者（電話受注時の担当者名）
+  orderer     String?
+  note        String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer     Customer       @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  items        OrderItem[]
+  invoiceLinks InvoiceOrder[]
+
+  @@unique([tenantId, orderNumber])
+  @@index([tenantId, orderDate])
+  @@index([tenantId, dueDate])
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  itemId    String
+  itemName  String
+  unit      String
+  // 規格・産地（受注時点のスナップショット）
+  spec      String?
+  origin    String?
+  quantity  Int
+  unitPrice Int
+  costPrice Int     @default(0)
+  amount    Int
+  // 摘要（レガシーの適用1〜5に相当）
+  remark    String?
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  item  Item  @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+}
+
+model InventoryMovement {
+  id          String       @id @default(cuid())
+  tenantId    String
+  itemId      String
+  type        MovementType
+  quantity    Int
+  // 移動後の残在庫
+  balance     Int
+  // ロット番号（賞味期限管理）
+  lotNumber   String?
+  // 賞味期限
+  expiryDate  DateTime?
+  // 保管場所/棚番（例: "冷蔵A-3"）
+  location    String?
+  warehouseId String?
+  reference   String? // 注文番号など
+  note        String?
+  createdAt   DateTime     @default(now())
+  createdBy   String?
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  item      Item       @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  warehouse Warehouse? @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@index([itemId])
+}
+
+// 見積書
+model Quotation {
+  id              String          @id @default(cuid())
+  tenantId        String
+  quotationNumber String
+  customerId      String
+  issueDate       DateTime        @default(now())
+  validUntil      DateTime?
+  status          QuotationStatus @default(DRAFT)
+  subtotal        Int             @default(0)
+  taxRate         Int             @default(10)
+  tax             Int             @default(0)
+  total           Int             @default(0)
+  // 担当者（レガシーのForm6で入力）
+  contactName     String?
+  contactPhone    String?
+  note            String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer        @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  items    QuotationItem[]
+
+  @@unique([tenantId, quotationNumber])
+  @@index([tenantId, issueDate])
+}
+
+model QuotationItem {
+  id          String  @id @default(cuid())
+  quotationId String
+  itemId      String?
+  itemName    String
+  spec        String?
+  unit        String
+  quantity    Int
+  unitPrice   Int
+  amount      Int
+
+  quotation Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  item      Item?     @relation(fields: [itemId], references: [id], onDelete: SetNull)
+
+  @@index([quotationId])
+}
+
+// 仕入先発注（市場発注）
+model PurchaseOrder {
+  id         String              @id @default(cuid())
+  tenantId   String
+  poNumber   String
+  supplierId String
+  orderDate  DateTime            @default(now())
+  // 引取日
+  pickupDate DateTime?
+  status     PurchaseOrderStatus @default(DRAFT)
+  subtotal   Int                 @default(0)
+  taxRate    Int                 @default(10)
+  tax        Int                 @default(0)
+  total      Int                 @default(0)
+  note       String?
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+
+  tenant   Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supplier Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  items    PurchaseOrderItem[]
+
+  @@unique([tenantId, poNumber])
+  @@index([tenantId, orderDate])
+}
+
+model PurchaseOrderItem {
+  id              String @id @default(cuid())
+  purchaseOrderId String
+  itemId          String
+  itemName        String
+  unit            String
+  quantity        Int
+  unitPrice       Int
+  amount          Int
+  // 入荷済数量（部分入荷対応）
+  received        Int    @default(0)
+
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  item          Item          @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  @@index([purchaseOrderId])
+}
+
+// 請求書（月次請求 — 複数受注を集約）
+model Invoice {
+  id             String        @id @default(cuid())
+  tenantId       String
+  invoiceNumber  String
+  customerId     String
+  // 請求元事業所（複数事業所対応）
+  businessUnitId String?
+  // 締め年月（例: 2025年4月分）
+  periodYear     Int
+  periodMonth    Int
+  issueDate      DateTime      @default(now())
+  dueDate        DateTime?
+  status         InvoiceStatus @default(DRAFT)
+  subtotal       Int           @default(0)
+  taxRate        Int           @default(10)
+  tax            Int           @default(0)
+  total          Int           @default(0)
+  // レガシーのcheckBox1: 伝票ごとに消費税
+  taxPerOrder    Boolean       @default(false)
+  note           String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer     Customer       @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  businessUnit BusinessUnit?  @relation(fields: [businessUnitId], references: [id], onDelete: SetNull)
+  orders       InvoiceOrder[]
+
+  @@unique([tenantId, invoiceNumber])
+  @@index([tenantId, periodYear, periodMonth])
+}
+
+// 請求書 ↔ 受注 の中間テーブル（1請求書に複数受注）
+model InvoiceOrder {
+  invoiceId String
+  orderId   String
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@id([invoiceId, orderId])
+  @@index([orderId])
+}

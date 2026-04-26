@@ -1,0 +1,59 @@
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# --- Node / Next.js (web-app) ---
+node_modules/
+.next/
+out/
+.turbo/
+.pnp
+.pnp.js
+*.tsbuildinfo
+next-env.d.ts
+
+# --- Env files (NEVER commit secrets) ---
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+
+# --- Logs ---
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- SST / AWS ---
+.sst/
+.open-next/
+sst-env.d.ts
+.aws-sam/
+
+# --- Prisma ---
+web-app/prisma/migrations/dev.db*
+
+# --- Coverage / test ---
+coverage/
+*.lcov
+.nyc_output/
+
+# --- Original C# project build artefacts ---
+original-app/**/bin/
+original-app/**/obj/
+original-app/**/.vs/
+*.user
+*.suo
+
+# --- Backup data dump folders (large, mojibake names) ---
+original-app/繝舌ャ繧ｯ繧｢繝・・繝・・繧ｿ/
+
+# --- Misc ---
+*.tgz
+.cache/
+.vercel/
