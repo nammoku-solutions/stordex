@@ -151,6 +151,25 @@ DATABASE_URL="postgresql://...stordex_test" npm test
 | FT-X02 | 同じファイルを再送信 | skipped が増えるだけ | H |
 | FT-X03 | 不正な XML を送信 | エラーメッセージ、DB 影響なし | H |
 
+### 3-10. テナント分離・データ混合の防止（最重要）
+
+> 前提: `npm run db:seed` 投入済み。`demo` (デモ卸売株式会社) と `acme` (ACME物流株式会社) の 2 社が存在し、商品コード (`P001`/`P002`)・顧客コード (`C001`)・仕入先コード (`S001`)・受注番号 (`SO-20260101-0001`) が**意図的に重複**している。
+
+| ID | 手順 | 期待結果 | 重要度 |
+|---|---|---|---|
+| FT-T01 | `demo`/`admin@example.com` でログイン → `/items` | `P001` = 段ボール（小） ¥60、在庫 500 のみ表示。acme の「パレット」は出ない | H |
+| FT-T02 | ログアウト → `acme`/`owner@acme.example.com` でログイン → `/items` | 同じ `P001` が「パレット（木製）」¥2,800、在庫 200 で表示。`demo` の段ボールは出ない | H |
+| FT-T03 | `acme` で `/customers` → `C001` 詳細 | 「西日本流通サービス」のみ。「鈴木商店」は表示されない | H |
+| FT-T04 | `acme` で受注一覧 → `SO-20260101-0001` を開く | `acme` の「西日本流通サービス」宛 受注のみ表示 | H |
+| FT-T05 | `demo` で受注詳細 URL（例 `/orders/<demo の UUID>`）をコピー → ログアウト → `acme` で同 URL を開く | 404 / アクセス拒否（テナントID で絞り込まれている） | H |
+| FT-T06 | `acme` で在庫を OUTBOUND 100 → `demo` でログインし `P001` 在庫確認 | `demo` の在庫 500 が変化していないこと | H |
+| FT-T07 | `acme` で受注新規作成 → `demo` の顧客「鈴木商店」が顧客選択ドロップダウンに**出ないこと** | acme 内顧客のみが選択肢 | H |
+| FT-T08 | `demo` で月次請求書を作成 → 対象月の受注一覧 | `acme` の受注が一切混じらない | H |
+| FT-T09 | `acme` で `/reports/products` 表示 | acme の商品(パレット等)のみ集計、`demo` の段ボールは出ない | H |
+| FT-T10 | `acme` で印刷ビュー (`/print/invoices/[id]`) | フッター/発行元事業所が ACME 大阪支社、`demo` の本社情報は出ない | H |
+| FT-T11 | DevTools の Network タブで `acme` 操作中に `tenantId` パラメータを `demo` の ID に書き換えて再送信 | 200 が返らない（Server Action 側で session.tenantId と照合） | H |
+| FT-T12 | 旧データ XML を `acme` で取り込み → `demo` のマスタが増えていないこと | demo のマスタ件数が変わらない | H |
+
 ---
 
 ## 4. 総合テスト (ST / UAT) — Staging 環境（クライアント立ち会い）

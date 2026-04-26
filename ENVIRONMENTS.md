@@ -15,6 +15,52 @@
 
 ---
 
+## 0. 環境変数の運用方針（重要）
+
+**結論: 環境ごとに別ファイル（`.env.local` / `.env.staging` / `.env.prod`）に分け、変数名は同じ (`DATABASE_URL` 等) に統一する。**
+
+### 理由
+- アプリのコードに「環境ごとに参照する変数を変える」分岐が要らない
+- Next.js は `.env.local` を `next dev`/`next build` 時に **自動読み込み**（標準仕様）
+- 本番値は Vercel / SST の **シークレットマネージャ側** に設定し、ローカルファイルには **絶対に置かない**
+- `.env.staging` と `.env.prod` は **「ローカル PC から DB を直接操作する時だけ使う」** 補助ファイル
+
+### ファイルとロード機構
+
+| ファイル | コミット | 用途 | 読み込み方 |
+|---|---|---|---|
+| `.env.example` | ✅ する | local 用テンプレート | 手動コピー |
+| `.env.staging.example` | ✅ する | staging 用テンプレート | 手動コピー |
+| `.env.prod.example` | ✅ する | prod 用テンプレート | 手動コピー |
+| `.env.local` | ❌ しない | ローカル開発の実値 | `next dev`/`next build` が自動 |
+| `.env.staging` | ❌ しない | ローカル → Neon 操作用 | `dotenv -e .env.staging` |
+| `.env.prod` | ❌ しない | ローカル → Aurora 操作用 | `dotenv -e .env.prod` |
+| Vercel Env Vars | — | staging アプリ実行時 | Vercel が自動注入 |
+| SST Secrets | — | prod アプリ実行時 | Lambda に自動注入 |
+
+### 初回セットアップ
+```bash
+cp .env.example          .env.local       # 編集して実値を入れる
+cp .env.staging.example  .env.staging     # 必要時のみ
+cp .env.prod.example     .env.prod        # 必要時のみ
+```
+
+### 使い分け（運用時に編集不要）
+
+| 操作 | コマンド | 読まれるファイル |
+|---|---|---|
+| ローカル dev | `npm run dev` | `.env.local` |
+| ローカル DB スキーマ反映 | `npm run db:push` | `.env.local` |
+| Staging DB スキーマ反映 | `npm run db:push:staging` | `.env.staging` |
+| Staging DB Seed | `npm run db:seed:staging` | `.env.staging` |
+| Staging DB Studio | `npm run db:studio:staging` | `.env.staging` |
+| Prod DB スキーマ反映（要バックアップ） | `npm run db:push:prod` | `.env.prod` |
+| 本番アプリデプロイ | `npx sst deploy --stage prod` | SST Secrets |
+
+→ **`DATABASE_URL` を手で書き換える必要は一切ありません。**
+
+---
+
 ## 1. Local 環境
 
 ### 1-1. 前提
@@ -31,8 +77,8 @@ docker run -d --name stordex-pg -p 5432:5432 \
   -e POSTGRES_PASSWORD=stordex -e POSTGRES_USER=stordex -e POSTGRES_DB=stordex \
   postgres:16
 
-# .env 作成
-cat > .env <<EOF
+# .env.local 作成（Next.js が自動で読み込む）
+cat > .env.local <<EOF
 DATABASE_URL="postgresql://stordex:stordex@localhost:5432/stordex?schema=public"
 NEXTAUTH_SECRET="$(openssl rand -base64 32)"
 NEXTAUTH_URL="http://localhost:3000"

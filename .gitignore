@@ -21,6 +21,8 @@ next-env.d.ts
 .env.*.local
 .env.production
 .env.development
+.env.staging
+.env.prod
 
 # --- Logs ---
 *.log
