@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { requireSession } from "@/lib/session";
 import { SignOutButton } from "@/components/SignOutButton";
 import { NavLink } from "@/components/NavLink";
@@ -11,8 +12,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="min-h-screen flex">
       <aside className="w-60 bg-slate-900 text-slate-100 flex flex-col">
         <div className="px-5 py-5 border-b border-slate-800">
-          <Link href="/dashboard" className="text-xl font-bold tracking-tight">
-            Stordex
+          <Link href="/dashboard" className="flex items-center gap-2">
+            <Image src="/logo.svg" alt="Stordex" width={28} height={28} />
+            <span className="text-xl font-bold tracking-tight">Stordex</span>
           </Link>
           <div className="mt-1 text-xs text-slate-400 truncate">{u.tenantName}</div>
         </div>

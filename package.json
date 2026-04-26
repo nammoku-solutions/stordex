@@ -14,7 +14,9 @@
     "db:generate": "prisma generate",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
-    "issue-token": "tsx scripts/issue-signup-token.ts"
+    "issue-token": "tsx scripts/issue-signup-token.ts",
+    "suspend-tenant": "tsx scripts/suspend-tenant.ts",
+    "reactivate-tenant": "tsx scripts/reactivate-tenant.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -28,7 +30,6 @@
     "next-auth": "^4.24.10",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "stripe": "^22.1.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {

@@ -22,6 +22,14 @@ export const authOptions: NextAuthOptions = {
           where: { slug: credentials.tenantSlug.toLowerCase() },
         });
         if (!tenant) return null;
+        // 請求未入金等で停止中のテナントはログイン不可
+        if (tenant.status !== "ACTIVE") {
+          throw new Error(
+            tenant.status === "SUSPENDED"
+              ? "SUSPENDED"
+              : "TERMINATED"
+          );
+        }
 
         const user = await prisma.user.findUnique({
           where: {

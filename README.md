@@ -46,8 +46,7 @@ stordex/
 ├── USER_MANUAL.md            クライアント向け操作マニュアル
 ├── ENVIRONMENTS.md           環境別セットアップ
 ├── AWS_DEPLOY.md             AWS 本番デプロイ手順
-├── STRIPE_ROADMAP.md         Stripe 課金導入ロードマップ
-├── STRIPE_SETUP.md           Stripe 有効化手順（Phase 1 実装済み）
+├── BILLING.md                請求・入金・アカウント停止フロー
 ├── TEST_PLAN.md              テスト計画
 └── TEST_CASES.md             テストケース集
 ```
@@ -256,9 +255,18 @@ npm run issue-token -- \
 仕組み:
 - `SignupInvitation` テーブル（`prisma/schema.prisma`）でトークンを管理
 - `/api/signup` がトークン検証 → 1 回限り使用、期限切れ拒否、`allowedTenantSlug`／`allowedEmail` の事前固定可
-- 将来 Stripe を導入する場合は、Stripe Webhook (checkout.session.completed) からこのトークン発行 API を叩くだけで自動化可能
 
-将来の有償化（Stripe Checkout / Subscription）の段階的ロードマップは [STRIPE_ROADMAP.md](STRIPE_ROADMAP.md) を参照。Stripe はアカウント開設・テスト・組み込みすべて無料で、決済発生時のみ手数料（国内カード 3.6%）が発生します。
+## 請求・入金・アカウント停止フロー
+
+企業間契約によるご提供のため、月額費用は **銀行振込** で頂いています。
+仕組みと未入金時のアカウント停止フローは [BILLING.md](BILLING.md) を参照。
+
+要点:
+- `Tenant.status` (`ACTIVE` / `SUSPENDED` / `TERMINATED`) でアカウント状態を管理
+- `SUSPENDED` テナントのユーザーは全画面で `/suspended` にリダイレクトされる
+- 遡及可能なアカウント停止/解除は CLI:
+  - `npm run suspend-tenant -- --slug demo --reason "2026-04 請求未入金"`
+  - `npm run reactivate-tenant -- --slug demo`
 
 ## ライセンス・著作権
 

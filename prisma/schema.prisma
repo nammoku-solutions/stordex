@@ -53,11 +53,21 @@ enum InvoiceStatus {
   CANCELLED
 }
 
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  TERMINATED
+}
+
 model Tenant {
   id        String   @id @default(cuid())
   name      String
   slug      String   @unique
   plan      String   @default("standard")
+  // 利用状態（請求未入金などで停止可能）
+  status           TenantStatus @default(ACTIVE)
+  suspendedAt      DateTime?
+  suspendedReason  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

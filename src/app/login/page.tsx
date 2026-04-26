@@ -28,7 +28,18 @@ function LoginForm() {
     });
     setBusy(false);
     if (!res || res.error) {
-      setError("テナント・メール・パスワードをご確認ください");
+      const err = res?.error ?? "";
+      if (err === "SUSPENDED") {
+        setError(
+          "本アカウントは現在停止中です（ご請求未入金の可能性）。経理ご担当者様に振込状況をご確認の上、support@nammoku-solutions.com までご連絡ください。"
+        );
+      } else if (err === "TERMINATED") {
+        setError(
+          "本アカウントは解約済みのためログインできません。再開をご希望の場合は support@nammoku-solutions.com までご連絡ください。"
+        );
+      } else {
+        setError("テナント・メール・パスワードをご確認ください");
+      }
       return;
     }
     router.push(callbackUrl);
