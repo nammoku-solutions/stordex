@@ -5,7 +5,7 @@ Thumbs.db
 .idea/
 *.swp
 
-# --- Node / Next.js (web-app) ---
+# --- Node / Next.js ---
 node_modules/
 .next/
 out/
@@ -29,16 +29,14 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# --- SST / AWS ---
+# --- SST / AWS / Vercel ---
 .sst/
 .open-next/
 sst-env.d.ts
 .aws-sam/
+.vercel/
 
-# --- Prisma ---
-web-app/prisma/migrations/dev.db*
-
-# --- Coverage / test ---
+# --- Test / Coverage ---
 coverage/
 *.lcov
 .nyc_output/
@@ -56,4 +54,3 @@ original-app/繝舌ャ繧ｯ繧｢繝・・繝・・繧ｿ/
 # --- Misc ---
 *.tgz
 .cache/
-.vercel/

@@ -43,7 +43,7 @@ Aurora Serverless v2 (PostgreSQL 16)
 ## 1. SST 初期化（初回のみ）
 
 ```bash
-cd web-app
+# リポジトリ直下で実行
 npm install
 npx sst init        # → 既存の sst.config.ts はそのまま使われる
 ```

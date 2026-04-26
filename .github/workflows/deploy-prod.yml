@@ -1,0 +1,51 @@
+name: Deploy Production (AWS / SST)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# 必要な GitHub Secrets:
+#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION (例: ap-northeast-1)
+# SST シークレット (NextAuthSecret / NextAuthUrl) は事前に CLI で設定済みであること:
+#   npx sst secret set NextAuthSecret "$(openssl rand -base64 32)" --stage prod
+#   npx sst secret set NextAuthUrl    "https://app.example.com"   --stage prod
+
+jobs:
+  deploy:
+    name: SST deploy --stage prod
+    runs-on: ubuntu-latest
+    # 重要: 本番デプロイは GitHub Environment "production" で手動承認を要求します。
+    # 設定: GitHub Settings → Environments → New environment "production"
+    #         → Required reviewers にあなた自身を追加
+    environment: production
+    concurrency:
+      group: deploy-prod
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prisma generate
+        run: npx prisma generate
+
+      - name: SST deploy
+        run: npx sst deploy --stage prod
+
+      - name: Summary
+        run: echo "Production deployed to AWS (stage=prod)" >> "$GITHUB_STEP_SUMMARY"

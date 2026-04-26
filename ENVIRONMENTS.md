@@ -24,7 +24,7 @@
 ### 1-2. セットアップ
 
 ```bash
-cd web-app
+# リポジトリ直下で実行（original-app/ ではない）
 
 # DB 起動（Docker の場合）
 docker run -d --name stordex-pg -p 5432:5432 \
@@ -94,7 +94,6 @@ DATABASE_URL="<Neon URL>" npm run db:seed
 詳細は [AWS_DEPLOY.md](AWS_DEPLOY.md) を参照。
 
 ```bash
-cd web-app
 npx sst secret set NextAuthSecret "$(openssl rand -base64 32)" --stage prod
 npx sst secret set NextAuthUrl    "https://example.invalid"    --stage prod
 npx sst deploy --stage prod
