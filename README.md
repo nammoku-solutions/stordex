@@ -46,6 +46,7 @@ stordex/
 ├── USER_MANUAL.md            クライアント向け操作マニュアル
 ├── ENVIRONMENTS.md           環境別セットアップ
 ├── AWS_DEPLOY.md             AWS 本番デプロイ手順
+├── STRIPE_ROADMAP.md         Stripe 課金導入ロードマップ
 ├── TEST_PLAN.md              テスト計画
 └── TEST_CASES.md             テストケース集
 ```
@@ -255,6 +256,8 @@ npm run issue-token -- \
 - `SignupInvitation` テーブル（`prisma/schema.prisma`）でトークンを管理
 - `/api/signup` がトークン検証 → 1 回限り使用、期限切れ拒否、`allowedTenantSlug`／`allowedEmail` の事前固定可
 - 将来 Stripe を導入する場合は、Stripe Webhook (checkout.session.completed) からこのトークン発行 API を叩くだけで自動化可能
+
+将来の有償化（Stripe Checkout / Subscription）の段階的ロードマップは [STRIPE_ROADMAP.md](STRIPE_ROADMAP.md) を参照。Stripe はアカウント開設・テスト・組み込みすべて無料で、決済発生時のみ手数料（国内カード 3.6%）が発生します。
 
 ## ライセンス・著作権
 
