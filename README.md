@@ -40,6 +40,7 @@ stordex/
 ├── sst.config.ts             AWS SST デプロイ設定
 ├── package.json
 ├── README.md                 本ファイル
+├── USER_MANUAL.md            クライアント向け操作マニュアル
 ├── ENVIRONMENTS.md           環境別セットアップ
 ├── AWS_DEPLOY.md             AWS 本番デプロイ手順
 ├── TEST_PLAN.md              テスト計画
@@ -70,14 +71,34 @@ docker run -d --name stordex-pg -p 5432:5432 \
 
 ### 3. リポジトリ直下で セットアップ
 
-> **重要:** `original-app/` ディレクトリには `package.json` がありません。必ず **リポジトリ直下** で以下のコマンドを実行してください。
+> **重要:** `original-app/` ディレクトリには `package.json` がありません。必ず **リポジトリ直下** で実行してください。
+
+#### 3-A. ワンショット起動スクリプト（推奨）
+
+```bash
+cd /path/to/stordex
+./scripts/start-local.sh           # 通常起動 (.env / DB / seed をすべて自動)
+./scripts/start-local.sh --reset   # DB をクリーンに作り直す
+./scripts/start-local.sh --no-dev  # 準備のみ (dev サーバは起動しない)
+```
+
+スクリプトが自動で行うこと:
+1. PostgreSQL 16 を起動
+2. `stordex_dev` データベース作成
+3. `.env` 生成（無い場合のみ／既存は上書きしない）
+4. `npm install`
+5. `prisma db push` でスキーマ反映
+6. テナントが空なら `db:seed` 投入
+7. `npm run dev` で `http://localhost:3000` を起動
+
+#### 3-B. 手動セットアップ
 
 ```bash
 cd /path/to/stordex     # ← リポジトリ直下！
 
 # .env を作成
 cat > .env <<EOF
-DATABASE_URL="postgresql://stordex:stordex@localhost:5432/stordex?schema=public"
+DATABASE_URL="postgresql://$USER@localhost:5432/stordex_dev?schema=public"
 NEXTAUTH_SECRET="$(openssl rand -base64 32)"
 NEXTAUTH_URL="http://localhost:3000"
 APP_ENV="local"
