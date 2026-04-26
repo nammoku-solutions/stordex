@@ -47,6 +47,7 @@ stordex/
 ├── ENVIRONMENTS.md           環境別セットアップ
 ├── AWS_DEPLOY.md             AWS 本番デプロイ手順
 ├── STRIPE_ROADMAP.md         Stripe 課金導入ロードマップ
+├── STRIPE_SETUP.md           Stripe 有効化手順（Phase 1 実装済み）
 ├── TEST_PLAN.md              テスト計画
 └── TEST_CASES.md             テストケース集
 ```

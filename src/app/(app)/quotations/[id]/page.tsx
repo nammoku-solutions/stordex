@@ -7,7 +7,7 @@ import { dateJP, yen, num } from "@/lib/format";
 import {
   QUOTATION_STATUS_LABEL,
   QUOTATION_STATUS_BADGE,
-} from "../page";
+} from "../_status";
 import { QuotationStatusActions } from "./QuotationStatusActions";
 
 export default async function QuotationDetailPage({ params }: { params: { id: string } }) {

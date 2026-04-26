@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { requireTenant } from "@/lib/session";
 import { PageHeader } from "@/components/PageHeader";
 import { dateJP, yen, num } from "@/lib/format";
-import { PO_STATUS_BADGE, PO_STATUS_LABEL } from "../page";
+import { PO_STATUS_BADGE, PO_STATUS_LABEL } from "../_status";
 import { POStatusActions } from "./POStatusActions";
 
 export default async function POPage({ params }: { params: { id: string } }) {

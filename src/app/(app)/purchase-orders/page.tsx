@@ -3,21 +3,9 @@ import { prisma } from "@/lib/db";
 import { requireTenant } from "@/lib/session";
 import { PageHeader } from "@/components/PageHeader";
 import { dateJP, yen } from "@/lib/format";
+import { PO_STATUS_LABEL as STATUS_LABEL, PO_STATUS_BADGE as STATUS_BADGE } from "./_status";
 
 export const dynamic = "force-dynamic";
-
-const STATUS_LABEL: Record<string, string> = {
-  DRAFT: "下書き",
-  ORDERED: "発注済",
-  RECEIVED: "入荷済",
-  CANCELLED: "取消",
-};
-const STATUS_BADGE: Record<string, string> = {
-  DRAFT: "bg-slate-100 text-slate-700",
-  ORDERED: "bg-blue-100 text-blue-700",
-  RECEIVED: "bg-emerald-100 text-emerald-700",
-  CANCELLED: "bg-red-100 text-red-700",
-};
 
 export default async function PurchaseOrdersPage({
   searchParams,
@@ -110,5 +98,3 @@ export default async function PurchaseOrdersPage({
     </>
   );
 }
-
-export { STATUS_LABEL as PO_STATUS_LABEL, STATUS_BADGE as PO_STATUS_BADGE };

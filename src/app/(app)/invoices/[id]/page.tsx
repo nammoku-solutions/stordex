@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { requireTenant } from "@/lib/session";
 import { PageHeader } from "@/components/PageHeader";
 import { dateJP, yen, num } from "@/lib/format";
-import { INVOICE_STATUS_LABEL, INVOICE_STATUS_BADGE } from "../page";
+import { INVOICE_STATUS_LABEL, INVOICE_STATUS_BADGE } from "../_status";
 import { InvoiceStatusActions } from "./InvoiceStatusActions";
 
 export default async function InvoiceDetailPage({ params }: { params: { id: string } }) {

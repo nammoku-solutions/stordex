@@ -3,21 +3,9 @@ import { prisma } from "@/lib/db";
 import { requireTenant } from "@/lib/session";
 import { PageHeader } from "@/components/PageHeader";
 import { dateJP, yen } from "@/lib/format";
+import { INVOICE_STATUS_LABEL as STATUS_LABEL, INVOICE_STATUS_BADGE as STATUS_BADGE } from "./_status";
 
 export const dynamic = "force-dynamic";
-
-const STATUS_LABEL: Record<string, string> = {
-  DRAFT: "下書き",
-  ISSUED: "発行済",
-  PAID: "入金済",
-  CANCELLED: "無効",
-};
-const STATUS_BADGE: Record<string, string> = {
-  DRAFT: "bg-slate-100 text-slate-700",
-  ISSUED: "bg-blue-100 text-blue-700",
-  PAID: "bg-emerald-100 text-emerald-700",
-  CANCELLED: "bg-red-100 text-red-700",
-};
 
 export default async function InvoicesPage() {
   const { tenantId } = await requireTenant();
@@ -82,5 +70,3 @@ export default async function InvoicesPage() {
     </>
   );
 }
-
-export { STATUS_LABEL as INVOICE_STATUS_LABEL, STATUS_BADGE as INVOICE_STATUS_BADGE };
