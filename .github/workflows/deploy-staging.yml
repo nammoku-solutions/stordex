@@ -1,17 +1,24 @@
 name: Deploy Staging (Vercel)
 
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
     branches: [develop]
   workflow_dispatch:
 
 # Vercel 連携設定（要 GitHub Secrets）:
 #   VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID
-# Vercel ダッシュボード側で DATABASE_URL / NEXTAUTH_SECRET / NEXTAUTH_URL を設定済みであること。
+# Vercel ダッシュボード側で DATABASE_URL / NEXTAUTH_SECRET / NEXTAUTH_URL を
+#   "Preview" 環境向けに設定済みであること（Production 向けだけだと build 時に空になります）。
 
 jobs:
   deploy:
     name: Deploy to Vercel (Staging)
+    # CI が成功した場合のみデプロイ。手動実行 (workflow_dispatch) は無条件で実行。
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' ||
+          github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     concurrency:
       group: deploy-staging
@@ -52,6 +59,25 @@ jobs:
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Verify Preview env vars are present
+        run: |
+          envfile=".vercel/.env.preview.local"
+          if [ ! -f "$envfile" ]; then
+            echo "::error::$envfile not found. Did 'vercel pull' succeed?"
+            exit 1
+          fi
+          missing=0
+          for v in DATABASE_URL NEXTAUTH_SECRET NEXTAUTH_URL; do
+            if ! grep -qE "^${v}=" "$envfile" || grep -qE "^${v}=\"?\"?$" "$envfile"; then
+              echo "::error::Vercel Preview env var '$v' is missing or empty."
+              echo "  → Set it on Vercel: Project Settings → Environment Variables → Environment: Preview"
+              missing=1
+            fi
+          done
+          if [ "$missing" = "1" ]; then
+            exit 1
+          fi
 
       - name: Build for Vercel
         run: vercel build --token=${{ secrets.VERCEL_TOKEN }}
