@@ -56,3 +56,5 @@ original-app/繝舌ャ繧ｯ繧｢繝・・繝・・繧ｿ/
 # --- Misc ---
 *.tgz
 .cache/
+.vercel
+.env*.local
