@@ -30,6 +30,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <NavLink href="/suppliers" label="仕入先" />
           <NavLink href="/reports/products" label="商品別売上" />
           <NavLink href="/settings/business-units" label="事業所設定" />
+          <NavLink href="/settings/import" label="CSV 取り込み" />
           <NavLink href="/settings/legacy-import" label="旧データ取り込み" />
         </nav>
         <div className="p-3 border-t border-slate-800 text-sm">
