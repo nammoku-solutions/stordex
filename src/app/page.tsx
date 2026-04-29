@@ -4,8 +4,20 @@ import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 
+// トップページで getServerSession が例外を投げても 500 にせず
+// ゲストとして LP を表示する。NEXTAUTH_SECRET 不足等の設定ミスでも
+// ユーザーには適切にログインへ誠導されるようにしておく。
+async function safeGetSession() {
+  try {
+    return await getServerSession(authOptions);
+  } catch (e) {
+    console.error("[home] getServerSession failed:", e);
+    return null;
+  }
+}
+
 export default async function Home() {
-  const session = await getServerSession(authOptions);
+  const session = await safeGetSession();
   if (session?.user) redirect("/dashboard");
 
   return (

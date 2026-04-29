@@ -3,7 +3,10 @@
 // human-friendly codes so each tenant has its own namespace.
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // Vercel/AWS Lambda ランタイムで使うバイナリターゲットを明示。
+  // "Could not load query engine" エラーを防ぐため。
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
