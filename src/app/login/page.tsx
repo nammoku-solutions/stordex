@@ -29,21 +29,47 @@ function LoginForm() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
+    // 重要: callbackUrl は必ず「同一オリジン」の絶対 URL を渡す。
+    //   - 相対 "/dashboard" だと next-auth が NEXTAUTH_URL を基準に解決するため、
+    //     Vercel の preview URL と NEXTAUTH_URL のホストが違うとリダイレクト先で
+    //     セッション Cookie が無く /login へ戻され、ボタンが「ログイン」に戻って見える。
+    const target =
+      typeof window !== "undefined"
+        ? new URL(callbackUrl, window.location.origin).toString()
+        : callbackUrl;
     // redirect: true で next-auth に完全制御を任せる。
     //   - 成功時: callbackUrl へフルページ遷移（Cookie が確実にセットされた状態）
     //   - 失敗時: /login?error=... へリダイレクト → 再マウントされ busy=false に戻り、URL の error を表示
-    // これにより「ログイン → ログイン中 → ログイン」のチラつきを防ぐ。
     await signIn("credentials", {
       tenantSlug,
       email,
       password,
       redirect: true,
-      callbackUrl,
+      callbackUrl: target,
     });
     // ここに到達することは通常ない（signIn が画面遷移を発火するため）
   }
 
   const error = errorMessage(urlError);
+
+  // busy 中はフォームごと差し替えてフルスクリーンのローディング表示にする。
+  // これにより「ログイン → ログイン中 → ログイン」のチラつきを完全に防ぐ
+  // （クライアント遷移・サーバーラウンドトリップ中も常に "ログイン中..." を表示）。
+  if (busy) {
+    return (
+      <main className="min-h-screen flex items-center justify-center p-6">
+        <div className="card w-full max-w-md p-8 space-y-4 text-center">
+          <div className="flex justify-center">
+            <div
+              className="w-10 h-10 rounded-full border-4 border-slate-200 border-t-brand-600 animate-spin"
+              aria-label="ログイン中"
+            />
+          </div>
+          <p className="text-sm text-slate-600">ログイン中...</p>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen flex items-center justify-center p-6">
