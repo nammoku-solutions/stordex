@@ -1,51 +1,49 @@
 "use client";
 
 import { signIn } from "next-auth/react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import Link from "next/link";
 
 function LoginForm() {
-  const router = useRouter();
   const sp = useSearchParams();
   const callbackUrl = sp.get("callbackUrl") || "/dashboard";
+  // next-auth が ?error=... を URL に付けてリダイレクトしてくる
+  const urlError = sp.get("error");
   const [tenantSlug, setTenantSlug] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  function errorMessage(code: string | null): string | null {
+    if (!code) return null;
+    if (code === "SUSPENDED") {
+      return "本アカウントは現在停止中です（ご請求未入金の可能性）。経理ご担当者様に振込状況をご確認の上、support@nammoku-solutions.com までご連絡ください。";
+    }
+    if (code === "TERMINATED") {
+      return "本アカウントは解約済みのためログインできません。再開をご希望の場合は support@nammoku-solutions.com までご連絡ください。";
+    }
+    return "テナント・メール・パスワードをご確認ください";
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
-    setError(null);
-    const res = await signIn("credentials", {
+    // redirect: true で next-auth に完全制御を任せる。
+    //   - 成功時: callbackUrl へフルページ遷移（Cookie が確実にセットされた状態）
+    //   - 失敗時: /login?error=... へリダイレクト → 再マウントされ busy=false に戻り、URL の error を表示
+    // これにより「ログイン → ログイン中 → ログイン」のチラつきを防ぐ。
+    await signIn("credentials", {
       tenantSlug,
       email,
       password,
-      redirect: false,
+      redirect: true,
       callbackUrl,
     });
-    if (!res || res.error) {
-      setBusy(false);
-      const err = res?.error ?? "";
-      if (err === "SUSPENDED") {
-        setError(
-          "本アカウントは現在停止中です（ご請求未入金の可能性）。経理ご担当者様に振込状況をご確認の上、support@nammoku-solutions.com までご連絡ください。"
-        );
-      } else if (err === "TERMINATED") {
-        setError(
-          "本アカウントは解約済みのためログインできません。再開をご希望の場合は support@nammoku-solutions.com までご連絡ください。"
-        );
-      } else {
-        setError("テナント・メール・パスワードをご確認ください");
-      }
-      return;
-    }
-    // 成功時は busy=true のままページ遷移し、ボタンが「ログイン」に戻らないようにする
-    router.push(callbackUrl);
-    router.refresh();
+    // ここに到達することは通常ない（signIn が画面遷移を発火するため）
   }
+
+  const error = errorMessage(urlError);
 
   return (
     <main className="min-h-screen flex items-center justify-center p-6">
@@ -64,6 +62,7 @@ function LoginForm() {
               required
               placeholder="例: nanki"
               autoComplete="organization"
+              disabled={busy}
             />
           </div>
           <div>
@@ -75,6 +74,7 @@ function LoginForm() {
               onChange={(e) => setEmail(e.target.value)}
               required
               autoComplete="email"
+              disabled={busy}
             />
           </div>
           <div>
@@ -86,6 +86,7 @@ function LoginForm() {
               onChange={(e) => setPassword(e.target.value)}
               required
               autoComplete="current-password"
+              disabled={busy}
             />
           </div>
           {error && <p className="text-sm text-red-600">{error}</p>}
