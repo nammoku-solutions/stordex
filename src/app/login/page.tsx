@@ -26,8 +26,8 @@ function LoginForm() {
       redirect: false,
       callbackUrl,
     });
-    setBusy(false);
     if (!res || res.error) {
+      setBusy(false);
       const err = res?.error ?? "";
       if (err === "SUSPENDED") {
         setError(
@@ -42,6 +42,7 @@ function LoginForm() {
       }
       return;
     }
+    // 成功時は busy=true のままページ遷移し、ボタンが「ログイン」に戻らないようにする
     router.push(callbackUrl);
     router.refresh();
   }
