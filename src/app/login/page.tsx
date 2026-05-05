@@ -47,10 +47,10 @@ function LoginForm() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-6">
-      <div className="card w-full max-w-md p-8 space-y-6">
+    <main className="min-h-screen flex items-center justify-center p-4 sm:p-6">
+      <div className="card w-full max-w-md p-6 sm:p-8 space-y-6">
         <div className="text-center">
-          <h1 className="text-2xl font-bold">Stordex ログイン</h1>
+          <h1 className="text-xl sm:text-2xl font-bold">Stordex ログイン</h1>
           <p className="text-sm text-slate-500 mt-1">受発注・在庫管理システム</p>
         </div>
         <form onSubmit={onSubmit} className="space-y-4">
@@ -61,7 +61,7 @@ function LoginForm() {
               value={tenantSlug}
               onChange={(e) => setTenantSlug(e.target.value)}
               required
-              placeholder="例: nanki"
+              placeholder="例: your-company"
               autoComplete="organization"
             />
           </div>

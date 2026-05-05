@@ -27,9 +27,9 @@ function SignupForm() {
   // --- トークン無し: 申込ページとして案内のみ表示 ---
   if (!token) {
     return (
-      <main className="min-h-screen flex items-center justify-center p-6">
-        <div className="card w-full max-w-lg p-8 space-y-5 text-center">
-          <h1 className="text-2xl font-bold">Stordex のお申し込み</h1>
+      <main className="min-h-screen flex items-center justify-center p-4 sm:p-6">
+        <div className="card w-full max-w-lg p-6 sm:p-8 space-y-5 text-center">
+          <h1 className="text-xl sm:text-2xl font-bold">Stordex のお申し込み</h1>
           <p className="text-slate-600 leading-relaxed">
             Stordex は有償サービスです。<br />
             ご利用には Nammoku Solutions との契約および招待コードが必要です。
@@ -90,10 +90,10 @@ function SignupForm() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-6">
-      <div className="card w-full max-w-lg p-8 space-y-6">
+    <main className="min-h-screen flex items-center justify-center p-4 sm:p-6">
+      <div className="card w-full max-w-lg p-6 sm:p-8 space-y-6">
         <div className="text-center">
-          <h1 className="text-2xl font-bold">新規テナント登録</h1>
+          <h1 className="text-xl sm:text-2xl font-bold">新規テナント登録</h1>
           <p className="text-sm text-slate-500 mt-1">
             会社（テナント）と最初の管理者ユーザーを作成します
           </p>
@@ -118,7 +118,7 @@ function SignupForm() {
                 pattern="[a-z0-9-]+"
                 value={form.tenantSlug}
                 onChange={(e) => update("tenantSlug", e.target.value.toLowerCase())}
-                placeholder="例: nanki"
+                placeholder="例: your-company"
               />
             </div>
           </div>

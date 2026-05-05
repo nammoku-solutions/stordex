@@ -39,13 +39,40 @@ if ! command -v psql >/dev/null 2>&1; then
   echo "❌ psql が見つかりません。 'brew install postgresql@16' を実行してください。" >&2
   exit 1
 fi
-brew services start postgresql@16 >/dev/null 2>&1 || true
 
-# 接続できるまで最大 10 秒待つ
-for i in {1..10}; do
-  if psql -U "$USER" -d postgres -c '\q' >/dev/null 2>&1; then break; fi
+# 既に起動していれば何もしない。未起動なら brew services で起動を試み、
+# 失敗した場合は pg_ctl で直接起動する。
+if ! psql -U "$USER" -d postgres -c '\q' >/dev/null 2>&1; then
+  echo "   起動していないため起動します..."
+  STARTED=false
+  if command -v brew >/dev/null 2>&1; then
+    if brew services start postgresql@16 >/dev/null 2>&1; then
+      STARTED=true
+    fi
+  fi
+  if [ "$STARTED" = false ]; then
+    PG_BIN="$(brew --prefix postgresql@16 2>/dev/null)/bin"
+    PGDATA_DIR="$(brew --prefix 2>/dev/null)/var/postgresql@16"
+    if [ -x "$PG_BIN/pg_ctl" ] && [ -d "$PGDATA_DIR" ]; then
+      "$PG_BIN/pg_ctl" -D "$PGDATA_DIR" -l "$PGDATA_DIR/server.log" start >/dev/null 2>&1 || true
+    fi
+  fi
+fi
+
+# 接続できるまで最大 15 秒待つ
+CONNECTED=false
+for i in {1..15}; do
+  if psql -U "$USER" -d postgres -c '\q' >/dev/null 2>&1; then
+    CONNECTED=true
+    break
+  fi
   sleep 1
 done
+if [ "$CONNECTED" = false ]; then
+  echo "❌ PostgreSQL に接続できません。手動で 'brew services start postgresql@16' を試してください。" >&2
+  exit 1
+fi
+echo "✅ PostgreSQL 起動済み"
 
 # --- 2. データベースの準備 ---
 DB_NAME="stordex_dev"
