@@ -118,7 +118,11 @@ npm run dev
 3. Environment Variables（**Production / Preview / Development** すべてに）:
    - `DATABASE_URL` = Neon 接続文字列
    - `NEXTAUTH_SECRET` = `openssl rand -base64 32` の出力
-   - `NEXTAUTH_URL` = `https://<vercel-project-name>.vercel.app`（初回 deploy 後に正式 URL で上書き）
+   - `NEXTAUTH_URL` = **ブランチ別の固定エイリアス** を使う（推奨）
+     - 例: `https://stordex-git-develop-<team>.vercel.app`（develop ブランチ用の自動エイリアス）
+     - Vercel Dashboard → Deployments → 最新の Ready 行 → "Domains" 欄に表示される `*-git-<branch>-*.vercel.app` を確認
+     - これは新しいデプロイがあっても **URL が変わらない**（最新のデプロイに自動で差し替えられる）
+     - クライアントにも常にこの URL を共有すれば、コミットごとの URL を更新する必要なし
    - `APP_ENV` = `staging`
 4. Deploy
 

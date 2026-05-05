@@ -3,7 +3,10 @@
 // human-friendly codes so each tenant has its own namespace.
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // Vercel/AWS Lambda ランタイムで使うバイナリターゲットを明示。
+  // "Could not load query engine" エラーを防ぐため。
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
@@ -59,6 +62,21 @@ enum TenantStatus {
   TERMINATED
 }
 
+enum ImportTarget {
+  CUSTOMER
+  SUPPLIER
+  ITEM
+  ORDER
+}
+
+enum ImportJobStatus {
+  PENDING
+  DRYRUN_OK
+  DRYRUN_FAILED
+  COMMITTED
+  FAILED
+}
+
 model Tenant {
   id        String   @id @default(cuid())
   name      String
@@ -67,6 +85,8 @@ model Tenant {
   // 利用状態（請求未入金などで停止可能）
   status           TenantStatus @default(ACTIVE)
   suspendedAt      DateTime?
+  importPresets  ImportPreset[]
+  importJobs     ImportJob[]
   suspendedReason  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -478,4 +498,53 @@ model InvoiceOrder {
 
   @@id([invoiceId, orderId])
   @@index([orderId])
+}
+
+// CSV インポートのプリセット（テナントごとに保存可能 / システム同梱は isBuiltIn=true）
+model ImportPreset {
+  id          String       @id @default(cuid())
+  tenantId    String
+  target      ImportTarget
+  name        String
+  description String?
+  isBuiltIn   Boolean      @default(false)
+  // CSV パース設定
+  encoding    String       @default("auto") // "auto" | "utf-8" | "shift_jis"
+  delimiter   String       @default(",")    // "," | "\t" | ";"
+  headerRow   Int          @default(0)
+  skipRows    Int          @default(0)
+  // 列マッピング: { fieldKey: csvHeaderName | { index: number } }
+  mapping     Json
+  // 取込モード（同コードが既にある場合の挙動）
+  upsertMode  String       @default("skip") // "skip" | "update"
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, target])
+}
+
+// CSV インポート履歴（ドライラン or 本取込の結果）
+model ImportJob {
+  id           String          @id @default(cuid())
+  tenantId     String
+  userId       String?
+  target       ImportTarget
+  presetId     String?
+  fileName     String
+  rowCount     Int             @default(0)
+  createdCount Int             @default(0)
+  updatedCount Int             @default(0)
+  skippedCount Int             @default(0)
+  errorCount   Int             @default(0)
+  status       ImportJobStatus @default(PENDING)
+  // 失敗行を CSV としてダウンロードできるよう保存（行数次第で大きくなり得る）
+  errorCsv     String?
+  summary      String?
+  createdAt    DateTime        @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
 }

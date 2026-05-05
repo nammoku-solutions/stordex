@@ -10,10 +10,50 @@ on:
 # SST シークレット (NextAuthSecret / NextAuthUrl) は事前に CLI で設定済みであること:
 #   npx sst secret set NextAuthSecret "$(openssl rand -base64 32)" --stage prod
 #   npx sst secret set NextAuthUrl    "https://app.example.com"   --stage prod
+#
+# 構成: test ジョブ → deploy ジョブ。test が失敗するとデプロイは走りません。
+# 本番デプロイは GitHub Environment "production" で手動承認を要求します。
 
 jobs:
+  test:
+    name: Lint / Typecheck / Test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: stordex
+          POSTGRES_PASSWORD: stordex
+          POSTGRES_DB: stordex
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U stordex"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://stordex:stordex@localhost:5432/stordex?schema=public
+      NEXTAUTH_SECRET: ci-secret-not-for-production-only-32-bytes-xxxx
+      NEXTAUTH_URL: http://localhost:3000
+      APP_ENV: ci
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx prisma db push --skip-generate
+      - run: npm run typecheck
+      - run: npm test
+
   deploy:
     name: SST deploy --stage prod
+    needs: test
     runs-on: ubuntu-latest
     # 重要: 本番デプロイは GitHub Environment "production" で手動承認を要求します。
     # 設定: GitHub Settings → Environments → New environment "production"

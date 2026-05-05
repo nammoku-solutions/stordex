@@ -2,9 +2,12 @@ name: CI
 
 on:
   push:
-    branches: ["**"]
+    branches-ignore: [develop, main]
   pull_request:
     branches: [main, develop]
+
+# develop / main へのプッシュは deploy-staging.yml / deploy-prod.yml の
+# 'test' ジョブで CI を実施するため、このワークフローでは除外しています。
 
 jobs:
   test:

@@ -20,8 +20,21 @@
 | UT-08 | `nextSequentialNumber` | 既存あり (0007) | H | `0008` |
 | UT-09 | `nextSequentialNumber` | 異プレフィックス無視 | M | `0001` |
 | UT-10 | `nextSequentialNumber` | ゼロ埋め 4 桁 | M | `0100` |
+| UT-11 | `parseCsv` | クォート内のカンマ・改行 | H | 1 セルとして保持 |
+| UT-12 | `parseCsv` | `""` エスケープ | H | ダブルクォートを 1 つの `"` に復元 |
+| UT-13 | `parseCsv` | CRLF と末尾改行 | H | 空行除去 |
+| UT-14 | `parseCsv` | タブ区切り | M | 指定区切りで分割 |
+| UT-15 | `stringifyCsv` | クォート・エスケープ付き round-trip | H | parseCsv(stringifyCsv(x)) === x |
+| UT-16 | `decodeCsvBuffer` | UTF-8 BOM 除去 | H | 本文のみ返る |
+| UT-17 | `decodeCsvBuffer` | Shift_JIS 強制 | H | 「あ」 (0x82A0) を復元 |
+| UT-18 | `autoMap` (ITEM) | 列名から alias マッチ | H | code/name/unit/salesPrice が一致 |
+| UT-19 | `coerceValue` int | `¥1,500` → 1500 | H | ok=true |
+| UT-20 | `coerceValue` int | `abc` はエラー | H | ok=false |
+| UT-21 | `coerceValue` date | `2026/01/02` | H | UTC の Date オブジェクト |
+| UT-22 | `coerceValue` bool | `○` / `×` | M | true / false |
+| UT-23 | `coerceValue` string | 空文字列 | M | null |
 
-実行: `npm test`（10 件すべて pass を確認）
+実行: `npm test`（24 件すべて pass を確認）
 
 ### 追加推奨 UT（未実装・順次追加）
 - `format.yen / num / dateJP` — null/undefined/0 の表示
@@ -47,6 +60,15 @@
 | IT-09 | code 重複ガード | 同テナント内で同じ Customer.code を作成 | H | unique 制約違反 |
 | IT-10 | XML 取り込み | サンプル DataSet1 XML を投入 | H | Customer 件数が増え、stats.skipped=既存重複 |
 | IT-11 | 在庫ロット記録 | OUTBOUND に lotNumber/expiryDate を入れて作成 | M | Movement に保存、検索可能 |
+| IT-12 | CSV 商品取込 | 同テナントに 3 件の商品 CSV | H | createdCount=3 / Item が 3 件追加 |
+| IT-13 | CSV ドライラン | mode=dryrun で取込 | H | DB 件数不変、ImportJob.status=DRYRUN_OK レコード作成 |
+| IT-14 | CSV 重複コードスキップ | upsertMode=skip で同コードを再取込 | H | skippedCount=N / DB 変更なし |
+| IT-15 | CSV 重複コード更新 | upsertMode=update で同コードを再取込 | H | updatedCount=N / レコードの名称等が更新 |
+| IT-16 | CSV 受注グループ化 | 同一 orderNumber で 3 明細 | H | Order 1 件 + OrderItem 3 件 |
+| IT-17 | CSV 受注重複伝票 | 既存 orderNumber を含む CSV | H | 重複分 skippedCount、新規のみ createdCount |
+| IT-18 | CSV 未登録商品 | itemCode 未登録で受注取込 | H | 該当行が errors に追加、Order は作成されずスキップ |
+| IT-19 | CSV テナント分離 | demo で取込 → acme のマスタ件数不変 | H | tenantId で完全分離 |
+| IT-20 | CSV Shift_JIS 自動判定 | encoding=auto で SJIS バイト列 | H | 文字化けず読み込み成功 |
 
 セットアップ:
 ```bash
@@ -151,6 +173,27 @@ DATABASE_URL="postgresql://...stordex_test" npm test
 | FT-X02 | 同じファイルを再送信 | skipped が増えるだけ | H |
 | FT-X03 | 不正な XML を送信 | エラーメッセージ、DB 影響なし | H |
 
+### 3-9b. CSV 取り込み（`/settings/import`）
+
+| ID | 手順 | 期待結果 | 重要度 |
+|---|---|---|---|
+| FT-C01 | 商品タブ → UTF-8 CSV アップロード → プレビュー | ヘッダ・先頭 10 行表示、列マッピングが自動充填 | H |
+| FT-C02 | Shift_JIS の CSV を encoding=auto でアップロード | 文字化けずプレビューされる | H |
+| FT-C03 | 必須項目（code や name）のマッピングを外してドライラン | 該当行が errors に表示、「必須項目が空」メッセージ | H |
+| FT-C04 | ドライラン OK を確認 → 本番取込 | createdCount/updatedCount が加算、/items に表示される | H |
+| FT-C05 | 商品 CSV を upsertMode=skip で再取込 | skippedCount=全件、データ不変 | H |
+| FT-C06 | 同じ CSV を upsertMode=update で取込 | 名称や住所の修正が DB に反映、updatedCount が加算 | H |
+| FT-C07 | タブ区切り CSV を delimiter=タブで取込 | 正しく列分割される | M |
+| FT-C08 | 受注タブ → 同じ orderNumber の明細 3 行を含む CSV | 1 受注 + 3 明細で created=1、/orders で確認 | H |
+| FT-C09 | 受注 CSV を同じものを再取込 | すべて skippedCount、重複伝票なし | H |
+| FT-C10 | 受注 CSV で customerCode 未登録 + customerName あり | 得意先が自動作成され、受注も作成 | M |
+| FT-C11 | 受注 CSV で itemCode 未登録 | 該当行 errors、その受注はスキップされる | H |
+| FT-C12 | エラーあり取込 → 「エラー行を CSV でダウンローヒ | BOM 付 CSV がダウンロードされ、Excel で文字化けず開ける | H |
+| FT-C13 | `/settings/import/history` | 取り込み履歴が新しい順に表示、ステータス色・エラー CSV リンクが表示 | H |
+| FT-C14 | Logigate eShip プリセット選択 → アップロード | encoding=Shift_JIS / マッピングが自動セット | M |
+| FT-C15 | インフォマート プリセット選択 → アップロード | encoding=Shift_JIS / マッピングが自動セット | M |
+| FT-C16 | サイドバーに「CSV 取り込み」リンクあり | `/settings/import` へ遷移 | L |
+
 ### 3-10. テナント分離・データ混合の防止（最重要）
 
 > 前提: `npm run db:seed` 投入済み。`demo` (デモ卸売株式会社) と `acme` (ACME物流株式会社) の 2 社が存在し、商品コード (`P001`/`P002`)・顧客コード (`C001`)・仕入先コード (`S001`)・受注番号 (`SO-20260101-0001`) が**意図的に重複**している。
@@ -169,6 +212,8 @@ DATABASE_URL="postgresql://...stordex_test" npm test
 | FT-T10 | `acme` で印刷ビュー (`/print/invoices/[id]`) | フッター/発行元事業所が ACME 大阪支社、`demo` の本社情報は出ない | H |
 | FT-T11 | DevTools の Network タブで `acme` 操作中に `tenantId` パラメータを `demo` の ID に書き換えて再送信 | 200 が返らない（Server Action 側で session.tenantId と照合） | H |
 | FT-T12 | 旧データ XML を `acme` で取り込み → `demo` のマスタが増えていないこと | demo のマスタ件数が変わらない | H |
+| FT-T13 | `acme` で CSV 取り込み → `demo` で取込したコードが見えないこと | demo のマスタ/受注一覧に acme のデータが出ない | H |
+| FT-T14 | `acme` で ImportJob 作成 → `demo` の `/settings/import/history` | acme のジョブが一切表示されない | H |
 
 ---
 
@@ -204,6 +249,13 @@ DATABASE_URL="postgresql://...stordex_test" npm test
 ### ST-05 旧データ移行
 1. 客先の旧アプリから書き出した実 XML を取込
 2. 顧客件数・商品件数・受注件数が旧アプリ集計と一致
+
+### ST-05b CSV 取り込み（他サービス連携）
+1. クライアントが使用中のサービス (Logigate eShip / インフォマート / 自社 Excel) から CSV をエクスポート
+2. `/settings/import` よりプリセット選択しアップロード
+3. ドライラン → 必要に応じてマッピング修正 → 本取込
+4. 顧客と一緒にエラー行を確認、必要に応じてテンプレートを調整
+5. 受注件数・金額が元サービスと一致することを確認
 
 ### ST-06 性能（軽量負荷）
 - 在庫 1,000 件、月間受注 500 件のデータで一覧・レポートが 2 秒以内
