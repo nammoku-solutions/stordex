@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { SubmitButton } from "@/components/SubmitButton";
 
 type Item = {
   id: string;
@@ -262,9 +263,7 @@ export function OrderForm({
       </div>
 
       <div className="flex gap-3">
-        <button type="submit" className="btn-primary">
-          注文を登録
-        </button>
+        <SubmitButton pendingLabel="登録中...">注文を登録</SubmitButton>
         <a href="/orders" className="btn-secondary">
           キャンセル
         </a>

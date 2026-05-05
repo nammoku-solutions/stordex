@@ -1,4 +1,5 @@
 import type { Item, Supplier } from "@prisma/client";
+import { SubmitButton } from "@/components/SubmitButton";
 
 export function ItemForm({
   action,
@@ -103,9 +104,9 @@ export function ItemForm({
         </p>
       )}
       <div className="flex gap-3 pt-2">
-        <button type="submit" className="btn-primary">
+        <SubmitButton pendingLabel="保存中...">
           {submitLabel}
-        </button>
+        </SubmitButton>
         <a href="/items" className="btn-secondary">
           キャンセル
         </a>

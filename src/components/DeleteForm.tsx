@@ -1,5 +1,21 @@
 "use client";
 
+import { useFormStatus } from "react-dom";
+
+function DeleteSubmit({ label }: { label: string }) {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      aria-busy={pending}
+      className="text-red-600 hover:underline text-sm disabled:opacity-50"
+    >
+      {pending ? "削除中..." : label}
+    </button>
+  );
+}
+
 export function DeleteForm({
   id,
   action,
@@ -23,9 +39,7 @@ export function DeleteForm({
       }}
       className="inline"
     >
-      <button type="submit" className="text-red-600 hover:underline text-sm">
-        {label}
-      </button>
+      <DeleteSubmit label={label} />
     </form>
   );
 }

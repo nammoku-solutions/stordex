@@ -1,3 +1,5 @@
+import { SubmitButton } from "@/components/SubmitButton";
+
 type BU = {
   id?: string;
   name?: string;
@@ -56,7 +58,7 @@ export function BusinessUnitForm({
         </div>
       </div>
       <div className="flex gap-3">
-        <button type="submit" className="btn-primary">保存</button>
+        <SubmitButton pendingLabel="保存中...">保存</SubmitButton>
         <a href="/settings/business-units" className="btn-secondary">キャンセル</a>
       </div>
     </form>

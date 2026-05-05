@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { requireTenant } from "@/lib/session";
 import { PageHeader } from "@/components/PageHeader";
+import { SubmitButton } from "@/components/SubmitButton";
 import { createInvoice } from "../actions";
 
 export default async function NewInvoicePage() {
@@ -74,7 +75,7 @@ export default async function NewInvoicePage() {
           </div>
         </div>
         <div className="flex gap-3">
-          <button type="submit" className="btn-primary">請求書を作成</button>
+          <SubmitButton pendingLabel="作成中...">請求書を作成</SubmitButton>
           <a href="/invoices" className="btn-secondary">キャンセル</a>
         </div>
       </form>

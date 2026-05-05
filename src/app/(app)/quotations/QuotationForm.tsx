@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { SubmitButton } from "@/components/SubmitButton";
 
 type Item = { id: string; code: string; name: string; unit: string; salesPrice: number };
 type Customer = { id: string; code: string; name: string };
@@ -254,7 +255,7 @@ export function QuotationForm({
       </div>
 
       <div className="flex gap-3">
-        <button type="submit" className="btn-primary">見積書を登録</button>
+        <SubmitButton pendingLabel="登録中...">見積書を登録</SubmitButton>
         <a href="/quotations" className="btn-secondary">キャンセル</a>
       </div>
     </form>
