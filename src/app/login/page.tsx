@@ -86,7 +86,7 @@ function LoginForm() {
               value={tenantSlug}
               onChange={(e) => setTenantSlug(e.target.value)}
               required
-              placeholder="例: your-company"
+              placeholder="例: demo"
               autoComplete="organization"
               disabled={busy}
             />
