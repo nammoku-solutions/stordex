@@ -49,21 +49,23 @@ export default $config({
     const nextAuthUrl = new sst.Secret("NextAuthUrl");
 
     // --- Next.js app ---
-    // Production attaches the apex `stordex.jp` (with `www` redirect) to CloudFront.
-    // The hosted zone for stordex.jp must already exist in Route 53 (managed manually,
-    // outside SST, so it survives `sst remove`). SST will provision the ACM cert in
-    // us-east-1 and create the necessary A/AAAA alias records automatically.
+    // NOTE: Production custom domain is intentionally NOT attached here.
+    // While we're cost-saving, `stordex.jp` is served from Vercel as a
+    // "Coming Soon" page (DNS records live in Route 53 zone Z039016432QRTL90AVMFE,
+    // pointing the apex + www to Vercel). When we are ready to migrate the real
+    // app to AWS, re-enable the `domain` block below and `sst deploy --stage prod`
+    // will provision ACM + CloudFront alias records (this will overwrite the
+    // current Vercel A/CNAME records, so remove them from Vercel first).
+    //
+    //   domain: isProd ? {
+    //     name: "stordex.jp",
+    //     redirects: ["www.stordex.jp"],
+    //     dns: sst.aws.dns({ zone: "Z039016432QRTL90AVMFE" }),
+    //   } : undefined,
     const site = new sst.aws.Nextjs("Web", {
       path: ".",
       vpc,
       link: [db, nextAuthSecret, nextAuthUrl],
-      domain: isProd
-        ? {
-            name: "stordex.jp",
-            redirects: ["www.stordex.jp"],
-            dns: sst.aws.dns({ zone: "Z039016432QRTL90AVMFE" }),
-          }
-        : undefined,
       environment: {
         // Prisma reads DATABASE_URL — built from the linked Aurora cluster.
         DATABASE_URL: $interpolate`postgresql://${db.username}:${db.password}@${db.host}:${db.port}/${db.database}?sslmode=require`,
