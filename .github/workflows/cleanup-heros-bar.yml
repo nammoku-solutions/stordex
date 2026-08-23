@@ -1,0 +1,246 @@
+name: Cleanup Hero's Bar AWS Resources
+
+on:
+  push:
+    paths:
+      - ".github/workflows/cleanup-heros-bar.yml"
+  workflow_dispatch:
+
+jobs:
+  cleanup-heros:
+    name: Delete Hero's Bar AWS infrastructure
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      AWS_REGION: ap-northeast-1
+      EXPECTED_AWS_ACCOUNT_ID: "085141726968"
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify AWS account
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "Authenticated AWS account: $ACCOUNT_ID"
+          if [ "$ACCOUNT_ID" != "$EXPECTED_AWS_ACCOUNT_ID" ]; then
+            echo "Refusing cleanup: expected account $EXPECTED_AWS_ACCOUNT_ID"
+            exit 1
+          fi
+
+      - name: Resolve Hero's Bar CloudFormation stack
+        id: stack
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          STACK_NAME=""
+          if aws cloudformation describe-stacks --stack-name Dev-HerosWebsiteHostingAppStack >/tmp/heros-stack.json 2>/dev/null; then
+            STACK_NAME="Dev-HerosWebsiteHostingAppStack"
+          else
+            mapfile -t MATCHES < <(
+              aws cloudformation list-stacks \
+                --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE UPDATE_ROLLBACK_COMPLETE IMPORT_COMPLETE IMPORT_ROLLBACK_COMPLETE DELETE_FAILED \
+                --query 'StackSummaries[].StackName' \
+                --output text | tr '\t' '\n' | grep -E '(^|-)HerosWebsiteHostingAppStack$' || true
+            )
+
+            if [ "${#MATCHES[@]}" -eq 1 ]; then
+              STACK_NAME="${MATCHES[0]}"
+              aws cloudformation describe-stacks --stack-name "$STACK_NAME" >/tmp/heros-stack.json
+            elif [ "${#MATCHES[@]}" -eq 0 ]; then
+              echo "Hero's Bar stack is already absent."
+              echo "exists=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            else
+              echo "Multiple possible Hero's Bar stacks found: ${MATCHES[*]}"
+              echo "Refusing to guess."
+              exit 1
+            fi
+          fi
+
+          echo "Found stack: $STACK_NAME"
+          echo "name=$STACK_NAME" >> "$GITHUB_OUTPUT"
+          echo "exists=true" >> "$GITHUB_OUTPUT"
+
+          BUCKET=$(jq -r '.Stacks[0].Outputs[]? | select(.OutputKey=="HostingBucketName") | .OutputValue' /tmp/heros-stack.json | head -n1)
+          DIST=$(jq -r '.Stacks[0].Outputs[]? | select(.OutputKey=="CloudFrontDistributionId") | .OutputValue' /tmp/heros-stack.json | head -n1)
+          ROLE_ARN=$(jq -r '.Stacks[0].Outputs[]? | select(.OutputKey=="GitHubActionsRoleArn") | .OutputValue' /tmp/heros-stack.json | head -n1)
+
+          echo "bucket=${BUCKET:-}" >> "$GITHUB_OUTPUT"
+          echo "distribution=${DIST:-}" >> "$GITHUB_OUTPUT"
+          echo "role_arn=${ROLE_ARN:-}" >> "$GITHUB_OUTPUT"
+
+      - name: Inspect stack resources
+        if: steps.stack.outputs.exists == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws cloudformation describe-stack-resources \
+            --stack-name "${{ steps.stack.outputs.name }}" \
+            --query 'StackResources[].{Type:ResourceType,LogicalId:LogicalResourceId,PhysicalId:PhysicalResourceId}' \
+            --output table
+
+      - name: Preserve shared GitHub OIDC provider
+        if: steps.stack.outputs.exists == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          STACK_NAME="${{ steps.stack.outputs.name }}"
+
+          aws cloudformation get-template --stack-name "$STACK_NAME" --output json > /tmp/get-template.json
+
+          python3 - <<'PY'
+          import json
+
+          with open('/tmp/get-template.json', 'r', encoding='utf-8') as f:
+              payload = json.load(f)
+
+          template = payload['TemplateBody']
+          if isinstance(template, str):
+              template = json.loads(template)
+
+          changed = False
+          found = []
+          for logical_id, resource in template.get('Resources', {}).items():
+              if resource.get('Type') == 'AWS::IAM::OIDCProvider':
+                  found.append(logical_id)
+                  if resource.get('DeletionPolicy') != 'Retain':
+                      resource['DeletionPolicy'] = 'Retain'
+                      changed = True
+                  if resource.get('UpdateReplacePolicy') != 'Retain':
+                      resource['UpdateReplacePolicy'] = 'Retain'
+                      changed = True
+
+          with open('/tmp/heros-retain-oidc.json', 'w', encoding='utf-8') as f:
+              json.dump(template, f, separators=(',', ':'))
+
+          with open('/tmp/oidc-result.txt', 'w', encoding='utf-8') as f:
+              f.write('FOUND=' + ','.join(found) + '\n')
+              f.write('CHANGED=' + ('true' if changed else 'false') + '\n')
+          PY
+
+          cat /tmp/oidc-result.txt
+          FOUND=$(grep '^FOUND=' /tmp/oidc-result.txt | cut -d= -f2-)
+          CHANGED=$(grep '^CHANGED=' /tmp/oidc-result.txt | cut -d= -f2-)
+
+          if [ -z "$FOUND" ]; then
+            echo "No AWS::IAM::OIDCProvider is owned by this stack; no retain update needed."
+            exit 0
+          fi
+
+          echo "Stack-owned OIDC logical IDs: $FOUND"
+          if [ "$CHANGED" = "true" ]; then
+            set +e
+            UPDATE_OUTPUT=$(aws cloudformation update-stack \
+              --stack-name "$STACK_NAME" \
+              --template-body file:///tmp/heros-retain-oidc.json \
+              --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM 2>&1)
+            RC=$?
+            set -e
+
+            if [ "$RC" -ne 0 ]; then
+              if echo "$UPDATE_OUTPUT" | grep -q 'No updates are to be performed'; then
+                echo "OIDC retain policy is already effective."
+              else
+                echo "$UPDATE_OUTPUT"
+                exit "$RC"
+              fi
+            else
+              aws cloudformation wait stack-update-complete --stack-name "$STACK_NAME"
+              echo "OIDC provider marked Retain."
+            fi
+          else
+            echo "OIDC provider is already marked Retain."
+          fi
+
+      - name: Disable termination protection
+        if: steps.stack.outputs.exists == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws cloudformation update-termination-protection \
+            --stack-name "${{ steps.stack.outputs.name }}" \
+            --no-enable-termination-protection >/dev/null
+          echo "Termination protection disabled."
+
+      - name: Delete Hero's Bar stack
+        if: steps.stack.outputs.exists == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          STACK_NAME="${{ steps.stack.outputs.name }}"
+          echo "Deleting $STACK_NAME..."
+          aws cloudformation delete-stack --stack-name "$STACK_NAME"
+          aws cloudformation wait stack-delete-complete --stack-name "$STACK_NAME"
+          echo "Hero's Bar stack deleted."
+
+      - name: Verify Hero's Bar resources are gone
+        shell: bash
+        env:
+          STACK_NAME: ${{ steps.stack.outputs.name }}
+          BUCKET: ${{ steps.stack.outputs.bucket }}
+          DIST: ${{ steps.stack.outputs.distribution }}
+          ROLE_ARN: ${{ steps.stack.outputs.role_arn }}
+        run: |
+          set -euo pipefail
+          FAILED=0
+
+          if [ -n "$STACK_NAME" ] && aws cloudformation describe-stacks --stack-name "$STACK_NAME" >/dev/null 2>&1; then
+            echo "ERROR: CloudFormation stack still exists: $STACK_NAME"
+            FAILED=1
+          else
+            echo "OK: Hero's Bar CloudFormation stack absent."
+          fi
+
+          if [ -n "$BUCKET" ] && [ "$BUCKET" != "null" ]; then
+            if aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then
+              echo "ERROR: S3 bucket still exists: $BUCKET"
+              FAILED=1
+            else
+              echo "OK: Hero's Bar S3 bucket absent."
+            fi
+          fi
+
+          if [ -n "$DIST" ] && [ "$DIST" != "null" ]; then
+            if aws cloudfront get-distribution --id "$DIST" >/dev/null 2>&1; then
+              echo "ERROR: CloudFront distribution still exists: $DIST"
+              FAILED=1
+            else
+              echo "OK: Hero's Bar CloudFront distribution absent."
+            fi
+          fi
+
+          if [ -n "$ROLE_ARN" ] && [ "$ROLE_ARN" != "null" ]; then
+            ROLE_NAME="${ROLE_ARN##*/}"
+            if aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
+              echo "ERROR: Hero's Bar deploy role still exists: $ROLE_NAME"
+              FAILED=1
+            else
+              echo "OK: Hero's Bar deploy role absent."
+            fi
+          fi
+
+          for PARAM in \
+            /heros-web/dev/s3/hosting-bucket \
+            /heros-web/dev/cloudfront/distribution-id \
+            /heros-web/dev/cloudfront/domain-name; do
+            if aws ssm get-parameter --name "$PARAM" >/dev/null 2>&1; then
+              echo "ERROR: SSM parameter still exists: $PARAM"
+              FAILED=1
+            else
+              echo "OK: SSM parameter absent: $PARAM"
+            fi
+          done
+
+          echo "Intentionally retained shared infrastructure:"
+          echo "- GitHub OIDC provider token.actions.githubusercontent.com"
+          echo "- CDKToolkit / cdk-hnb659fds-* bootstrap resources"
+
+          exit "$FAILED"
