@@ -3,6 +3,8 @@ name: Deploy Production (AWS / SST)
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - ".github/**"
   workflow_dispatch:
 
 # 必要な GitHub Secrets:
