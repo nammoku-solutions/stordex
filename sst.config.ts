@@ -27,7 +27,7 @@ export default $config({
           defaultTags: {
             tags: {
               Project: "Stordex",
-              Environment: "prod",
+              Environment: input?.stage ?? "dev",
               ManagedBy: "SST",
               Owner: "NammokuSolutions",
             },
