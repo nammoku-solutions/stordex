@@ -21,7 +21,19 @@ export default $config({
       name: "stordex",
       removal: input?.stage === "prod" ? "retain" : "remove",
       home: "aws",
-      providers: { aws: { region: "ap-northeast-1" } },
+      providers: {
+        aws: {
+          region: "ap-northeast-1",
+          defaultTags: {
+            tags: {
+              Project: "Stordex",
+              Environment: "prod",
+              ManagedBy: "SST",
+              Owner: "NammokuSolutions",
+            },
+          },
+        },
+      },
     };
   },
   async run() {
