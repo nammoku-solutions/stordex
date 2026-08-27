@@ -32,7 +32,8 @@ jobs:
         run: |
           npm install next@16.3.3 react@19.2.0 react-dom@19.2.0 next-auth@latest
           npm install --save-dev @types/react@19.2.7 @types/react-dom@19.2.3 postcss@latest
-          npm audit fix
+          npm audit fix || true
+          npm audit fix || true
 
       - name: Show audit result
         run: npm audit --audit-level=low || true
