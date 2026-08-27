@@ -7,7 +7,10 @@ on:
       - ".github/**"
   workflow_dispatch:
 
-# 必要な GitHub Secrets:
+permissions:
+  contents: read
+
+# 現行の AWS 認証（将来は GitHub OIDC + IAM Role への移行を推奨）:
 #   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION (例: ap-northeast-1)
 # SST シークレット (NextAuthSecret / NextAuthUrl) は事前に CLI で設定済みであること:
 #   npx sst secret set NextAuthSecret "$(openssl rand -base64 32)" --stage prod
@@ -17,20 +20,21 @@ jobs:
   deploy:
     name: SST deploy --stage prod
     runs-on: ubuntu-latest
-    # 重要: 本番デプロイは GitHub Environment "production" で手動承認を要求します。
-    # 設定: GitHub Settings → Environments → New environment "production"
-    #         → Required reviewers にあなた自身を追加
+    timeout-minutes: 45
+    # 本番デプロイは GitHub Environment "production" の保護ルールで承認する。
     environment: production
     concurrency:
       group: deploy-prod
       cancel-in-progress: false
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: '22.x'
           cache: npm
 
       - name: Configure AWS credentials
@@ -42,6 +46,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=low
 
       - name: Prisma generate
         run: npx prisma generate
