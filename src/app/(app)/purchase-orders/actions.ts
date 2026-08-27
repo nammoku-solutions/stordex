@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireTenant } from "@/lib/session";
+import { assertTenantSupplier } from "@/lib/tenant-resources";
 import type { PurchaseOrderStatus } from "@prisma/client";
 
 const Line = z.object({
@@ -56,10 +57,10 @@ async function nextPONumber(tenantId: string) {
 }
 
 export async function createPurchaseOrder(formData: FormData) {
-  const { tenantId, session } = await requireTenant();
+  const { tenantId } = await requireTenant();
   const data = parsePO(formData);
+  await assertTenantSupplier(tenantId, data.supplierId);
 
-  // Validate items belong to tenant
   const itemIds = data.lines.map((l) => l.itemId);
   const items = await prisma.item.findMany({
     where: { id: { in: itemIds }, tenantId },
@@ -117,7 +118,6 @@ export async function setPurchaseOrderStatus(id: string, status: PurchaseOrderSt
   });
   if (!po) throw new Error("発注が見つかりません");
 
-  // RECEIVED に変えるとき、自動入庫処理（既存からの差分のみ）
   if (status === "RECEIVED" && po.status !== "RECEIVED") {
     await prisma.$transaction(async (tx) => {
       for (const line of po.items) {
