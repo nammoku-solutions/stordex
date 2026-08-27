@@ -1,64 +1,123 @@
-# テスト計画（Test Plan）
+# Stordex Test Plan
 
-## テストレベル一覧
+## Test levels
 
-| レベル | 目的 | 担当 | 環境 | ツール |
-|---|---|---|---|---|
-| **単体テスト (UT)** | 関数単位のロジック検証 | 開発者 | Local | Vitest |
-| **結合テスト (IT)** | DB + Server Action + Prisma の連携 | 開発者 | Local | Vitest + 専用テスト DB（任意） |
-| **機能テスト (FT)** | 画面 1 機能のシナリオ検証 | 開発者 / QA | Local | 手動 + ブラウザ |
-| **総合テスト (ST / UAT)** | エンドツーエンド業務フロー / 性能 / 帯域 / 認可 | クライアント / QA | Staging | 手動 + ブラウザ |
-| **本番受入テスト (Smoke)** | 本番デプロイ直後の最低限動作確認 | 運用 | Production | 手動 |
+| Level | Purpose | Environment | Tool |
+|---|---|---|---|
+| Unit (UT) | pure logic / security helper validation | Local / CI | Vitest |
+| Integration (IT) | Prisma + PostgreSQL / server behavior | Local / CI | Vitest + PostgreSQL 16 |
+| Functional (FT) | screen / workflow behavior | Local | Browser + manual checklist |
+| System / UAT | end-to-end business flow | Staging | Vercel + Neon + manual checklist |
+| Production Smoke | post-deploy critical path | Production | Browser / operational checks |
 
-## テスト対象モジュール
+## Automated CI baseline
 
-1. 認証 (NextAuth Credentials)
-2. テナント分離 (multi-tenant)
-3. マスタ: 顧客 / 仕入先 / 商品 / 事業所 / 倉庫
-4. 受注 (Order) — ステータス遷移、在庫減算、印刷
-5. 見積書 (Quotation)
-6. 仕入先発注 (PurchaseOrder) — 入荷で在庫加算
-7. 月次請求書 (Invoice) — 受注集約、税切替
-8. 在庫 (InventoryMovement) — 入庫/出庫/調整、ロット/賞味期限/棚番
-9. レポート — 月次商品別売上
-10. 旧 XML データ取り込み
-11. 印刷ビュー（納品書 / ピッキング / 見積書 / 発注書 / 請求書）
+`.github/workflows/ci.yml` uses Node.js 22 and PostgreSQL 16 and executes:
 
-## 合否判定基準
-
-- 各レベル **重要度 High のケースが 100% 合格** で次レベルに進む
-- High = データ破損 / 認可漏れ / 金額誤差 / 在庫整合性に関わる
-- Medium = UI 表示 / バリデーション
-- Low = 文言・レイアウトの細部
-
-## 実行サイクル
-
-```
-[コード変更]
-  └─ npm run typecheck
-  └─ npm run lint
-  └─ npm test                   ← UT + IT (Local)
-  └─ git push (feature → develop)
-       └─ Vercel Preview Deploy
-            └─ FT / ST (Staging)  ← クライアント確認
-                 └─ git push main
-                      └─ npx sst deploy --stage prod
-                           └─ Smoke (Production)
+```bash
+npm ci
+npm audit --omit=dev --audit-level=low
+npx prisma generate
+npx prisma db push --skip-generate
+npm run typecheck
+npm test
+npm run build
 ```
 
-## ツール
+CI additionally verifies that production build did not mutate tracked repository files.
 
-- 単体・結合: **Vitest** (`npm test`)
-- 型: `npm run typecheck`
-- Lint: `npm run lint`
-- 機能・総合: 手動チェックリスト（[TEST_CASES.md](TEST_CASES.md)）
-- E2E 自動化（任意・将来）: Playwright を `e2e/` に追加可能
+Full `npm audit` is reported for visibility. Production dependency advisories are blocking; dev-only findings are reviewed separately based on exploitability.
 
-## テスト環境のデータ
+## Priority test areas
 
-| 環境 | データ |
+1. Authentication / tenant status
+2. Tenant isolation
+3. Cross-tenant relation-ID rejection
+4. Customer / Supplier / Item / Business Unit master data
+5. Order status transition and stock decrement/restore
+6. Quotation
+7. Purchase Order and receiving stock increment
+8. Invoice aggregation / tax behavior
+9. Inventory movement
+10. Reports
+11. Signup invitation lifecycle
+12. Legacy XML import authorization / parsing / tenant scope
+13. Print views
+
+## Security regression rules
+
+Any feature that accepts record IDs from the browser must include tests or review evidence for tenant ownership.
+
+Examples:
+
+- a Tenant A user cannot create an Order using Tenant B's `customerId`
+- a Tenant A user cannot assign Tenant B's `supplierId` to an Item
+- a Tenant A user cannot create an Invoice using Tenant B's `businessUnitId`
+- a signup invitation cannot be claimed twice concurrently
+- STAFF cannot perform legacy XML import
+
+Pure ownership guards are covered by `src/lib/tenant-resources.test.ts`. High-risk Server Actions / Route Handlers should gain integration coverage as they evolve.
+
+## Acceptance criteria
+
+A release candidate must satisfy:
+
+- production dependency audit passes
+- TypeScript check passes
+- all automated tests pass
+- production build passes
+- High-priority manual cases pass for changed business areas
+- no known cross-tenant data path introduced
+- DB schema changes have an explicit staging/production plan
+
+High severity business failures include:
+
+- tenant data leakage
+- authorization bypass
+- stock corruption
+- duplicate/invalid billing
+- amount/tax calculation errors
+- destructive import behavior
+
+## Recommended change cycle
+
+```text
+Code change
+   |
+   v
+CI: audit + typecheck + test + build
+   |
+   v
+PR review
+   |
+   +--> Staging FT/UAT when business behavior changed
+   |
+   v
+main / production approval
+   |
+   v
+Production smoke
+```
+
+## Manual functional/system cases
+
+Use [`TEST_CASES.md`](TEST_CASES.md) as the detailed checklist. When a code change alters expected behavior, update the test case document in the same PR.
+
+## Test data
+
+| Environment | Data policy |
 |---|---|
-| Local UT/IT | Vitest がインメモリで生成、または `stordex_test` 専用 DB |
-| Local FT | `npm run db:seed` のデモデータ |
-| Staging ST | 本番想定の匿名化データを Neon に投入 |
-| Production Smoke | 本物データ（破壊的操作禁止） |
+| CI | disposable PostgreSQL service |
+| Local | `prisma/seed.ts` demo tenants/data |
+| Staging | test or anonymized data only |
+| Production | real data; smoke tests must avoid destructive operations |
+
+The seed intentionally contains multiple tenants to make tenant isolation validation possible.
+
+## Future automation candidates
+
+- API / Server Action tenant isolation integration tests
+- signup concurrency integration test
+- Playwright critical business flows
+- print-page snapshot/visual checks
+- production deployment smoke automation with non-destructive test account

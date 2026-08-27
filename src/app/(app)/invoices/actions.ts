@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireTenant } from "@/lib/session";
+import { assertTenantBusinessUnit, assertTenantCustomer } from "@/lib/tenant-resources";
 import type { InvoiceStatus } from "@prisma/client";
 
 const Schema = z.object({
@@ -37,19 +38,20 @@ export async function createInvoice(formData: FormData) {
   const { tenantId } = await requireTenant();
   const obj = Object.fromEntries(formData.entries()) as Record<string, string>;
   const data = Schema.parse(obj);
+  await assertTenantCustomer(tenantId, data.customerId);
+  if (data.businessUnitId) {
+    await assertTenantBusinessUnit(tenantId, data.businessUnitId);
+  }
 
-  // 対象期間
   const periodStart = new Date(data.periodYear, data.periodMonth - 1, 1);
   const periodEnd = new Date(data.periodYear, data.periodMonth, 1);
 
-  // 既請求済の受注を除外
   const billedOrderIds = await prisma.invoiceOrder.findMany({
     where: { invoice: { tenantId, customerId: data.customerId } },
     select: { orderId: true },
   });
   const excluded = billedOrderIds.map((b) => b.orderId);
 
-  // 集計対象: 対象顧客の納品日(またはorderDate) が対象月、状態が CONFIRMED/SHIPPED/COMPLETED
   const orders = await prisma.order.findMany({
     where: {
       tenantId,
@@ -77,14 +79,12 @@ export async function createInvoice(formData: FormData) {
   let tax = 0;
   let total = 0;
   if (data.taxPerOrder) {
-    // 伝票ごとに消費税
     for (const o of orders) {
       subtotal += o.subtotal;
       tax += o.tax;
       total += o.total;
     }
   } else {
-    // 月次合算で消費税
     for (const o of orders) {
       subtotal += o.subtotal;
     }

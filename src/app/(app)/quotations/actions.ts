@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireTenant } from "@/lib/session";
+import { assertTenantCustomer, assertTenantItems } from "@/lib/tenant-resources";
 import type { QuotationStatus } from "@prisma/client";
 
 const Line = z.object({
@@ -65,6 +66,11 @@ async function nextQuotationNumber(tenantId: string) {
 export async function createQuotation(formData: FormData) {
   const { tenantId } = await requireTenant();
   const data = parseQuotation(formData);
+  await assertTenantCustomer(tenantId, data.customerId);
+  await assertTenantItems(
+    tenantId,
+    data.lines.flatMap((line) => (line.itemId ? [line.itemId] : []))
+  );
 
   let subtotal = 0;
   const lineRecords = data.lines.map((l) => {

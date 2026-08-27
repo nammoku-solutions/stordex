@@ -6,6 +6,9 @@ import { requireTenant } from "@/lib/session";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+const MAX_TOTAL_IMPORT_BYTES = 8_000_000;
+const MAX_FILE_BYTES = 2_000_000;
+
 /**
  * 旧アプリ（C# Windows Forms）の Customer_data.xml / Item_data.xml /
  * Supplier_data.xml / Order_data.xml を読み込み、現テナント配下に作成する。
@@ -19,11 +22,21 @@ export const runtime = "nodejs";
  * すべて任意。提供されたファイルだけインポートする。重複コードはスキップ。
  */
 export async function POST(req: NextRequest) {
-  const { tenantId } = await requireTenant();
+  const { tenantId, role } = await requireTenant();
+  if (role === "STAFF") {
+    return NextResponse.json({ error: "管理者権限が必要です" }, { status: 403 });
+  }
+
+  const contentLength = Number(req.headers.get("content-length") ?? "0");
+  if (Number.isFinite(contentLength) && contentLength > MAX_TOTAL_IMPORT_BYTES) {
+    return NextResponse.json({ error: "アップロードサイズが大きすぎます" }, { status: 413 });
+  }
+
   const form = await req.formData();
   const parser = new XMLParser({
     ignoreAttributes: true,
     parseTagValue: false,
+    processEntities: false,
   });
 
   const stats = {
@@ -36,11 +49,13 @@ export async function POST(req: NextRequest) {
   async function asText(field: string) {
     const f = form.get(field);
     if (!f || typeof f === "string") return null;
+    if (f.size > MAX_FILE_BYTES) {
+      throw new Error(`${field}: file too large`);
+    }
     return await f.text();
   }
   function rows(xml: string, tableName: string): any[] {
     const j = parser.parse(xml);
-    // 一般的なDataSet XML: <DataSetName><TableName>...</TableName></DataSetName>
     let arr: any[] = [];
     const walk = (o: any) => {
       if (!o || typeof o !== "object") return;
@@ -69,7 +84,6 @@ export async function POST(req: NextRequest) {
     return isNaN(n) ? null : n;
   };
 
-  // ===== Customers =====
   const cxml = await asText("customers");
   if (cxml) {
     const data = rows(cxml, "Customer").concat(rows(cxml, "得意先"));
@@ -104,7 +118,6 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // ===== Suppliers =====
   const sxml = await asText("suppliers");
   if (sxml) {
     const data = rows(sxml, "Supplier").concat(rows(sxml, "仕入先"));
@@ -139,7 +152,6 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // ===== Items =====
   const ixml = await asText("items");
   if (ixml) {
     const data = rows(ixml, "Item").concat(rows(ixml, "商品"));
@@ -182,14 +194,9 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // ===== Orders =====
-  // 旧アプリの Order_data.xml は注文ヘッダ＋明細を併存させているケースが多い。
-  // ヘッダ行の代表項目: OrderNumber/CustomerCode/OrderDate/DueDate, 明細: ItemCode/Qty/Price
-  // ヘッダ＋明細が同じ要素に並んでいる（DataTable 結合）形式のみサポート。
   const oxml = await asText("orders");
   if (oxml) {
     const data = rows(oxml, "Order").concat(rows(oxml, "注文"), rows(oxml, "受注"));
-    // 注文番号でグループ化
     const groups = new Map<string, any[]>();
     for (const r of data) {
       const num = pickStr(r, "OrderNumber", "OrderNo", "注文番号", "伝票番号");
@@ -211,7 +218,6 @@ export async function POST(req: NextRequest) {
         stats.orders.skipped++;
         continue;
       }
-      // 既存スキップ
       const exists = await prisma.order.findUnique({
         where: { tenantId_orderNumber: { tenantId, orderNumber: num } },
       });
@@ -221,7 +227,6 @@ export async function POST(req: NextRequest) {
       }
       const orderDate = pickStr(head, "OrderDate", "注文日") || new Date().toISOString();
       const dueDate = pickStr(head, "DueDate", "納品日");
-      // 明細
       const lines: any[] = [];
       let subtotal = 0;
       for (const r of list) {

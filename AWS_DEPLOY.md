@@ -1,153 +1,206 @@
-# Stordex — AWS デプロイ手順（SST v3 / OpenNext + Aurora Serverless v2）
+# Stordex AWS Deployment Runbook
 
-Next.js を **Lambda + CloudFront + S3**、DB を **Aurora Serverless v2 (PostgreSQL)** で運用します。
+Stordex production は SST v3 / OpenNext を使用して AWS へデプロイします。構成の正本は [`sst.config.ts`](sst.config.ts) です。
 
-## 構成
+## 1. Current production architecture
 
+```text
+User
+  |
+CloudFront / OpenNext
+  |
+Next.js Lambda + S3 assets
+  |
+VPC
+  |
+Aurora Serverless v2 PostgreSQL 16
 ```
-ユーザー
-  │
-  ▼
-CloudFront ──► S3 (静的アセット)
-  │
-  ▼
-Lambda (Next.js / OpenNext)
-  │  VPC
-  ▼
-Aurora Serverless v2 (PostgreSQL 16)
+
+`sst.config.ts` は production で resource removal policy を retain にしており、誤った stack removal がデータ削除へ直結しないようにしています。
+
+## 2. Requirements
+
+- Node.js 22
+- npm
+- AWS account
+- SST access to the target AWS account
+- GitHub Environment `production` configured for production deployment approval
+
+本番操作では個人 IAM user に広い AdministratorAccess を恒常付与する運用は避けてください。
+
+## 3. SST secrets
+
+アプリが使用する SST secrets:
+
+```text
+NextAuthSecret
+NextAuthUrl
 ```
 
-## 月額コスト目安（東京リージョン / 1 ユーザー社内利用）
-
-| サービス | 内容 | 概算 |
-|---------|------|-----|
-| Lambda | リクエスト数百〜数千/日 | 〜¥500 |
-| CloudFront | 数 GB 転送 | 〜¥1,000 |
-| S3 | 〜1GB | 〜¥30 |
-| Aurora Serverless v2 | min 0.5 ACU 24h 稼働 | **¥6,000〜8,000** |
-| VPC NAT Gateway | 1 個 | **¥4,500〜** |
-| Secrets Manager | 数件 | 〜¥150 |
-| **合計** | | **¥11,000〜15,000/月** |
-
-> **コスト削減オプション**
-> - 開発・検証ステージは `min: "0 ACU"`（自動 pause）で約 ¥0/月（コールドスタート数秒）
-> - NAT Gateway を NAT インスタンス（t4g.nano, ¥600/月）に置換
-> - 個人運用なら Neon Free + Lambda + CloudFront で **¥1,000/月以下** に縮小可
-
-## 前提
-
-- AWS アカウント / IAM ユーザー（`AdministratorAccess` または同等）
-- AWS CLI 設定済み (`aws configure`)
-- Node.js 20+
-
-## 1. SST 初期化（初回のみ）
+初期設定例:
 
 ```bash
-# リポジトリ直下で実行
-npm install
-npx sst init        # → 既存の sst.config.ts はそのまま使われる
-```
-
-## 2. シークレット登録
-
-```bash
-# NEXTAUTH_SECRET（必須・32 byte ランダム）
 npx sst secret set NextAuthSecret "$(openssl rand -base64 32)" --stage prod
-
-# NEXTAUTH_URL は初回デプロイ後に判明する CloudFront URL を入れます。
-# 一旦プレースホルダで登録 → デプロイ → 取得 → 再登録 → 再デプロイ。
 npx sst secret set NextAuthUrl "https://example.invalid" --stage prod
 ```
 
-## 3. デプロイ
+初回 deploy 後に production URL が確定したら `NextAuthUrl` を正式 URL へ更新し、必要に応じて再 deploy します。
+
+Secret の値を GitHub Issue、CI log、README、shell history の共有テキストへ貼り付けないでください。
+
+## 4. DATABASE_URL
+
+Production application の `DATABASE_URL` は手動 SST Secret ではありません。
+
+`sst.config.ts` が Aurora resource の connection information から組み立てて Next.js runtime environment へ渡します。
+
+したがって次のような secret は現行構成では不要です。
+
+```text
+DatabaseUrl
+```
+
+ローカル管理作業で production DB connection string が必要になる場合だけ `.env.prod` 等へ一時設定し、commit しません。
+
+## 5. GitHub Actions production deployment
+
+通常の production deployment は `.github/workflows/deploy-prod.yml` を使用します。
+
+`main` push 後の流れ:
+
+1. production workflow が起動
+2. GitHub Environment `production` の保護ルールを通過
+3. AWS credential setup
+4. `npm ci`
+5. `npm audit --omit=dev --audit-level=low`
+6. Prisma client generation
+7. `npx sst deploy --stage prod`
+
+workflow が dependency audit で停止した場合、audit を無効化して deploy を続行するのではなく依存関係を先に修正します。
+
+## 6. AWS authentication
+
+### Current
+
+現行 workflow は次の GitHub Secrets を使う方式です。
+
+```text
+AWS_ACCESS_KEY_ID
+AWS_SECRET_ACCESS_KEY
+AWS_REGION
+```
+
+Secret の値は repository に書きません。
+
+### Recommended future state
+
+実 AWS 側の IAM role / trust policy を確認できるタイミングで、GitHub Actions OIDC に移行してください。
+
+目標:
+
+```text
+GitHub Actions
+    |
+OIDC short-lived identity
+    |
+AWS IAM deployment role
+    |
+SST resources required by Stordex
+```
+
+移行時は SST が実際に必要とする AWS permissions を検証し、いきなり狭すぎる policy を production workflow へ適用しないでください。
+
+## 7. Manual deployment
+
+障害対応や初期構築など、明確な理由がある場合だけ local CLI から実施します。
 
 ```bash
+npm ci
+npm audit --omit=dev --audit-level=low
 npx sst deploy --stage prod
 ```
 
-デプロイ完了時に `Web.url` と `Db.host` が表示されます。
+実行前に `aws sts get-caller-identity` 等で対象 account を必ず確認してください。
 
-## 4. CloudFront URL を NEXTAUTH_URL に反映
+## 8. Database schema changes
 
-```bash
-# 例: https://d1xxxxxx.cloudfront.net
-npx sst secret set NextAuthUrl "https://d1xxxxxx.cloudfront.net" --stage prod
-npx sst deploy --stage prod
-```
+### Current limitation
 
-カスタムドメイン（例: `https://app.stordex.jp`）を設定する場合は ACM 証明書 + Route53 を `sst.aws.Nextjs` の `domain` に渡してください。最終的にはこの URL を NEXTAUTH_URL にします。
+現在 repository に `prisma/migrations/` history はありません。`prisma/schema.prisma` と `prisma db push` 中心で構築された履歴です。
 
-## 5. DATABASE_URL（Prisma マイグレーション用）
+既存 production Aurora がある場合、次を実行してはいけません。
 
-`sst.config.ts` でアプリ環境変数 `DATABASE_URL` は Aurora から自動生成されます。**ローカルから本番 DB にスキーマ適用する場合のみ**手動で URL が必要です。
+- 新しい initial migration を production にそのまま適用
+- backup なしで `prisma db push` を実行
+- `--accept-data-loss` を機械的に使用
 
-### 本番 Aurora の接続情報を取得
+### Before changing production schema
 
-```bash
-# SST の出力から
-npx sst secret list --stage prod
-# あるいは AWS コンソール → RDS → クラスタ「stordex-prod-Db…」→ エンドポイント
-# パスワードは Secrets Manager（rds!cluster-… キー）から取得
-```
+1. Aurora backup / restore point を確認
+2. production schema を確認
+3. repository schema と差分確認
+4. baseline migration strategy を作成
+5. staging clone/相当環境で試験
+6. rollback procedure を準備
+7. production maintenance window で適用
 
-VPC 内 DB なので、**ローカルから直接マイグレーションは原則できません**。以下のいずれかを使ってください。
+migration baseline を整備した後は `prisma migrate deploy` ベースへ移行するのが望ましいです。
 
-#### 方法 A: SSM Session Manager 経由のポートフォワード（推奨）
+## 9. Connecting to Aurora for administration
 
-```bash
-# Bastion Lambda 不要。RDS Data API でも可。
-aws ssm start-session \
-  --target i-xxxxxxxx \
-  --document-name AWS-StartPortForwardingSessionToRemoteHost \
-  --parameters '{"host":["<aurora-endpoint>"],"portNumber":["5432"],"localPortNumber":["5432"]}'
+Aurora は VPC 内にある前提なので、ローカル PC から直接接続できるとは限りません。
 
-# 別シェルで
-DATABASE_URL="postgresql://postgres:<password>@localhost:5432/stordex?sslmode=require" \
-  npx prisma migrate deploy
-DATABASE_URL="postgresql://postgres:<password>@localhost:5432/stordex?sslmode=require" \
-  npm run db:seed
-```
+以前の文書にあった SSM port forwarding 例は、接続先となる SSM-managed host が実際に存在する場合にしか利用できません。現行 `sst.config.ts` は bastion EC2 を作成していません。
 
-#### 方法 B: Lambda タスクで実行（CI で推奨）
+必要な DB maintenance 方法は production network の実状態を確認して決めてください。候補には次があります。
 
-`sst.config.ts` に `sst.aws.Function` で migration runner を足し、`npx sst run` で実行。
+- 一時的な SSM-managed bastion / admin host
+- VPC 内の controlled migration task
+- SST/AWS の既存接続機構
 
-## 6. ローカル `.env`（開発用）
+接続のためだけに Aurora を public access に変更しないでください。
 
-`.env` は **コミット禁止**（`.gitignore` 済）。ローカル開発では Neon Free などの開発用 DB を指してください。
+## 10. Backup / recovery
 
-```env
-DATABASE_URL="postgresql://...neon.tech/neondb?sslmode=require"
-NEXTAUTH_SECRET="<openssl rand -base64 32 の出力>"
-NEXTAUTH_URL="http://localhost:3000"
-```
+本番運用開始前に少なくとも次を確認してください。
 
-## NEXTAUTH_SECRET の生成
+- Aurora automated backup retention
+- PITR が期待通り利用できること
+- restore test の手順
+- stack/resource removal 時の retain behavior
+- 誤操作時の recovery owner
 
-```bash
-# Mac / Linux
-openssl rand -base64 32
+`sst.config.ts` に backup retention が明示されていない場合、実 AWS resource の設定を確認してから要件をコード化してください。
 
-# クロスプラットフォーム（Node があれば）
-node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-```
-
-## バックアップ
-
-Aurora は自動バックアップ（PITR）が既定で 1 日。本番では 7〜30 日に延長してください。
-
-```ts
-// sst.config.ts の Aurora ブロックに追加可
-new sst.aws.Aurora("Db", {
-  // ...
-  // backup: { retention: "30 days" }, // 将来追加
-});
-```
-
-## 削除（コスト停止）
+## 11. Removing resources
 
 ```bash
 npx sst remove --stage prod
 ```
 
-`removal: "retain"` の Aurora と S3 はコンソールから手動削除してください（誤削除防止）。
+production は retain policy を使うため、command 実行後も一部 data resources が残る可能性があります。
+
+**残った Aurora / storage を手動削除する前に backup と依存関係を確認してください。**
+
+## 12. Production deployment checklist
+
+Before:
+
+- target branch / commit is correct
+- CI passed
+- production dependency audit passed
+- AWS account/stage is correct
+- DB schema changeがある場合は backup / migration plan がある
+- `NextAuthUrl` / secret configuration is valid
+
+After:
+
+- application opens
+- login works
+- tenant isolation smoke test
+- core order/inventory flow
+- print pages
+- CloudWatch/application errors
+- unexpected AWS resource replacement/deletionがない
+
+関連資料: [`ARCHITECTURE.md`](ARCHITECTURE.md), [`SECURITY.md`](SECURITY.md), [`ENVIRONMENTS.md`](ENVIRONMENTS.md)

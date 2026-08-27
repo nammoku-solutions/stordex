@@ -16,6 +16,8 @@ const Body = z.object({
   password: z.string().min(8).max(128),
 });
 
+class InvitationAlreadyUsedError extends Error {}
+
 export async function POST(req: Request) {
   let json: unknown;
   try {
@@ -29,7 +31,6 @@ export async function POST(req: Request) {
   }
   const { token, tenantName, tenantSlug, name, email, password } = parsed.data;
 
-  // --- 1. 招待トークンの検証 ---
   const invite = await prisma.signupInvitation.findUnique({ where: { token } });
   if (!invite) {
     return NextResponse.json(
@@ -62,7 +63,6 @@ export async function POST(req: Request) {
     );
   }
 
-  // --- 2. テナント slug の重複チェック ---
   const existing = await prisma.tenant.findUnique({ where: { slug: tenantSlug } });
   if (existing) {
     return NextResponse.json({ error: "そのテナントIDは既に使用されています" }, { status: 409 });
@@ -70,27 +70,41 @@ export async function POST(req: Request) {
 
   const passwordHash = await bcrypt.hash(password, 10);
 
-  // --- 3. テナント + 管理者作成 + トークンを使用済みに ---
-  const tenant = await prisma.tenant.create({
-    data: {
-      name: tenantName,
-      slug: tenantSlug,
-      plan: invite.plan,
-      users: {
-        create: {
-          email: email.toLowerCase(),
-          name,
-          passwordHash,
-          role: "OWNER",
+  try {
+    await prisma.$transaction(async (tx) => {
+      const tenant = await tx.tenant.create({
+        data: {
+          name: tenantName,
+          slug: tenantSlug,
+          plan: invite.plan,
+          users: {
+            create: {
+              email: email.toLowerCase(),
+              name,
+              passwordHash,
+              role: "OWNER",
+            },
+          },
         },
-      },
-    },
-  });
+      });
 
-  await prisma.signupInvitation.update({
-    where: { id: invite.id },
-    data: { usedAt: new Date(), usedByTenantId: tenant.id },
-  });
+      const claimed = await tx.signupInvitation.updateMany({
+        where: { id: invite.id, usedAt: null },
+        data: { usedAt: new Date(), usedByTenantId: tenant.id },
+      });
+      if (claimed.count !== 1) {
+        throw new InvitationAlreadyUsedError();
+      }
+    });
+  } catch (error) {
+    if (error instanceof InvitationAlreadyUsedError) {
+      return NextResponse.json(
+        { error: "この招待コードは既に使用されています。" },
+        { status: 403 }
+      );
+    }
+    throw error;
+  }
 
   return NextResponse.json({ ok: true });
 }

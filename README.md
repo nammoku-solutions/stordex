@@ -1,213 +1,233 @@
 # Stordex
 
-物流・卸売業向けのマルチテナント受発注・在庫管理 SaaS。  
-レガシーの Windows Forms C# アプリ（[original-app/](original-app/)）を Web アプリとして再構築したものです。
+物流・卸売業向けのマルチテナント受発注・在庫管理 SaaS です。旧 Windows Forms C# アプリを Web アプリとして再構築しており、旧実装は移行参照用として [`original-app/`](original-app/) に残しています。
 
-**所有・提供元**: Nammoku Solutions  
-**サポート**: support@nammoku-solutions.com
+## Current stack
 
-## 目次
-
-- [技術スタック](#技術スタック)
-- [リポジトリ構成](#リポジトリ構成)
-- [クイックスタート（ローカル）](#クイックスタートローカル)
-- [3 段階の環境](#3-段階の環境)
-- [テスト](#テスト)
-- [CI / CD](#ci--cd)
-- [デプロイ（AWS Aurora Serverless v2）](#デプロイaws-aurora-serverless-v2)
-- [主要画面](#主要画面)
-- [帳票印刷 / PDF](#帳票印刷--pdf)
-- [レガシーアプリからの移行](#レガシーアプリからの移行)
-- [マルチテナント設計](#マルチテナント設計)
-
-## 技術スタック
-
-- **Next.js 14** (App Router, React Server Components, Server Actions) + **TypeScript**
-- **PostgreSQL** + **Prisma 5**
-- **NextAuth.js** (Credentials, JWT セッション 8h)
+- **Node.js 22**
+- **Next.js 16.3 / React 19.2 / TypeScript**
+- **PostgreSQL 16 + Prisma 5**
+- **NextAuth.js 4** (Credentials + JWT session)
+- **Zod**
+- **Vitest**
 - **Tailwind CSS**
-- **Zod**（入力バリデーション）
-- **Vitest**（単体テスト）
-- **SST v3 (Ion) + OpenNext**（AWS デプロイ）
-- **GitHub Actions**（CI / CD）
+- **SST v3 / OpenNext** for AWS production
+- **GitHub Actions** for CI/CD
 
-## リポジトリ構成
+依存バージョンの正本は `package.json` / `package-lock.json` です。
 
-```
-stordex/
-├── src/                      Next.js アプリ (App Router)
-├── prisma/                   schema.prisma + seed.ts
-├── public/                   静的アセット
-├── original-app/             旧 C# WinForms アプリ（参考用、ビルド成果物は .gitignore）
-├── .github/workflows/        GitHub Actions（CI / CD）
-├── sst.config.ts             AWS SST デプロイ設定
-├── package.json
-├── README.md                 本ファイル
-├── USER_MANUAL.md            クライアント向け操作マニュアル
-├── ENVIRONMENTS.md           環境別セットアップ
-├── AWS_DEPLOY.md             AWS 本番デプロイ手順
-├── BILLING.md                請求・入金・アカウント停止フロー
-├── TEST_PLAN.md              テスト計画
-└── TEST_CASES.md             テストケース集
-```
+## Documentation
 
-> 2026/04 にアプリ本体を `web-app/` からリポジトリ直下に移動しました。`npm` コマンドはリポジトリ直下で実行してください。
-
-## クイックスタート（ローカル）
-
-### 1. 前提
-
-- Node.js 20+
-- PostgreSQL 16（`brew install postgresql@16` または Docker）
-
-### 2. DB を起動
-
-```bash
-# Homebrew
-brew services start postgresql@16
-createdb stordex
-
-# または Docker
-docker run -d --name stordex-pg -p 5432:5432 \
-  -e POSTGRES_USER=stordex -e POSTGRES_PASSWORD=stordex -e POSTGRES_DB=stordex \
-  postgres:16
-```
-
-### 3. リポジトリ直下で セットアップ
-
-> **重要:** `original-app/` ディレクトリには `package.json` がありません。必ず **リポジトリ直下** で実行してください。
-
-#### 3-A. ワンショット起動スクリプト（推奨）
-
-```bash
-cd /path/to/stordex
-./scripts/start-local.sh           # 通常起動 (.env / DB / seed をすべて自動)
-./scripts/start-local.sh --reset   # DB をクリーンに作り直す
-./scripts/start-local.sh --no-dev  # 準備のみ (dev サーバは起動しない)
-```
-
-スクリプトが自動で行うこと:
-1. PostgreSQL 16 を起動
-2. `stordex_dev` データベース作成
-3. `.env` 生成（無い場合のみ／既存は上書きしない）
-4. `npm install`
-5. `prisma db push` でスキーマ反映
-6. テナントが空なら `db:seed` 投入
-7. `npm run dev` で `http://localhost:3000` を起動
-
-#### 3-B. 手動セットアップ
-
-```bash
-cd /path/to/stordex     # ← リポジトリ直下！
-
-# .env を作成
-cat > .env <<EOF
-DATABASE_URL="postgresql://$USER@localhost:5432/stordex_dev?schema=public"
-NEXTAUTH_SECRET="$(openssl rand -base64 32)"
-NEXTAUTH_URL="http://localhost:3000"
-APP_ENV="local"
-EOF
-
-npm install
-npm run db:push     # スキーマ反映
-npm run db:seed     # デモテナント + サンプルデータ
-npm run dev         # → http://localhost:3000
-```
-
-シードで投入される初期アカウント（**テナント分離テスト用に 2 社** 投入されます）：
-
-| テナント | テナントID | メール | パスワード | 用途 |
-| --- | --- | --- | --- | --- |
-| デモ卸売株式会社 | `demo` | `admin@example.com` | `password` | 1社目 |
-| ACME物流株式会社 | `acme` | `owner@acme.example.com` | `password` | 2社目（分離検証） |
-
-> 2 社は商品コード `P001`/`P002`、顧客コード `C001`、仕入先コード `S001`、受注番号 `SO-20260101-0001` を意図的に重複させてあります。
-> 同じコードでも別テナントでは完全に独立して管理されることを目視確認できます。
-
-`NEXTAUTH_SECRET` の生成（Mac の openssl がない場合）：
-
-```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-```
-
-## 3 段階の環境
-
-| 環境 | DB | アプリ | 用途 | コスト |
-|---|---|---|---|---|
-| **Local** | PostgreSQL 16 | `next dev` | 開発・単体/結合/機能テスト | ¥0 |
-| **Staging** | Neon Free | Vercel Hobby | クライアント確認・総合テスト | ¥0 |
-| **Production** | Aurora Serverless v2 | Lambda+CloudFront (SST) | 本番運用 | ¥10,000+/月 |
-
-詳細は [ENVIRONMENTS.md](ENVIRONMENTS.md) を参照。
-
-## テスト
-
-| レベル | コマンド | 環境 |
-|---|---|---|
-| 型チェック | `npm run typecheck` | Local |
-| 単体テスト (UT) | `npm test` | Local |
-| 結合テスト (IT) | `npm test`（要 PG） | Local |
-| 機能テスト (FT) | 手動（[TEST_CASES.md](TEST_CASES.md)） | Local |
-| 総合テスト (ST/UAT) | 手動 | Staging |
-| 本番 Smoke | 手動 | Production |
-
-詳細は [TEST_PLAN.md](TEST_PLAN.md) と [TEST_CASES.md](TEST_CASES.md) を参照。
-
-## CI / CD
-
-GitHub Actions で以下を自動化しています（[.github/workflows/](.github/workflows/)）。
-
-| ワークフロー | トリガ | 内容 |
-|---|---|---|
-| **ci.yml** | すべての push / PR | typecheck + unit/integration tests + build |
-| **deploy-staging.yml** | `develop` ブランチへの push | Vercel に自動 staging デプロイ |
-| **deploy-prod.yml** | `main` への push（手動承認） | SST で AWS Aurora + Lambda に本番デプロイ |
-
-### 必要な GitHub Secrets
-
-GitHub リポジトリ Settings → Secrets and variables → Actions に以下を登録：
-
-| Secret 名 | 用途 |
+| Document | Purpose |
 |---|---|
-| `VERCEL_TOKEN` | Vercel 自動デプロイ |
-| `VERCEL_ORG_ID` | 同上 |
-| `VERCEL_PROJECT_ID` | 同上 |
-| `AWS_ACCESS_KEY_ID` | SST 本番デプロイ用 IAM |
-| `AWS_SECRET_ACCESS_KEY` | 同上 |
-| `AWS_REGION` | `ap-northeast-1` 等 |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | 現行構成、認証、マルチテナント境界、環境、残課題 |
+| [`SECURITY.md`](SECURITY.md) | Tenant isolation、認可、依存監査、変更時チェックリスト |
+| [`USER_MANUAL.md`](USER_MANUAL.md) | 利用者向け操作マニュアル |
+| [`ENVIRONMENTS.md`](ENVIRONMENTS.md) | Local / Staging / Production の環境構成 |
+| [`AWS_DEPLOY.md`](AWS_DEPLOY.md) | AWS / SST デプロイ手順 |
+| [`BILLING.md`](BILLING.md) | 請求、入金確認、テナント停止/再開運用 |
+| [`TEST_PLAN.md`](TEST_PLAN.md) | テスト方針 |
+| [`TEST_CASES.md`](TEST_CASES.md) | 機能・総合テストケース |
+| [`Requirement.md`](Requirement.md) | 要件・移行元の背景 |
 
-## デプロイ（AWS Aurora Serverless v2）
+## Repository layout
 
-```bash
-npx sst secret set NextAuthSecret "$(openssl rand -base64 32)" --stage prod
-npx sst secret set NextAuthUrl    "https://example.invalid"    --stage prod
-npx sst deploy --stage prod
-# → CloudFront URL を NEXTAUTH_URL に上書き → 再 deploy
+```text
+src/app/                    Next.js App Router
+src/app/(app)/              認証後の業務画面 / Server Actions
+src/app/api/                Auth / signup / legacy import APIs
+src/app/print/              帳票印刷ビュー
+src/components/             共通 UI
+src/lib/                    DB / auth / session / tenant guards / utilities
+src/types/                  型拡張
+prisma/schema.prisma        PostgreSQL schema
+prisma/seed.ts              ローカル・検証用 seed
+scripts/                    招待発行 / テナント停止・再開
+original-app/               旧 C# WinForms 実装（参照用）
+.github/workflows/          CI / staging / production workflows
+sst.config.ts               AWS application/infrastructure config
 ```
 
-詳細は [AWS_DEPLOY.md](AWS_DEPLOY.md) を参照。`DATABASE_URL` は SST が Aurora から自動注入するため、本番アプリでは手動設定不要です。
+## Local development
 
-## 主要画面
+### Requirements
 
-| パス | 内容 |
+- Node.js 22
+- npm
+- PostgreSQL 16 (local または Docker)
+
+### Recommended one-shot setup
+
+```bash
+./scripts/start-local.sh
+```
+
+DB を作り直す場合:
+
+```bash
+./scripts/start-local.sh --reset
+```
+
+準備だけ行う場合:
+
+```bash
+./scripts/start-local.sh --no-dev
+```
+
+### Manual setup
+
+```bash
+cp .env.example .env
+npm ci
+npm run db:generate
+npm run db:push
+npm run db:seed
+npm run dev
+```
+
+開発サーバーは通常 `http://localhost:3000` です。
+
+`.env.example` のローカル値は開発専用です。本番 credential / secret を repository に保存しないでください。
+
+## Main application areas
+
+| Path | Function |
 |---|---|
-| `/login` / `/signup` | ログイン / 新規テナント登録 |
-| `/dashboard` | サマリー、最近の受注、在庫アラート |
-| `/orders` | 受注一覧（本日受注 / 本日納品 / 翌日納品クイック絞り込み） |
-| `/orders/[id]` | 受注詳細・状態遷移、納品書/ピッキング印刷 |
-| `/quotations` | 見積書 CRUD・印刷 |
-| `/purchase-orders` | 仕入先発注 CRUD・発注書印刷・入荷で在庫自動加算 |
-| `/invoices` | 月次請求書（複数受注集約・伝票毎税/月次合算税の切替） |
-| `/customers` / `/suppliers` / `/items` | マスタ CRUD |
-| `/inventory` | 入出庫記録、ロット/賞味期限/棚番、移動履歴 |
-| `/reports/products` | 商品別月次レポート（受注数 / 売上 / 粗利） |
-| `/settings/business-units` | 事業所設定（請求書発行元、複数拠点対応） |
-| `/settings/legacy-import` | 旧 C# アプリの XML 取り込み |
-| `/print/...` | A4 印刷ビュー（PDF 化はブラウザ標準機能） |
+| `/login` / `/signup` | Tenant-aware login / invitation signup |
+| `/dashboard` | サマリー、受注、在庫アラート |
+| `/orders` | 受注 CRUD / status transition |
+| `/quotations` | 見積 CRUD |
+| `/purchase-orders` | 発注 CRUD / 入荷処理 |
+| `/invoices` | 月次請求書 |
+| `/customers` | 得意先マスタ |
+| `/suppliers` | 仕入先マスタ |
+| `/items` | 商品マスタ |
+| `/inventory` | 在庫移動 |
+| `/reports/products` | 商品別レポート |
+| `/settings/business-units` | 事業所・請求書発行元 |
+| `/settings/legacy-import` | 旧 C# XML import |
+| `/print/...` | A4 印刷 / browser PDF 保存 |
 
-## 帳票印刷 / PDF
+## Multi-tenant security model
 
-ブラウザの印刷機能（A4・余白 14mm・「PDF として保存」）を利用。Lambda での Headless Chromium 依存を避けています。
+Tenant がデータ境界です。
+
+認証後のサーバー処理は `requireTenant()` から現在の `tenantId` を取得し、DB query を tenant scope します。ブラウザから送られた tenant ID を認可に使用しません。
+
+また relation ID を使う書き込みでは、対象 record が現在の Tenant に属することを確認します。たとえば `customerId`、`supplierId`、`businessUnitId`、`itemId` を ID の存在だけで信用してはいけません。
+
+共通 ownership guard は `src/lib/tenant-resources.ts` にあります。詳細は [`SECURITY.md`](SECURITY.md) を参照してください。
+
+## Roles
+
+データモデルには次の role があります。
+
+- `OWNER`
+- `ADMIN`
+- `STAFF`
+
+現時点では Tenant isolation が主要な認可境界で、細かな RBAC は全機能には適用されていません。legacy XML import は高権限操作のため OWNER / ADMIN のみに制限しています。
+
+新しい管理機能を追加するときは、画面を隠すだけでなく server-side authorization を実装してください。
+
+## Legacy XML import
+
+`/settings/legacy-import` から旧アプリの Customer / Supplier / Item / Order XML を取り込めます。
+
+- OWNER / ADMIN only
+- current Tenant のみに書き込み
+- request / file size limit あり
+- XML entity processing 無効
+- 重複コードは skip
+
+Production へ大量 import する前に staging と backup で検証してください。
+
+## Tests and validation
+
+ローカルでの標準確認:
+
+```bash
+npm ci
+npm audit --omit=dev --audit-level=low
+npm run db:generate
+npm run typecheck
+npm test
+npm run build
+```
+
+CI は PostgreSQL 16 service を立ち上げ、schema apply、production dependency audit、typecheck、test、production build を実行します。
+
+## Environments
+
+| Environment | DB | Application | Purpose |
+|---|---|---|---|
+| Local | PostgreSQL 16 | `next dev` | 開発・自動テスト |
+| Staging | Neon | Vercel Preview | UAT / integration verification |
+| Production | Aurora Serverless v2 PostgreSQL 16 | SST / OpenNext on AWS | 本番 |
+
+詳細は [`ENVIRONMENTS.md`](ENVIRONMENTS.md) を参照してください。
+
+## CI/CD
+
+### CI
+
+`.github/workflows/ci.yml`
+
+- Node.js 22
+- PostgreSQL 16
+- `npm ci`
+- blocking production dependency audit
+- full audit report
+- Prisma generate / schema apply to test DB
+- TypeScript check
+- Vitest
+- Next.js production build
+- tracked files が build で書き換わらないことを確認
+
+### Staging
+
+`develop` push で `.github/workflows/deploy-staging.yml` が Vercel Preview を更新します。
+
+### Production
+
+`main` push で `.github/workflows/deploy-prod.yml` が対象になります。GitHub Environment `production` の保護ルールを使用し、SST deployment 前に production dependency audit を実行します。
+
+AWS credential は現行 workflow では GitHub Secrets の access key を使用しています。実 AWS IAM 構成を確認した上で、将来は GitHub OIDC + 最小権限 IAM Role へ移行することを推奨します。
+
+## AWS production
+
+Production は [`sst.config.ts`](sst.config.ts) で概ね次を構成します。
+
+```text
+CloudFront / OpenNext
+        |
+   Next.js Lambda
+        |
+       VPC
+        |
+Aurora Serverless v2 PostgreSQL 16
+```
+
+SST secrets:
+
+- `NextAuthSecret`
+- `NextAuthUrl`
+
+`DATABASE_URL` は Aurora resource から `sst.config.ts` が組み立ててアプリへ渡します。
+
+詳しい手順は [`AWS_DEPLOY.md`](AWS_DEPLOY.md) を参照してください。
+
+## Database schema changes
+
+現在は `prisma/schema.prisma` と `prisma db push` を中心に運用されており、repository に `prisma/migrations/` history はありません。
+
+既存 production DB がある状態で migration history を導入するときは、production schema を確認して baseline を作る必要があります。初回 migration をそのまま production に適用しないでください。
+
+この点は [`ARCHITECTURE.md`](ARCHITECTURE.md) に運用上の残課題として記録しています。
+
+## Print / PDF
+
+帳票は browser print を使用し、Lambda で Headless Chromium を動かしません。
 
 - 納品書: `/print/orders/[id]`
 - ピッキングリスト: `/print/orders/[id]/picking`
@@ -215,63 +235,15 @@ npx sst deploy --stage prod
 - 発注書: `/print/purchase-orders/[id]`
 - 請求書: `/print/invoices/[id]`
 
-## レガシーアプリからの移行
+ブラウザの「PDF として保存」を利用できます。
 
-`/settings/legacy-import` から旧 C# アプリの XML を 4 種アップロード可能：
+## Maintenance priorities
 
-| ファイル | 内容 |
-|---|---|
-| Customer XML | 得意先マスタ（DataSet1） |
-| Supplier XML | 仕入先マスタ（DataSet14/16） |
-| Item XML | 商品マスタ（DataSet3/4） |
-| Order XML | 過去の受注履歴（DataSet6/12/15） |
+既存 production の状態確認が必要なため、自動で変更しない項目があります。
 
-同コードレコードはスキップされ、参照整合は自動解決します。
+1. AWS access key authentication → GitHub OIDC + least-privilege IAM role
+2. Prisma migration baseline
+3. OWNER / ADMIN / STAFF の詳細 RBAC
+4. Aurora backup retention と restore drill
 
-## マルチテナント設計
-
-- セッション JWT に `tenantId` を埋め込み、`requireTenant()` ヘルパーで全 Server Action / 画面読み取りに強制適用
-- 全書き込みは `tenantId` を含む `where` でガード（`updateMany`/`deleteMany` の `count` を検査）
-- 各マスタは `(tenantId, code)` 複合ユニーク制約 → テナントごとに独立したコード体系
-- 行単位 RLS（PostgreSQL Row Level Security）は将来的な追加候補
-
-## 新規顧客のオンボーディング（招待トークン制）
-
-Stordex は **有償サービス** のため、自由なセルフサインアップは無効化されています。  
-公開 URL `/signup` にトークン無しでアクセスすると、お問い合わせ案内のみ表示されます。  
-入金確認後、運用者（Nammoku Solutions）が以下のコマンドで招待トークンを発行し、URL を顧客にメール送付します。
-
-```bash
-# 例: 南紀運輸様、テナントID固定、メール固定、有効期限14日
-npm run issue-token -- \
-  --company "南紀運輸" \
-  --slug "nanki" \
-  --email "owner@nanki.example.com" \
-  --plan "standard" \
-  --days 14
-```
-
-出力された URL（`https://app.example.com/signup?token=xxxx`）を顧客に送付。  
-顧客はその URL からのみ新規テナント登録できます。
-
-仕組み:
-- `SignupInvitation` テーブル（`prisma/schema.prisma`）でトークンを管理
-- `/api/signup` がトークン検証 → 1 回限り使用、期限切れ拒否、`allowedTenantSlug`／`allowedEmail` の事前固定可
-
-## 請求・入金・アカウント停止フロー
-
-企業間契約によるご提供のため、月額費用は **銀行振込** で頂いています。
-仕組みと未入金時のアカウント停止フローは [BILLING.md](BILLING.md) を参照。
-
-要点:
-- `Tenant.status` (`ACTIVE` / `SUSPENDED` / `TERMINATED`) でアカウント状態を管理
-- `SUSPENDED` テナントのユーザーは全画面で `/suspended` にリダイレクトされる
-- 遡及可能なアカウント停止/解除は CLI:
-  - `npm run suspend-tenant -- --slug demo --reason "2026-04 請求未入金"`
-  - `npm run reactivate-tenant -- --slug demo`
-
-## ライセンス・著作権
-
-Copyright © Nammoku Solutions. All rights reserved.  
-本ソフトウェアは Nammoku Solutions が所有する有償サービスです。  
-無断複製・再配布・リバースエンジニアリングを禁じます。
+これらを変更する場合は、AWS / DB の実状態とバックアップを確認してから進めてください。
