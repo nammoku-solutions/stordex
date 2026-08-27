@@ -1,0 +1,50 @@
+name: Stordex dependency upgrade
+
+on:
+  push:
+    branches:
+      - maintenance/stordex-audit
+    paths:
+      - '.github/workflows/maintenance-deps-upgrade-temp.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  upgrade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          ref: maintenance/stordex-audit
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22.x'
+          cache: npm
+
+      - name: Upgrade vulnerable framework/runtime dependencies
+        run: |
+          npm install next@16.3.3 react@19.2.0 react-dom@19.2.0 next-auth@latest
+          npm install --save-dev @types/react@19.2.7 @types/react-dom@19.2.3 postcss@latest
+          npm audit fix
+
+      - name: Show audit result
+        run: npm audit --audit-level=low || true
+
+      - name: Commit dependency manifests
+        run: |
+          if git diff --quiet -- package.json package-lock.json; then
+            echo 'No dependency changes to commit.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package.json package-lock.json
+          git commit -m 'chore: upgrade vulnerable web dependencies'
+          git push origin HEAD:maintenance/stordex-audit
