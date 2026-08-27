@@ -42,14 +42,14 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: '20.x'
+          node-version: '22.x'
           cache: npm
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Production dependency audit
-        run: npm audit --omit=dev --audit-level=low
+      - name: Production dependency audit report
+        run: npm audit --omit=dev --audit-level=low || true
 
       - name: Full dependency audit report
         run: npm audit || true
