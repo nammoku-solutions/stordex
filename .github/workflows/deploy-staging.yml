@@ -5,6 +5,9 @@ on:
     branches: [develop]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 # Vercel 連携設定（要 GitHub Secrets）:
 #   VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID
 # Vercel ダッシュボード側で DATABASE_URL / NEXTAUTH_SECRET / NEXTAUTH_URL を設定済みであること。
@@ -18,11 +21,13 @@ jobs:
       cancel-in-progress: true
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: '22.x'
           cache: npm
 
       - name: Install Vercel CLI
