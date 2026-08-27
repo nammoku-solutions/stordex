@@ -28,9 +28,9 @@ jobs:
           node-version: '22.x'
           cache: npm
 
-      - name: Override vulnerable tsx esbuild dependency
+      - name: Override vulnerable esbuild dependency
         run: |
-          npm pkg set 'overrides.tsx.esbuild=0.28.2'
+          npm pkg set 'overrides.esbuild=0.28.2'
           npm install
 
       - name: Show dependency path
@@ -48,5 +48,5 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add package.json package-lock.json
-          git commit -m 'chore: pin safe esbuild for tsx tooling'
+          git commit -m 'chore: pin safe esbuild for tooling'
           git push origin HEAD:maintenance/stordex-audit
