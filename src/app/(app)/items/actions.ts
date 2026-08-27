@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireTenant } from "@/lib/session";
+import { assertTenantSupplier } from "@/lib/tenant-resources";
 
 const Schema = z.object({
   code: z.string().min(1).max(40),
@@ -35,9 +36,14 @@ function parseForm(formData: FormData) {
   });
 }
 
+async function validateSupplier(tenantId: string, supplierId: string | null | undefined) {
+  if (supplierId) await assertTenantSupplier(tenantId, supplierId);
+}
+
 export async function createItem(formData: FormData) {
   const { tenantId } = await requireTenant();
   const data = parseForm(formData);
+  await validateSupplier(tenantId, data.supplierId);
   await prisma.item.create({
     data: { ...data, supplierId: data.supplierId || null, tenantId },
   });
@@ -48,6 +54,7 @@ export async function createItem(formData: FormData) {
 export async function updateItem(id: string, formData: FormData) {
   const { tenantId } = await requireTenant();
   const data = parseForm(formData);
+  await validateSupplier(tenantId, data.supplierId);
   const result = await prisma.item.updateMany({
     where: { id, tenantId },
     data: { ...data, supplierId: data.supplierId || null },
