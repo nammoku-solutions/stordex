@@ -26,6 +26,8 @@ Aurora Serverless v2 PostgreSQL 16
 - SST access to the target AWS account
 - GitHub Environment `production` configured for production deployment approval
 
+AWS region は `sst.config.ts` の provider 設定に合わせて **`ap-northeast-1`** を使用します。GitHub Actions 側も同じ値を固定しており、`AWS_REGION` Secret は不要です。
+
 本番操作では個人 IAM user に広い AdministratorAccess を恒常付与する運用は避けてください。
 
 ## 3. SST secrets
@@ -70,7 +72,7 @@ DatabaseUrl
 
 1. production workflow が起動
 2. GitHub Environment `production` の保護ルールを通過
-3. AWS credential setup
+3. AWS credential setup (`ap-northeast-1`)
 4. `npm ci`
 5. `npm audit --omit=dev --audit-level=low`
 6. Prisma client generation
@@ -87,8 +89,9 @@ workflow が dependency audit で停止した場合、audit を無効化して d
 ```text
 AWS_ACCESS_KEY_ID
 AWS_SECRET_ACCESS_KEY
-AWS_REGION
 ```
+
+Region は secret にせず、`sst.config.ts` と workflow の両方で `ap-northeast-1` に合わせています。
 
 Secret の値は repository に書きません。
 
