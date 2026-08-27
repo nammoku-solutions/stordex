@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireTenant } from "@/lib/session";
+import { assertTenantCustomer } from "@/lib/tenant-resources";
 import type { OrderStatus } from "@prisma/client";
 
 const LineSchema = z.object({
@@ -60,6 +61,7 @@ async function nextOrderNumber(tenantId: string) {
 export async function createOrder(formData: FormData) {
   const { tenantId, userId } = await requireTenant();
   const data = parseOrder(formData);
+  await assertTenantCustomer(tenantId, data.customerId);
 
   const items = await prisma.item.findMany({
     where: { tenantId, id: { in: data.lines.map((l) => l.itemId) } },
@@ -104,7 +106,6 @@ export async function createOrder(formData: FormData) {
       },
     });
 
-    // If immediately confirmed/shipped/completed, post OUTBOUND movements.
     if (
       data.status === "CONFIRMED" ||
       data.status === "SHIPPED" ||
@@ -155,7 +156,6 @@ export async function setOrderStatus(orderId: string, status: OrderStatus) {
     const willOpen =
       status === "CONFIRMED" || status === "SHIPPED" || status === "COMPLETED";
 
-    // CANCELLED from an open status: reverse OUTBOUND with INBOUND.
     if (wasOpen && status === "CANCELLED") {
       for (const line of order.items) {
         const updated = await tx.item.update({
@@ -175,7 +175,6 @@ export async function setOrderStatus(orderId: string, status: OrderStatus) {
         });
       }
     }
-    // DRAFT -> open: deduct stock now.
     if (!wasOpen && willOpen) {
       for (const line of order.items) {
         const updated = await tx.item.update({
@@ -208,7 +207,6 @@ export async function setOrderStatus(orderId: string, status: OrderStatus) {
 
 export async function deleteOrder(orderId: string) {
   const { tenantId } = await requireTenant();
-  // Only allow delete on DRAFT/CANCELLED to preserve audit trail.
   const order = await prisma.order.findFirst({ where: { id: orderId, tenantId } });
   if (!order) return;
   if (order.status !== "DRAFT" && order.status !== "CANCELLED") {
