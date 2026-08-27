@@ -28,15 +28,16 @@ jobs:
           node-version: '22.x'
           cache: npm
 
-      - name: Upgrade vulnerable framework/runtime dependencies
+      - name: Remove remaining vulnerable esbuild resolution
         run: |
-          npm install next@16.3.3 react@19.2.0 react-dom@19.2.0 next-auth@latest
-          npm install --save-dev @types/react@19.2.7 @types/react-dom@19.2.3 postcss@latest
-          npm audit fix || true
+          npm install --save-dev esbuild@0.28.2
           npm audit fix || true
 
-      - name: Show audit result
-        run: npm audit --audit-level=low || true
+      - name: Show dependency path
+        run: npm explain esbuild || true
+
+      - name: Verify dependency audit
+        run: npm audit --audit-level=low
 
       - name: Commit dependency manifests
         run: |
@@ -47,5 +48,5 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add package.json package-lock.json
-          git commit -m 'chore: upgrade vulnerable web dependencies'
+          git commit -m 'chore: eliminate remaining esbuild advisory'
           git push origin HEAD:maintenance/stordex-audit
