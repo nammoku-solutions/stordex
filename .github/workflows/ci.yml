@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   test:
-    name: Audit / Typecheck / Test / Build
+    name: Audit / Migrate / Typecheck / Test / Build
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -57,8 +57,18 @@ jobs:
       - name: Prisma generate
         run: npx prisma generate
 
-      - name: Apply schema to test DB
-        run: npx prisma db push --skip-generate
+      - name: Apply committed migrations to test DB
+        run: npx prisma migrate deploy
+
+      - name: Verify migration status
+        run: npx prisma migrate status
+
+      - name: Verify migrated DB matches schema.prisma
+        run: >-
+          npx prisma migrate diff
+          --from-url "$DATABASE_URL"
+          --to-schema-datamodel prisma/schema.prisma
+          --exit-code
 
       - name: Typecheck
         run: npm run typecheck
