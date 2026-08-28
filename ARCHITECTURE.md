@@ -63,6 +63,7 @@ src/lib/                  DB、認証、session、業務共通処理
 src/components/           共通 UI
 src/types/                NextAuth 型拡張など
 prisma/schema.prisma      DB schema
+prisma/migrations/        committed Prisma migration history
 prisma/seed.ts            ローカル/検証用 seed
 scripts/                  招待・テナント運用 CLI
 sst.config.ts             AWS production infrastructure/application config
@@ -174,7 +175,7 @@ legacy XML import は大量データを書き換える管理操作のため `OWN
 1. `npm ci`
 2. production dependency audit
 3. full dependency audit report
-4. Prisma generate / test DB schema apply
+4. Prisma generate / `migrate deploy` / migration status / schema drift check
 5. TypeScript check
 6. Vitest
 7. Next.js production build
@@ -184,15 +185,17 @@ Production deploy は deploy 前にも production dependency audit を実行し�
 
 ## 11. DB schema 運用上の注意
 
-現時点の repository には Prisma migration history (`prisma/migrations/`) がなく、環境セットアップは主に `prisma db push` を使用しています。
+Repository には `prisma/migrations/` history を保持し、shared/staging/production の schema 変更は Prisma Migrate で管理します。
 
-既存 production DB がある状態で migration history を後付けする場合は、現在の DB schema を基準に baseline migration を設計し、`prisma migrate resolve` 等を用いて慎重に導入してください。production に対して機械的に初回 migration を適用してはいけません。
+2026-08-28 の AWS 確認では Stordex production Aurora は存在しなかったため、既存 populated DB の baseline ではなく、現在の `schema.prisma` から empty PostgreSQL 向け initial migration を作成しました。
+
+CI は PostgreSQL 16 に committed migrations を `prisma migrate deploy` し、migration status と schema drift を確認します。`prisma db push` は disposable local DB に限定し、staging/production の通常手段には使用しません。
+
+Production は private Aurora のため、初回 AWS rollout 後の migration は VPC 内から接続できる controlled execution path で行います。詳細は `DATABASE_MIGRATIONS.md` を参照してください。
 
 ## 12. 運用上の残課題
 
-- GitHub Actions の AWS 認証は現状 access key secrets。将来は GitHub OIDC + 最小権限 IAM Role へ移行する。
-- Prisma migration baseline を production 状態と照合して整備する。
+- GitHub Actions の AWS 認証を access key secrets から GitHub OIDC + least-privilege IAM Role へ移行する（PR #7 / Issue #4）。
+- 初回 production Aurora 作成後、VPC 内から `prisma migrate deploy` を実行する経路を確定・検証する（Issue #5）。
+- Aurora backup retention / PITR / restore drill を production resource 上で確認する。
 - OWNER / ADMIN / STAFF の詳細権限表を要件確定後にサーバー側認可へ反映する。
-- Aurora backup retention / restore drill を production 要件として確定する。
-
-これらは既存 production の IAM/DB 状態確認が必要なため、コードだけを見て自動変更しないこと。

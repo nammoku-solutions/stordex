@@ -25,6 +25,7 @@
 | [`USER_MANUAL.md`](USER_MANUAL.md) | 利用者向け操作マニュアル |
 | [`ENVIRONMENTS.md`](ENVIRONMENTS.md) | Local / Staging / Production の環境構成 |
 | [`AWS_DEPLOY.md`](AWS_DEPLOY.md) | AWS / SST デプロイ手順 |
+| [`DATABASE_MIGRATIONS.md`](DATABASE_MIGRATIONS.md) | Prisma migration 作成・検証・本番適用方針 |
 | [`BILLING.md`](BILLING.md) | 請求、入金確認、テナント停止/再開運用 |
 | [`TEST_PLAN.md`](TEST_PLAN.md) | テスト方針 |
 | [`TEST_CASES.md`](TEST_CASES.md) | 機能・総合テストケース |
@@ -41,6 +42,7 @@ src/components/             共通 UI
 src/lib/                    DB / auth / session / tenant guards / utilities
 src/types/                  型拡張
 prisma/schema.prisma        PostgreSQL schema
+prisma/migrations/          Prisma migration history
 prisma/seed.ts              ローカル・検証用 seed
 scripts/                    招待発行 / テナント停止・再開
 original-app/               旧 C# WinForms 実装（参照用）
@@ -155,7 +157,7 @@ npm test
 npm run build
 ```
 
-CI は PostgreSQL 16 service を立ち上げ、schema apply、production dependency audit、typecheck、test、production build を実行します。
+CI は PostgreSQL 16 service を立ち上げ、committed migration の適用・migration status・schema drift 検査、production dependency audit、typecheck、test、production build を実行します。
 
 ## Environments
 
@@ -178,7 +180,7 @@ CI は PostgreSQL 16 service を立ち上げ、schema apply、production depende
 - `npm ci`
 - blocking production dependency audit
 - full audit report
-- Prisma generate / schema apply to test DB
+- Prisma generate / `migrate deploy` / migration status / schema drift check
 - TypeScript check
 - Vitest
 - Next.js production build
@@ -219,11 +221,19 @@ SST secrets:
 
 ## Database schema changes
 
-現在は `prisma/schema.prisma` と `prisma db push` を中心に運用されており、repository に `prisma/migrations/` history はありません。
+Stordex は `prisma/migrations/` を shared/staging/production の schema source of truth として使用します。2026-08-28 の AWS 確認では Stordex production Aurora は存在しなかったため、現在の `schema.prisma` から通常の initial migration を作成しています。
 
-既存 production DB がある状態で migration history を導入するときは、production schema を確認して baseline を作る必要があります。初回 migration をそのまま production に適用しないでください。
+運用ルール:
 
-この点は [`ARCHITECTURE.md`](ARCHITECTURE.md) に運用上の残課題として記録しています。
+- Local の disposable DB では開発速度のため `npm run db:push` を使用可能
+- Staging は `npm run db:migrate:staging`
+- Production は `prisma migrate deploy`
+- schema 変更時は `schema.prisma` と新しい migration を同じ PR に含める
+- CI は migration chain を PostgreSQL 16 に適用し、DB と `schema.prisma` の drift がないことを確認する
+
+Production Aurora は private VPC 内に作成されるため、通常の GitHub-hosted runner から直接 migration を実行できる前提にはしません。初回 production rollout では Aurora 作成後に VPC 内から実行できる controlled migration path を用意し、`prisma migrate deploy` と backup/PITR を確認します。
+
+詳細は [`DATABASE_MIGRATIONS.md`](DATABASE_MIGRATIONS.md) と GitHub Issue #5 を参照してください。
 
 ## Print / PDF
 
@@ -239,11 +249,11 @@ SST secrets:
 
 ## Maintenance priorities
 
-既存 production の状態確認が必要なため、自動で変更しない項目があります。
+現在の主な運用残課題:
 
-1. AWS access key authentication → GitHub OIDC + least-privilege IAM role
-2. Prisma migration baseline
-3. OWNER / ADMIN / STAFF の詳細 RBAC
-4. Aurora backup retention と restore drill
+1. AWS access key authentication → GitHub OIDC + least-privilege IAM role（PR #7 / Issue #4）
+2. 初回 production Aurora 作成後の VPC 内 migration 実行経路確定と `migrate deploy` 検証（Issue #5）
+3. Aurora backup retention / PITR / restore drill の production 実確認
+4. OWNER / ADMIN / STAFF の詳細 RBAC
 
-これらを変更する場合は、AWS / DB の実状態とバックアップを確認してから進めてください。
+Repository側の initial Prisma migration と CI drift validation は整備済みです。本番データベースへの適用完了とは別なので、Issue #5 は初回 production 検証まで閉じないでください。

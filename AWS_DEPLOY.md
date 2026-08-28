@@ -80,6 +80,8 @@ DatabaseUrl
 
 workflow が dependency audit で停止した場合、audit を無効化して deploy を続行するのではなく依存関係を先に修正します。
 
+**重要:** 現行 production workflow は application/infrastructure deploy のみで、private Aurora への Prisma migration を GitHub-hosted runner から自動実行しません。初回 production rollout では Aurora 作成後に VPC 内から接続可能な controlled migration path で `prisma migrate deploy` を実行します。
+
 ## 6. AWS authentication
 
 ### Current
@@ -127,27 +129,34 @@ npx sst deploy --stage prod
 
 ## 8. Database schema changes
 
-### Current limitation
+### Migration source of truth
 
-現在 repository に `prisma/migrations/` history はありません。`prisma/schema.prisma` と `prisma db push` 中心で構築された履歴です。
+Repository は `prisma/migrations/` を schema history として保持します。2026-08-28 の AWS 確認では Stordex production Aurora は存在しなかったため、現在の `schema.prisma` から empty PostgreSQL 向け initial migration を作成済みです。
 
-既存 production Aurora がある場合、次を実行してはいけません。
+CI は PostgreSQL 16 に committed migrations を適用し、`prisma migrate status` と schema drift を検査します。
 
-- 新しい initial migration を production にそのまま適用
-- backup なしで `prisma db push` を実行
-- `--accept-data-loss` を機械的に使用
+### Shared environment rules
 
-### Before changing production schema
+- Local disposable DB: `prisma db push` を使用可能
+- Staging: `prisma migrate deploy`
+- Production: `prisma migrate deploy`
+- `--accept-data-loss` を通常運用で使用しない
+- 適用済み migration を書き換えず、新しい migration を追加する
 
-1. Aurora backup / restore point を確認
-2. production schema を確認
-3. repository schema と差分確認
-4. baseline migration strategy を作成
-5. staging clone/相当環境で試験
-6. rollback procedure を準備
-7. production maintenance window で適用
+### First production rollout
 
-migration baseline を整備した後は `prisma migrate deploy` ベースへ移行するのが望ましいです。
+`sst.config.ts` は Aurora と Next.js application を同じ AWS rollout で作成します。Aurora は private VPC 内にあるため、初回は次の順で行います。
+
+1. AWS account / region と production deployment identity を確認
+2. SST deploy で Aurora を作成
+3. VPC 内から接続できる controlled execution path を使い `prisma migrate deploy`
+4. `prisma migrate status` を確認
+5. representative read/write smoke test
+6. Aurora automated backup retention / PITR を確認
+
+GitHub-hosted runner から private Aurora へ直接接続できると仮定しないでください。migration のために Aurora を public access へ変更しません。
+
+具体的な migration 運用は [`DATABASE_MIGRATIONS.md`](DATABASE_MIGRATIONS.md) を参照してください。Production execution と backup/PITR の初回確認は GitHub Issue #5 で追跡します。
 
 ## 9. Connecting to Aurora for administration
 
@@ -193,7 +202,7 @@ Before:
 - CI passed
 - production dependency audit passed
 - AWS account/stage is correct
-- DB schema changeがある場合は backup / migration plan がある
+- DB schema changeがある場合は committed migration、backup/PITR、VPC内 migration execution plan がある
 - `NextAuthUrl` / secret configuration is valid
 
 After:
@@ -201,6 +210,7 @@ After:
 - application opens
 - login works
 - tenant isolation smoke test
+- `prisma migrate status` が期待通り
 - core order/inventory flow
 - print pages
 - CloudWatch/application errors
