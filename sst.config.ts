@@ -1,7 +1,7 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
 /**
- * SST v3 (Ion) — AWS deployment config for Stordex
+ * SST 4.17.1 — AWS deployment config for Stordex
  *
  * What gets created (prod):
  *   - VPC (2 AZs, NAT)

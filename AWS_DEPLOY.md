@@ -1,6 +1,6 @@
 # Stordex AWS Deployment Runbook
 
-Stordex production は SST v3 / OpenNext を使用して AWS へデプロイします。構成の正本は [`sst.config.ts`](sst.config.ts) です。
+Stordex production は SST 4.17.1 / OpenNext を使用して AWS へデプロイします。構成の正本は [`sst.config.ts`](sst.config.ts) です。SST CLI は repository の `devDependencies` に exact version で固定し、`npm ci` 後の `npx sst` はそのローカル版を使用します。
 
 ## 1. Current production architecture
 
@@ -23,6 +23,7 @@ Aurora Serverless v2 PostgreSQL 16
 - Node.js 22
 - npm
 - AWS account
+- repository で固定された SST 4.17.1 CLI (`npm ci` で導入)
 - SST access to the target AWS account
 - GitHub Environment `production` configured for production deployment approval
 
@@ -73,7 +74,7 @@ DatabaseUrl
 1. production workflow が起動
 2. GitHub Environment `production` の保護ルールを通過
 3. AWS credential setup (`ap-northeast-1`)
-4. `npm ci`
+4. `npm ci`（lockfile から SST 4.17.1 を含む依存を再現）
 5. `npm audit --omit=dev --audit-level=low`
 6. Prisma client generation
 7. `npx sst deploy --stage prod`

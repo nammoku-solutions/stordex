@@ -11,7 +11,7 @@
 - **Zod**
 - **Vitest**
 - **Tailwind CSS**
-- **SST v3 / OpenNext** for AWS production
+- **SST 4.17.1 / OpenNext** for AWS production
 - **GitHub Actions** for CI/CD
 
 依存バージョンの正本は `package.json` / `package-lock.json` です。

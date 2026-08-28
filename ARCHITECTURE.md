@@ -22,7 +22,7 @@ Prisma 5
 PostgreSQL 16
 ```
 
-Production は SST v3 / OpenNext を使用し、AWS 上で Next.js と Aurora Serverless v2 を稼働させます。
+Production は SST 4.17.1 / OpenNext を使用し、AWS 上で Next.js と Aurora Serverless v2 を稼働させます。
 
 ```text
 Internet
@@ -48,7 +48,7 @@ Aurora Serverless v2 PostgreSQL 16
 - Zod
 - Vitest
 - Tailwind CSS
-- SST v3 / OpenNext
+- SST 4.17.1 / OpenNext
 
 依存バージョンの正本は `package.json` と `package-lock.json` です。
 
