@@ -1,0 +1,204 @@
+from pathlib import Path
+
+
+def replace_once(path: Path, old: str, new: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f"{path}: expected one match, found {count}: {old[:80]!r}")
+    path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
+def replace_section(path: Path, heading: str, next_heading: str, body: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    start = text.find(heading)
+    end = text.find(next_heading, start + len(heading))
+    if start < 0 or end < 0:
+        raise SystemExit(f"{path}: section boundary not found: {heading!r} -> {next_heading!r}")
+    path.write_text(
+        text[:start] + heading + "\n\n" + body.rstrip() + "\n\n" + text[end:],
+        encoding="utf-8",
+    )
+
+
+def replace_tail(path: Path, heading: str, body: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    start = text.find(heading)
+    if start < 0:
+        raise SystemExit(f"{path}: tail heading not found: {heading!r}")
+    path.write_text(text[:start] + heading + "\n\n" + body.rstrip() + "\n", encoding="utf-8")
+
+
+readme = Path("README.md")
+replace_once(
+    readme,
+    "| [`AWS_DEPLOY.md`](AWS_DEPLOY.md) | AWS / SST デプロイ手順 |\n",
+    "| [`AWS_DEPLOY.md`](AWS_DEPLOY.md) | AWS / SST デプロイ手順 |\n"
+    "| [`DATABASE_MIGRATIONS.md`](DATABASE_MIGRATIONS.md) | Prisma migration 作成・検証・本番適用方針 |\n",
+)
+replace_once(
+    readme,
+    "prisma/schema.prisma        PostgreSQL schema\nprisma/seed.ts              ローカル・検証用 seed\n",
+    "prisma/schema.prisma        PostgreSQL schema\n"
+    "prisma/migrations/          Prisma migration history\n"
+    "prisma/seed.ts              ローカル・検証用 seed\n",
+)
+replace_once(
+    readme,
+    "CI は PostgreSQL 16 service を立ち上げ、schema apply、production dependency audit、typecheck、test、production build を実行します。",
+    "CI は PostgreSQL 16 service を立ち上げ、committed migration の適用・migration status・schema drift 検査、production dependency audit、typecheck、test、production build を実行します。",
+)
+replace_once(
+    readme,
+    "- Prisma generate / schema apply to test DB\n",
+    "- Prisma generate / `migrate deploy` / migration status / schema drift check\n",
+)
+replace_section(
+    readme,
+    "## Database schema changes",
+    "## Print / PDF",
+    """Stordex は `prisma/migrations/` を shared/staging/production の schema source of truth として使用します。2026-08-28 の AWS 確認では Stordex production Aurora は存在しなかったため、現在の `schema.prisma` から通常の initial migration を作成しています。
+
+運用ルール:
+
+- Local の disposable DB では開発速度のため `npm run db:push` を使用可能
+- Staging は `npm run db:migrate:staging`
+- Production は `prisma migrate deploy`
+- schema 変更時は `schema.prisma` と新しい migration を同じ PR に含める
+- CI は migration chain を PostgreSQL 16 に適用し、DB と `schema.prisma` の drift がないことを確認する
+
+Production Aurora は private VPC 内に作成されるため、通常の GitHub-hosted runner から直接 migration を実行できる前提にはしません。初回 production rollout では Aurora 作成後に VPC 内から実行できる controlled migration path を用意し、`prisma migrate deploy` と backup/PITR を確認します。
+
+詳細は [`DATABASE_MIGRATIONS.md`](DATABASE_MIGRATIONS.md) と GitHub Issue #5 を参照してください。""",
+)
+replace_tail(
+    readme,
+    "## Maintenance priorities",
+    """現在の主な運用残課題:
+
+1. AWS access key authentication → GitHub OIDC + least-privilege IAM role（PR #7 / Issue #4）
+2. 初回 production Aurora 作成後の VPC 内 migration 実行経路確定と `migrate deploy` 検証（Issue #5）
+3. Aurora backup retention / PITR / restore drill の production 実確認
+4. OWNER / ADMIN / STAFF の詳細 RBAC
+
+Repository側の initial Prisma migration と CI drift validation は整備済みです。本番データベースへの適用完了とは別なので、Issue #5 は初回 production 検証まで閉じないでください。""",
+)
+
+architecture = Path("ARCHITECTURE.md")
+replace_once(
+    architecture,
+    "prisma/schema.prisma      DB schema\nprisma/seed.ts            ローカル/検証用 seed\n",
+    "prisma/schema.prisma      DB schema\n"
+    "prisma/migrations/        committed Prisma migration history\n"
+    "prisma/seed.ts            ローカル/検証用 seed\n",
+)
+replace_once(
+    architecture,
+    "4. Prisma generate / test DB schema apply\n",
+    "4. Prisma generate / `migrate deploy` / migration status / schema drift check\n",
+)
+replace_section(
+    architecture,
+    "## 11. DB schema 運用上の注意",
+    "## 12. 運用上の残課題",
+    """Repository には `prisma/migrations/` history を保持し、shared/staging/production の schema 変更は Prisma Migrate で管理します。
+
+2026-08-28 の AWS 確認では Stordex production Aurora は存在しなかったため、既存 populated DB の baseline ではなく、現在の `schema.prisma` から empty PostgreSQL 向け initial migration を作成しました。
+
+CI は PostgreSQL 16 に committed migrations を `prisma migrate deploy` し、migration status と schema drift を確認します。`prisma db push` は disposable local DB に限定し、staging/production の通常手段には使用しません。
+
+Production は private Aurora のため、初回 AWS rollout 後の migration は VPC 内から接続できる controlled execution path で行います。詳細は `DATABASE_MIGRATIONS.md` を参照してください。""",
+)
+replace_tail(
+    architecture,
+    "## 12. 運用上の残課題",
+    """- GitHub Actions の AWS 認証を access key secrets から GitHub OIDC + least-privilege IAM Role へ移行する（PR #7 / Issue #4）。
+- 初回 production Aurora 作成後、VPC 内から `prisma migrate deploy` を実行する経路を確定・検証する（Issue #5）。
+- Aurora backup retention / PITR / restore drill を production resource 上で確認する。
+- OWNER / ADMIN / STAFF の詳細権限表を要件確定後にサーバー側認可へ反映する。""",
+)
+
+env = Path("ENVIRONMENTS.md")
+replace_once(
+    env,
+    "npm run db:push:staging\nnpm run db:seed:staging",
+    "npm run db:migrate:staging\nnpm run db:seed:staging",
+)
+replace_once(
+    env,
+    "`db push` は staging/local の高速な schema synchronization 用です。",
+    "`prisma db push` は disposable local DB のみで使用します。Staging を含む shared environment は committed migration を `prisma migrate deploy` で反映します。",
+)
+replace_section(
+    env,
+    "### Production DB schema changes",
+    "## 5. Branch flow",
+    """Repository には `prisma/migrations/` history があり、production schema change は `prisma migrate deploy` を正規経路とします。
+
+2026-08-28 の AWS 確認では production Aurora は未作成でした。そのため initial migration は新規 empty database 用として作成済みです。ただし `sst.config.ts` が Aurora と application を同じ infrastructure rollout で作成し、DB は private VPC 内に置くため、通常の GitHub-hosted runner から migration を直接流す前提にはしません。
+
+初回 production rollout は:
+
+1. AWS account / region と OIDC deployment role を確認
+2. SST deploy で Aurora を作成
+3. VPC 内から接続できる controlled migration execution path で `prisma migrate deploy`
+4. `prisma migrate status` を確認
+5. application smoke test
+6. Aurora backup retention / PITR を確認
+
+の順で行います。詳細は [`DATABASE_MIGRATIONS.md`](DATABASE_MIGRATIONS.md) と [`AWS_DEPLOY.md`](AWS_DEPLOY.md) を参照してください。""",
+)
+
+aws = Path("AWS_DEPLOY.md")
+replace_once(
+    aws,
+    "7. `npx sst deploy --stage prod`\n\nworkflow が dependency audit で停止した場合、audit を無効化して deploy を続行するのではなく依存関係を先に修正します。",
+    "7. `npx sst deploy --stage prod`\n\n"
+    "workflow が dependency audit で停止した場合、audit を無効化して deploy を続行するのではなく依存関係を先に修正します。\n\n"
+    "**重要:** 現行 production workflow は application/infrastructure deploy のみで、private Aurora への Prisma migration を GitHub-hosted runner から自動実行しません。初回 production rollout では Aurora 作成後に VPC 内から接続可能な controlled migration path で `prisma migrate deploy` を実行します。",
+)
+replace_section(
+    aws,
+    "## 8. Database schema changes",
+    "## 9. Connecting to Aurora for administration",
+    """### Migration source of truth
+
+Repository は `prisma/migrations/` を schema history として保持します。2026-08-28 の AWS 確認では Stordex production Aurora は存在しなかったため、現在の `schema.prisma` から empty PostgreSQL 向け initial migration を作成済みです。
+
+CI は PostgreSQL 16 に committed migrations を適用し、`prisma migrate status` と schema drift を検査します。
+
+### Shared environment rules
+
+- Local disposable DB: `prisma db push` を使用可能
+- Staging: `prisma migrate deploy`
+- Production: `prisma migrate deploy`
+- `--accept-data-loss` を通常運用で使用しない
+- 適用済み migration を書き換えず、新しい migration を追加する
+
+### First production rollout
+
+`sst.config.ts` は Aurora と Next.js application を同じ AWS rollout で作成します。Aurora は private VPC 内にあるため、初回は次の順で行います。
+
+1. AWS account / region と production deployment identity を確認
+2. SST deploy で Aurora を作成
+3. VPC 内から接続できる controlled execution path を使い `prisma migrate deploy`
+4. `prisma migrate status` を確認
+5. representative read/write smoke test
+6. Aurora automated backup retention / PITR を確認
+
+GitHub-hosted runner から private Aurora へ直接接続できると仮定しないでください。migration のために Aurora を public access へ変更しません。
+
+具体的な migration 運用は [`DATABASE_MIGRATIONS.md`](DATABASE_MIGRATIONS.md) を参照してください。Production execution と backup/PITR の初回確認は GitHub Issue #5 で追跡します。""",
+)
+replace_once(
+    aws,
+    "- DB schema changeがある場合は backup / migration plan がある\n",
+    "- DB schema changeがある場合は committed migration、backup/PITR、VPC内 migration execution plan がある\n",
+)
+replace_once(
+    aws,
+    "- core order/inventory flow\n",
+    "- `prisma migrate status` が期待通り\n- core order/inventory flow\n",
+)
+
+print("migration documentation aligned")
