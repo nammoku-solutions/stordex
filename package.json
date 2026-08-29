@@ -4,15 +4,16 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "db:push": "prisma db push",
-    "db:push:staging": "dotenv -e .env.staging -- prisma db push",
-    "db:push:prod": "dotenv -e .env.prod -- prisma db push",
     "db:migrate": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:migrate:status": "prisma migrate status",
+    "db:migrate:staging": "dotenv -e .env.staging -- prisma migrate deploy",
     "db:generate": "prisma generate",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:staging": "dotenv -e .env.staging -- tsx prisma/seed.ts",
@@ -46,6 +47,7 @@
     "dotenv-cli": "^11.0.0",
     "postcss": "^8.5.26",
     "prisma": "^5.22.0",
+    "sst": "4.17.1",
     "tailwindcss": "^3.4.13",
     "tsx": "^4.19.1",
     "typescript": "^5.6.2",
@@ -53,5 +55,8 @@
   },
   "overrides": {
     "esbuild": "0.28.2"
+  },
+  "engines": {
+    "node": "22.x"
   }
 }

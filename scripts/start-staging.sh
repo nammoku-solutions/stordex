@@ -9,14 +9,14 @@
 #   push をトリガに自動で行うため、このスクリプトはそれを補助する役割。
 #
 # 必要環境:
-#   - Node.js 20 以上
+#   - Node.js 22
 #   - Neon にプロジェクトを作成済み
 #   - .env.staging が存在し、DATABASE_URL/NEXTAUTH_SECRET/NEXTAUTH_URL
 #     が記入されていること（テンプレート: .env.staging.example）
 #
 # 使い方:
-#   ./scripts/start-staging.sh                # スキーマ反映＋Seed＋接続確認
-#   ./scripts/start-staging.sh --schema       # スキーマ反映のみ
+#   ./scripts/start-staging.sh                # Migration反映＋Seed＋接続確認
+#   ./scripts/start-staging.sh --schema       # committed migration反映のみ
 #   ./scripts/start-staging.sh --seed         # 初期データ投入のみ
 #   ./scripts/start-staging.sh --studio       # Prisma Studio で staging DB を開く
 #   ./scripts/start-staging.sh --deploy       # develop ブランチに push して
@@ -37,7 +37,6 @@ DO_DEPLOY=false
 DO_STATUS=false
 
 if [ "$#" -gt 0 ]; then
-  # 引数が一つでも指定されたら個別操作モード
   DO_SCHEMA=false
   DO_SEED=false
   for arg in "$@"; do
@@ -59,7 +58,6 @@ if [ "$#" -gt 0 ]; then
   done
 fi
 
-# --- 1. 前提チェック ---
 if [ ! -f "$ENV_FILE" ]; then
   echo "❌ $ENV_FILE が見つかりません。" >&2
   echo "   .env.staging.example をコピーして実値を入れてください:" >&2
@@ -67,20 +65,19 @@ if [ ! -f "$ENV_FILE" ]; then
   exit 1
 fi
 
-# DATABASE_URL が staging を指していることを軽く確認
 if ! grep -qE '^DATABASE_URL=.+(neon|staging)' "$ENV_FILE"; then
   echo "⚠️  $ENV_FILE の DATABASE_URL が Neon/Staging を指しているか確認してください。"
 fi
 
 if [ ! -d node_modules ]; then
-  echo "📦 npm install"
-  npm install
+  echo "📦 npm ci"
+  npm ci
 fi
 
-# --- 2. スキーマ反映 ---
+# --- 2. Migration反映 ---
 if [ "$DO_SCHEMA" = true ]; then
-  echo "🗄️  Staging DB に schema を反映 (prisma db push)"
-  npm run db:push:staging
+  echo "🗄️  Staging DB に committed migrations を反映 (prisma migrate deploy)"
+  npm run db:migrate:staging
 fi
 
 # --- 3. Seed (Tenant が無ければ投入) ---

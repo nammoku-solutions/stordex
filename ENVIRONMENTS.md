@@ -117,11 +117,11 @@ Vercel Project には最低限次を設定します。
 
 ```bash
 cp .env.staging.example .env.staging
-npm run db:push:staging
+npm run db:migrate:staging
 npm run db:seed:staging
 ```
 
-`db push` は staging/local の高速な schema synchronization 用です。
+`prisma db push` は disposable local DB のみで使用します。Staging を含む shared environment は committed migration を `prisma migrate deploy` で反映します。
 
 ### Helper script
 
@@ -181,21 +181,20 @@ Production workflow は:
 
 ### Production DB schema changes
 
-**注意:** 現在 repository に `prisma/migrations/` history はありません。
+Repository には `prisma/migrations/` history があり、production schema change は `prisma migrate deploy` を正規経路とします。
 
-`npm run db:push:prod` は script として残っていますが、既存 production DB へ schema を反映する通常手段として無条件に実行しないでください。
+2026-08-28 の AWS 確認では production Aurora は未作成でした。そのため initial migration は新規 empty database 用として作成済みです。ただし `sst.config.ts` が Aurora と application を同じ infrastructure rollout で作成し、DB は private VPC 内に置くため、通常の GitHub-hosted runner から migration を直接流す前提にはしません。
 
-production schema change の前に:
+初回 production rollout は:
 
-1. production backup / restore point を確認
-2. current database schema と `prisma/schema.prisma` を比較
-3. migration baseline 方針を決める
-4. staging clone/相当環境で検証
-5. maintenance window / rollback を準備
+1. AWS account / region と OIDC deployment role を確認
+2. SST deploy で Aurora を作成
+3. VPC 内から接続できる controlled migration execution path で `prisma migrate deploy`
+4. `prisma migrate status` を確認
+5. application smoke test
+6. Aurora backup retention / PITR を確認
 
-を行います。
-
-baseline を作るまでは、本番 DB 変更は個別レビュー対象です。
+の順で行います。詳細は [`DATABASE_MIGRATIONS.md`](DATABASE_MIGRATIONS.md) と [`AWS_DEPLOY.md`](AWS_DEPLOY.md) を参照してください。
 
 ## 5. Branch flow
 
