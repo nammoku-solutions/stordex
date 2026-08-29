@@ -1,0 +1,47 @@
+name: maintenance-validate-prod-safety
+
+on:
+  push:
+    branches:
+      - safety/manual-production-deploy
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Validate production workflow YAML and guard semantics
+        run: |
+          python -m pip install --disable-pip-version-check pyyaml==6.0.2
+          python - <<'PY'
+          from pathlib import Path
+          import yaml
+
+          path = Path('.github/workflows/deploy-prod.yml')
+          text = path.read_text()
+          data = yaml.load(text, Loader=yaml.BaseLoader)
+
+          triggers = data['on']
+          assert 'push' not in triggers, 'production workflow must not have a push trigger'
+          dispatch = triggers['workflow_dispatch']
+          confirm = dispatch['inputs']['confirm_production']
+          assert confirm['required'] == 'true'
+          assert confirm['type'] == 'string'
+
+          deploy = data['jobs']['deploy']
+          assert deploy['if'] == "${{ inputs.confirm_production == 'DEPLOY' }}"
+          assert deploy['environment'] == 'production'
+          assert data['permissions']['id-token'] == 'write'
+          assert 'aws sts get-caller-identity' in text
+          assert 'npx sst deploy --stage prod' in text
+          print('Production workflow safety guard validated.')
+          PY
+      - name: Check whitespace errors
+        run: git diff --check HEAD^
