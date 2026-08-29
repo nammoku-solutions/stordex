@@ -36,7 +36,8 @@ jobs:
           assert confirm['type'] == 'string'
 
           deploy = data['jobs']['deploy']
-          assert deploy['if'] == "${{ inputs.confirm_production == 'DEPLOY' }}"
+          expected_guard = '$' + "{{ inputs.confirm_production == 'DEPLOY' }}"
+          assert deploy['if'] == expected_guard
           assert deploy['environment'] == 'production'
           assert data['permissions']['id-token'] == 'write'
           assert 'aws sts get-caller-identity' in text
