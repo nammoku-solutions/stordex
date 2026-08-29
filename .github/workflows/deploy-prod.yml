@@ -1,16 +1,19 @@
 name: Deploy Production (AWS / SST)
 
 on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - ".github/**"
   workflow_dispatch:
+    inputs:
+      confirm_production:
+        description: 'Type DEPLOY to confirm the production deployment'
+        required: true
+        type: string
 
 permissions:
   contents: read
   id-token: write
 
+# Production deployment is intentionally manual-only.
+# The deploy job runs only when confirm_production is exactly "DEPLOY".
 # AWS authentication uses GitHub Actions OIDC with a dedicated IAM role.
 # Required GitHub Environment "production" secret:
 #   AWS_DEPLOY_ROLE_ARN
@@ -20,6 +23,7 @@ permissions:
 
 jobs:
   deploy:
+    if: ${{ inputs.confirm_production == 'DEPLOY' }}
     name: SST deploy --stage prod
     runs-on: ubuntu-latest
     timeout-minutes: 45
