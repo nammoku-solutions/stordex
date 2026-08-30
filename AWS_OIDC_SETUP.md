@@ -10,7 +10,7 @@ This runbook intentionally does **not** prescribe a broad deployment permissions
 
 The production deployment job uses:
 
-- repository: `Jun-engineer/stordex`
+- repository: `nammoku-solutions/stordex`
 - GitHub Environment: `production`
 - AWS region: `ap-northeast-1`
 - OIDC audience: `sts.amazonaws.com`
@@ -20,19 +20,21 @@ Because the job references the `production` GitHub Environment, the OIDC subject
 For the standard GitHub OIDC subject format:
 
 ```text
-repo:Jun-engineer/stordex:environment:production
+repo:nammoku-solutions/stordex:environment:production
 ```
 
 GitHub also supports newer immutable OIDC subject claims. The current repository identifiers are:
 
 ```text
-repository owner id: 107489639
+repository owner id: 322632577
 repository id:       1220810506
 ```
 
 If this repository uses immutable subject claims, verify the actual subject emitted by GitHub and use that exact value. Do not weaken the AWS trust condition to work around a subject mismatch.
 
-Do not use a wildcard subject such as `repo:Jun-engineer/*` or a trust rule that allows every GitHub repository.
+Do not use a wildcard subject such as `repo:nammoku-solutions/*` or a trust rule that allows every GitHub repository.
+
+> Organization transfer note: this repository moved from `Jun-engineer/stordex` to `nammoku-solutions/stordex`. Any existing AWS IAM OIDC trust condition that still contains the old repository owner must be updated before the next production deployment.
 
 ## 2. AWS OIDC provider
 
@@ -64,7 +66,7 @@ For the standard environment-scoped GitHub subject, the trust relationship shoul
       "Condition": {
         "StringEquals": {
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-          "token.actions.githubusercontent.com:sub": "repo:Jun-engineer/stordex:environment:production"
+          "token.actions.githubusercontent.com:sub": "repo:nammoku-solutions/stordex:environment:production"
         }
       }
     }
