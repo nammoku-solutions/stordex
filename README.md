@@ -2,6 +2,12 @@
 
 物流・卸売業向けのマルチテナント受発注・在庫管理 SaaS です。旧 Windows Forms C# アプリを Web アプリとして再構築しており、旧実装は移行参照用として [`original-app/`](original-app/) に残しています。
 
+## Current status
+
+2026-08-30 時点で、Stordex の AWS production は**未デプロイ**です。AWS アカウント監査では Stordex 用の Aurora / ECR / App Runner / Lambda / Secrets Manager resource および repository-specific GitHub OIDC IAM role は確認されていません。
+
+Production 用の SST / OpenNext 構成と手動デプロイ Workflow は、将来の初回 production rollout に備えた設計・準備物です。実際の AWS production resource を作成するまでは、Production を稼働中として扱いません。
+
 ## Current stack
 
 - **Node.js 22**
@@ -11,7 +17,7 @@
 - **Zod**
 - **Vitest**
 - **Tailwind CSS**
-- **SST 4.17.1 / OpenNext** for AWS production
+- **SST 4.17.1 / OpenNext** for planned AWS production
 - **GitHub Actions** for CI/CD
 
 依存バージョンの正本は `package.json` / `package-lock.json` です。
@@ -165,7 +171,7 @@ CI は PostgreSQL 16 service を立ち上げ、committed migration の適用・m
 |---|---|---|---|
 | Local | PostgreSQL 16 | `next dev` | 開発・自動テスト |
 | Staging | Neon | Vercel Preview | UAT / integration verification |
-| Production | Aurora Serverless v2 PostgreSQL 16 | SST / OpenNext on AWS | 本番 |
+| Production (planned) | Aurora Serverless v2 PostgreSQL 16 | SST / OpenNext on AWS | 将来の本番。2026-08-30 時点では未デプロイ |
 
 詳細は [`ENVIRONMENTS.md`](ENVIRONMENTS.md) を参照してください。
 
@@ -192,13 +198,13 @@ CI は PostgreSQL 16 service を立ち上げ、committed migration の適用・m
 
 ### Production
 
-`main` push で `.github/workflows/deploy-prod.yml` が対象になります。GitHub Environment `production` の保護ルールを使用し、SST deployment 前に production dependency audit を実行します。
+`.github/workflows/deploy-prod.yml` は**手動の `workflow_dispatch` のみ**です。`confirm_production` に `DEPLOY` を明示入力した場合だけ実行され、GitHub Environment `production` を使用します。
 
-AWS credential は現行 workflow では GitHub Secrets の access key を使用しています。実 AWS IAM 構成を確認した上で、将来は GitHub OIDC + 最小権限 IAM Role へ移行することを推奨します。
+AWS 認証は長期 access key ではなく GitHub Actions OIDC を使用する設計です。初回 production rollout 前に Stordex 専用の最小権限 IAM role と `AWS_DEPLOY_ROLE_ARN` Environment Secret を作成・検証する必要があります。2026-08-30 の AWS 監査時点では repository-specific deployment role は存在しません。
 
 ## AWS production
 
-Production は [`sst.config.ts`](sst.config.ts) で概ね次を構成します。
+Production は [`sst.config.ts`](sst.config.ts) で概ね次を構成する予定です。
 
 ```text
 CloudFront / OpenNext
@@ -251,7 +257,7 @@ Production Aurora は private VPC 内に作成されるため、通常の GitHub
 
 現在の主な運用残課題:
 
-1. AWS access key authentication → GitHub OIDC + least-privilege IAM role（PR #7 / Issue #4）
+1. 初回 AWS production rollout 時の GitHub OIDC + least-privilege IAM role 作成・検証
 2. 初回 production Aurora 作成後の VPC 内 migration 実行経路確定と `migrate deploy` 検証（Issue #5）
 3. Aurora backup retention / PITR / restore drill の production 実確認
 4. OWNER / ADMIN / STAFF の詳細 RBAC
