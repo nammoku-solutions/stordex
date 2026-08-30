@@ -115,7 +115,7 @@ if [ "$DO_DEPLOY" = true ]; then
     gh run list --workflow=deploy-staging.yml --limit 1
     echo "   ログ表示: gh run view --log"
   else
-    echo "   https://github.com/Jun-engineer/stordex/actions/workflows/deploy-staging.yml"
+    echo "   https://github.com/nammoku-solutions/stordex/actions/workflows/deploy-staging.yml"
   fi
 fi
 
@@ -126,7 +126,7 @@ if [ "$DO_STATUS" = true ]; then
     gh run list --workflow=deploy-staging.yml --limit 5
   else
     echo "ℹ️  gh CLI 未導入。 'brew install gh' で導入できます。"
-    echo "   または https://github.com/Jun-engineer/stordex/actions"
+    echo "   または https://github.com/nammoku-solutions/stordex/actions"
   fi
 fi
 
