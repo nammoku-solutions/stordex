@@ -62,7 +62,7 @@ export default async function ItemsPage({
             name="low"
             value="1"
             defaultChecked={low}
-            className="rounded border-slate-300"
+            className="rounded-sm border-slate-300"
           />
           発注点以下のみ
         </label>

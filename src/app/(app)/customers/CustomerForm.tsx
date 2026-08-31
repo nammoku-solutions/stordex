@@ -112,7 +112,7 @@ export function CustomerForm({
               type="checkbox"
               name="active"
               defaultChecked={initial?.active ?? true}
-              className="rounded border-slate-300"
+              className="rounded-sm border-slate-300"
             />
             <span className="text-sm text-slate-700">有効</span>
           </label>
