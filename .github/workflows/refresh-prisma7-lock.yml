@@ -6,10 +6,11 @@ on:
       - deps/prisma-7-migration
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   refresh:
+    if: ${{ !contains(github.event.head_commit.message, '[lock-refresh]') }}
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -29,12 +30,17 @@ jobs:
       - name: Verify runtime audit
         run: npm audit --omit=dev --audit-level=low
 
-      - name: Report full audit
-        run: npm audit || true
+      - name: Verify full audit
+        run: npm audit
 
-      - name: Upload lockfile
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: stordex-prisma7-lock
-          path: package-lock.json
-          if-no-files-found: error
+      - name: Commit lockfile
+        run: |
+          if git diff --quiet -- package-lock.json; then
+            echo 'Lockfile already current.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package-lock.json
+          git commit -m 'deps: refresh Prisma 7 package lock [lock-refresh]'
+          git push origin HEAD:deps/prisma-7-migration
