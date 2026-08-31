@@ -2,7 +2,7 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { PurchaseOrderStatus } from "@prisma/client";
+import type { PurchaseOrderStatus } from "@/generated/prisma/client";
 import { setPurchaseOrderStatus, deletePurchaseOrder } from "../actions";
 
 export function POStatusActions({

@@ -2,7 +2,7 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { OrderStatus } from "@prisma/client";
+import type { OrderStatus } from "@/generated/prisma/client";
 import { setOrderStatus, deleteOrder } from "../actions";
 import { ORDER_STATUS_LABEL } from "@/lib/format";
 

@@ -21,12 +21,19 @@
 
 import "dotenv/config";
 import { randomBytes } from "node:crypto";
-import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "../src/generated/prisma/client";
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
   if (i >= 0 && i + 1 < process.argv.length) return process.argv[i + 1];
   return undefined;
+}
+
+function createPrismaClient() {
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) throw new Error("DATABASE_URL is required");
+  return new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
 }
 
 async function main() {
@@ -41,7 +48,7 @@ async function main() {
   const token = randomBytes(24).toString("base64url"); // 32文字程度
   const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 
-  const prisma = new PrismaClient();
+  const prisma = createPrismaClient();
   try {
     const invite = await prisma.signupInvitation.create({
       data: {

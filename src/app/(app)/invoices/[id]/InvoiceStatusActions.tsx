@@ -2,7 +2,7 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { InvoiceStatus } from "@prisma/client";
+import type { InvoiceStatus } from "@/generated/prisma/client";
 import { setInvoiceStatus, deleteInvoice } from "../actions";
 
 export function InvoiceStatusActions({

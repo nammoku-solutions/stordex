@@ -6,7 +6,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireTenant } from "@/lib/session";
 import { assertTenantBusinessUnit, assertTenantCustomer } from "@/lib/tenant-resources";
-import type { InvoiceStatus } from "@prisma/client";
+import type { InvoiceStatus } from "@/generated/prisma/client";
 
 const Schema = z.object({
   customerId: z.string().min(1),

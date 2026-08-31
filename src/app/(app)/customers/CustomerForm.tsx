@@ -1,4 +1,4 @@
-import type { Customer } from "@prisma/client";
+import type { Customer } from "@/generated/prisma/client";
 
 export function CustomerForm({
   action,
