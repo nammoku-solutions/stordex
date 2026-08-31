@@ -66,8 +66,8 @@ jobs:
       - name: Verify migrated DB matches schema.prisma
         run: >-
           npx prisma migrate diff
-          --from-url "$DATABASE_URL"
-          --to-schema-datamodel prisma/schema.prisma
+          --from-config-datasource
+          --to-schema prisma/schema.prisma
           --exit-code
 
       - name: Typecheck
