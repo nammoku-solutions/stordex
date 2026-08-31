@@ -10,6 +10,7 @@
 //   --reason  停止理由メモ（必須）
 
 import "dotenv/config";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 
 function arg(name: string): string | undefined {
@@ -25,7 +26,11 @@ async function main() {
     console.error("usage: npm run suspend-tenant -- --slug <slug> --reason <reason>");
     process.exit(1);
   }
-  const prisma = new PrismaClient();
+  const connectionString = process.env.DATABASE_URL;
+if (!connectionString) throw new Error("DATABASE_URL is required");
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({ connectionString }),
+});
   try {
     const tenant = await prisma.tenant.findUnique({ where: { slug } });
     if (!tenant) {
