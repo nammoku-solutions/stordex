@@ -5,6 +5,7 @@
 //   npm run reactivate-tenant -- --slug nanki
 
 import "dotenv/config";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 
 function arg(name: string): string | undefined {
@@ -13,13 +14,19 @@ function arg(name: string): string | undefined {
   return undefined;
 }
 
+function createPrismaClient() {
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) throw new Error("DATABASE_URL is required");
+  return new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
+}
+
 async function main() {
   const slug = arg("slug");
   if (!slug) {
     console.error("usage: npm run reactivate-tenant -- --slug <slug>");
     process.exit(1);
   }
-  const prisma = new PrismaClient();
+  const prisma = createPrismaClient();
   try {
     const tenant = await prisma.tenant.findUnique({ where: { slug } });
     if (!tenant) {
