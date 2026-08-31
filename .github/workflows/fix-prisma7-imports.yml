@@ -1,0 +1,69 @@
+name: Fix Prisma 7 imports
+
+on:
+  push:
+    branches:
+      - deps/prisma-7-migration
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: ${{ !contains(github.event.head_commit.message, '[prisma7-import-fix]') }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: deps/prisma-7-migration
+
+      - name: Replace remaining Prisma imports
+        shell: python
+        run: |
+          from pathlib import Path
+
+          script_paths = [
+              Path('scripts/issue-signup-token.ts'),
+              Path('scripts/reactivate-tenant.ts'),
+              Path('scripts/suspend-tenant.ts'),
+          ]
+          app_paths = [
+              Path('src/app/(app)/customers/CustomerForm.tsx'),
+              Path('src/app/(app)/invoices/[id]/InvoiceStatusActions.tsx'),
+              Path('src/app/(app)/items/ItemForm.tsx'),
+              Path('src/app/(app)/orders/[id]/OrderStatusActions.tsx'),
+              Path('src/app/(app)/purchase-orders/[id]/POStatusActions.tsx'),
+              Path('src/app/(app)/quotations/[id]/QuotationStatusActions.tsx'),
+              Path('src/app/(app)/suppliers/SupplierForm.tsx'),
+          ]
+
+          for path in script_paths:
+              text = path.read_text()
+              if 'from "@prisma/client"' not in text:
+                  raise SystemExit(f'Expected old Prisma import not found in {path}')
+              path.write_text(text.replace('from "@prisma/client"', 'from "../src/generated/prisma/client"'))
+
+          for path in app_paths:
+              text = path.read_text()
+              if 'from "@prisma/client"' not in text:
+                  raise SystemExit(f'Expected old Prisma import not found in {path}')
+              path.write_text(text.replace('from "@prisma/client"', 'from "@/generated/prisma/client"'))
+
+          remaining = []
+          for root in [Path('src'), Path('scripts'), Path('prisma')]:
+              for path in root.rglob('*'):
+                  if path.suffix not in {'.ts', '.tsx'} or 'generated/prisma' in path.as_posix():
+                      continue
+                  if '@prisma/client' in path.read_text(errors='ignore'):
+                      remaining.append(str(path))
+          if remaining:
+              raise SystemExit('Remaining source imports: ' + ', '.join(remaining))
+
+      - name: Commit import fixes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add scripts src/app
+          git commit -m 'fix: use generated Prisma 7 client imports [prisma7-import-fix]'
+          git push origin HEAD:deps/prisma-7-migration
