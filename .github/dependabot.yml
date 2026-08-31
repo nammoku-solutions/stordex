@@ -20,6 +20,16 @@ updates:
         update-types:
           - "minor"
           - "patch"
+    ignore:
+      - dependency-name: "typescript"
+        versions:
+          - ">=7.0.0"
+      - dependency-name: "eslint"
+        versions:
+          - ">=10.0.0"
+      - dependency-name: "@types/node"
+        versions:
+          - ">=23.0.0"
     commit-message:
       prefix: "deps"
 
