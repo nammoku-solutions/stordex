@@ -2,7 +2,7 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { QuotationStatus } from "@prisma/client";
+import type { QuotationStatus } from "@/generated/prisma/client";
 import { setQuotationStatus, deleteQuotation } from "../actions";
 
 const NEXT_LABEL: Record<QuotationStatus, string> = {

@@ -5,7 +5,7 @@
 //   npm run reactivate-tenant -- --slug nanki
 
 import "dotenv/config";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "../src/generated/prisma/client";
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);

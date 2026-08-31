@@ -21,7 +21,7 @@
 
 import "dotenv/config";
 import { randomBytes } from "node:crypto";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "../src/generated/prisma/client";
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);

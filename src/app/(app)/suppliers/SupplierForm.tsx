@@ -1,4 +1,4 @@
-import type { Supplier } from "@prisma/client";
+import type { Supplier } from "@/generated/prisma/client";
 
 export function SupplierForm({
   action,
