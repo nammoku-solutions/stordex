@@ -23,16 +23,16 @@
     "suspend-tenant": "tsx scripts/suspend-tenant.ts",
     "reactivate-tenant": "tsx scripts/reactivate-tenant.ts"
   },
-  "prisma": {
-    "seed": "tsx prisma/seed.ts"
-  },
   "dependencies": {
+    "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "bcryptjs": "^2.4.3",
     "clsx": "^2.1.1",
+    "dotenv": "^17.4.2",
     "fast-xml-parser": "^5.11.1",
     "next": "^16.3.3",
     "next-auth": "^4.24.15",
+    "pg": "^8.23.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "zod": "^3.23.8"
@@ -40,6 +40,7 @@
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20.16.11",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.5",
     "@vitest/ui": "^4.1.11",
@@ -59,5 +60,6 @@
   },
   "engines": {
     "node": "22.x"
-  }
+  },
+  "type": "module"
 }

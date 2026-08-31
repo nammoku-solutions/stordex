@@ -57,3 +57,6 @@ original-app/繝舌ャ繧ｯ繧｢繝・・繝・・繧ｿ/
 # --- Misc ---
 *.tgz
 .cache/
+
+# --- Generated Prisma Client ---
+src/generated/prisma/

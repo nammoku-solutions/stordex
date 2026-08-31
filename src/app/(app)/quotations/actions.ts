@@ -6,7 +6,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireTenant } from "@/lib/session";
 import { assertTenantCustomer, assertTenantItems } from "@/lib/tenant-resources";
-import type { QuotationStatus } from "@prisma/client";
+import type { QuotationStatus } from "@/generated/prisma/client";
 
 const Line = z.object({
   itemId: z.string().optional().nullable(),
