@@ -1,0 +1,154 @@
+name: Apply Prisma 7 migration
+
+on:
+  push:
+    branches:
+      - deps/prisma-7-migration
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    if: ${{ !contains(github.event.head_commit.message, '[prisma7-migration]') }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: deps/prisma-7-migration
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22.x'
+          cache: npm
+
+      - name: Apply Prisma 7 source migration
+        shell: python
+        run: |
+          from pathlib import Path
+          import json
+
+          schema_path = Path('prisma/schema.prisma')
+          schema = schema_path.read_text()
+          old = '''generator client {
+            provider = "prisma-client-js"
+          }
+
+          datasource db {
+            provider = "postgresql"
+            url      = env("DATABASE_URL")
+          }'''
+          new = '''generator client {
+            provider            = "prisma-client"
+            output              = "../src/generated/prisma"
+            importFileExtension = "ts"
+          }
+
+          datasource db {
+            provider = "postgresql"
+          }'''
+          if old not in schema:
+              raise SystemExit('Expected Prisma 5 schema header was not found')
+          schema_path.write_text(schema.replace(old, new, 1))
+
+          Path('prisma.config.ts').write_text('''import "dotenv/config";
+          import { defineConfig, env } from "prisma/config";
+
+          export default defineConfig({
+            schema: "prisma/schema.prisma",
+            migrations: {
+              path: "prisma/migrations",
+              seed: "tsx prisma/seed.ts",
+            },
+            datasource: {
+              url: env("DATABASE_URL"),
+            },
+          });
+          ''')
+
+          Path('src/lib/db.ts').write_text('''import { PrismaPg } from "@prisma/adapter-pg";
+          import { PrismaClient } from "@/generated/prisma/client";
+
+          declare global {
+            // eslint-disable-next-line no-var
+            var prisma: PrismaClient | undefined;
+          }
+
+          const connectionString = process.env.DATABASE_URL;
+          if (!connectionString) {
+            throw new Error("DATABASE_URL is required to initialize Prisma Client");
+          }
+
+          const adapter = new PrismaPg({ connectionString });
+
+          export const prisma =
+            global.prisma ??
+            new PrismaClient({
+              adapter,
+              log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
+            });
+
+          if (process.env.NODE_ENV !== "production") global.prisma = prisma;
+          ''')
+
+          seed_path = Path('prisma/seed.ts')
+          seed = seed_path.read_text()
+          seed = seed.replace(
+              'import { PrismaClient } from "@prisma/client";\nimport bcrypt from "bcryptjs";\n\nconst prisma = new PrismaClient();',
+              'import { PrismaPg } from "@prisma/adapter-pg";\nimport { PrismaClient } from "../src/generated/prisma/client";\nimport bcrypt from "bcryptjs";\n\nconst connectionString = process.env.DATABASE_URL;\nif (!connectionString) {\n  throw new Error("DATABASE_URL is required to seed the database");\n}\n\nconst adapter = new PrismaPg({ connectionString });\nconst prisma = new PrismaClient({ adapter });'
+          )
+          seed_path.write_text(seed)
+
+          for rel in [
+              'src/app/(app)/orders/actions.ts',
+              'src/app/(app)/invoices/actions.ts',
+              'src/app/(app)/quotations/actions.ts',
+              'src/app/(app)/purchase-orders/actions.ts',
+          ]:
+              p = Path(rel)
+              text = p.read_text()
+              if 'from "@prisma/client"' not in text:
+                  raise SystemExit(f'Expected Prisma type import not found in {rel}')
+              p.write_text(text.replace('from "@prisma/client"', 'from "@/generated/prisma/client"'))
+
+          pkg_path = Path('package.json')
+          pkg = json.loads(pkg_path.read_text())
+          pkg['type'] = 'module'
+          pkg.pop('prisma', None)
+          pkg_path.write_text(json.dumps(pkg, ensure_ascii=False, indent=2) + '\n')
+
+          ts_path = Path('tsconfig.json')
+          ts = json.loads(ts_path.read_text())
+          ts['compilerOptions']['target'] = 'ES2023'
+          ts_path.write_text(json.dumps(ts, ensure_ascii=False, indent=2) + '\n')
+
+          gi_path = Path('.gitignore')
+          gi = gi_path.read_text()
+          marker = 'src/generated/prisma/'
+          if marker not in gi:
+              gi_path.write_text(gi.rstrip() + '\n\n# --- Generated Prisma Client ---\n' + marker + '\n')
+
+      - name: Install Prisma 7 PostgreSQL adapter
+        run: |
+          npm install @prisma/adapter-pg@7.10.0 pg dotenv
+          npm install --save-dev @types/pg
+
+      - name: Generate Prisma Client
+        env:
+          DATABASE_URL: postgresql://stordex:stordex@localhost:5432/stordex?schema=public
+        run: npx prisma generate
+
+      - name: Audit dependencies
+        run: |
+          npm audit --omit=dev --audit-level=low
+          npm audit
+
+      - name: Commit migration
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package.json package-lock.json prisma.config.ts prisma/schema.prisma prisma/seed.ts src/lib/db.ts src/app .gitignore tsconfig.json
+          git commit -m 'deps: complete Prisma 7 application migration [prisma7-migration]'
+          git push origin HEAD:deps/prisma-7-migration
