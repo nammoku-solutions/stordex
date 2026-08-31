@@ -51,7 +51,7 @@
     "sst": "4.17.1",
     "tailwindcss": "^3.4.13",
     "tsx": "^4.23.12",
-    "typescript": "^5.6.2",
+    "typescript": "^7.0.2",
     "vitest": "^4.1.5"
   },
   "overrides": {
