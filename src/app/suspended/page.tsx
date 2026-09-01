@@ -27,7 +27,7 @@ export default async function SuspendedPage() {
         {tenantName && (
           <p className="text-sm text-slate-600">テナント: {tenantName}</p>
         )}
-        <div className="text-left text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded p-4 space-y-2">
+        <div className="text-left text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-sm p-4 space-y-2">
           <p>
             本アカウントは現在ご利用を一時停止しております。
             ご請求金額の未入金が原因の可能性があります。

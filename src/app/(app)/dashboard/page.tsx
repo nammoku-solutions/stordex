@@ -200,7 +200,7 @@ function Stat({
   href: string;
 }) {
   return (
-    <Link href={href} className="card p-5 hover:shadow transition block">
+    <Link href={href} className="card p-5 hover:shadow-sm transition block">
       <div className="text-xs text-slate-500">{label}</div>
       <div className="text-2xl font-bold mt-1">{value}</div>
     </Link>
