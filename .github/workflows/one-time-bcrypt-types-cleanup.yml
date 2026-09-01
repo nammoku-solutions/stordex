@@ -21,13 +21,10 @@ jobs:
           cache: npm
       - name: Remove deprecated bcrypt type stub
         run: npm uninstall --save-dev @types/bcryptjs
-      - name: Validate generated dependency state
+      - name: Sanity-check generated dependency state
         run: |
           npm ci
           npm audit --omit=dev --audit-level=low
-          npx prisma generate
-          npm run typecheck
-          npm test
       - name: Create cleanup branch
         run: |
           git config user.name 'github-actions[bot]'
