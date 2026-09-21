@@ -36,6 +36,12 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
       - run: aws sts get-caller-identity
       - run: npm ci
+      - name: Verify shared database schema isolation
+        run: |
+          case "$DATABASE_URL" in
+            *"schema=stordex"*) ;;
+            *) echo "SUPABASE_DIRECT_URL must include schema=stordex" >&2; exit 1 ;;
+          esac
       - name: Apply committed migrations
         run: npx prisma migrate deploy
       - name: Configure SST secrets
@@ -44,6 +50,10 @@ jobs:
           NEXTAUTH_SECRET_VALUE: ${{ secrets.NEXTAUTH_SECRET }}
           NEXTAUTH_URL_VALUE: https://${{ vars.STAGING_DOMAIN }}
         run: |
+          case "$POOLED_DATABASE_URL" in
+            *"schema=stordex"*) ;;
+            *) echo "SUPABASE_DATABASE_URL must include schema=stordex" >&2; exit 1 ;;
+          esac
           npx sst secret set DatabaseUrl "$POOLED_DATABASE_URL" --stage staging
           npx sst secret set NextAuthSecret "$NEXTAUTH_SECRET_VALUE" --stage staging
           npx sst secret set NextAuthUrl "$NEXTAUTH_URL_VALUE" --stage staging

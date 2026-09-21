@@ -3,8 +3,9 @@
 ## Deployed topology
 
 Stordex is a Next.js 16 multi-tenant application deployed with SST/OpenNext in
-AWS Tokyo (`ap-northeast-1`). PostgreSQL is provided by a separate Supabase
-Tokyo project per environment.
+AWS Tokyo (`ap-northeast-1`). Staging PostgreSQL uses the private `stordex`
+schema in the shared `nammoku-staging-tokyo` Supabase project. Production
+PostgreSQL runs on AWS and does not use Supabase.
 
 ```mermaid
 flowchart LR
@@ -26,7 +27,7 @@ long-lived AWS access key is required.
 - Migration `DIRECT_URL`: Supavisor Session Pooler on port 5432 for the
   IPv4-based GitHub Actions runner.
 - Lambda-side `pg` pool maximum: one connection per warm container.
-- Staging and production must use different Supabase projects.
+- The shared Supabase project is staging-only; production uses AWS PostgreSQL.
 
 ## Environments
 

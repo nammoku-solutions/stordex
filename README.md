@@ -14,9 +14,9 @@ FormsアプリをNext.jsへ再構築しています。
 
 ## Environments
 
-LocalはローカルPostgreSQL、Staging/Productionはそれぞれ独立した
-Supabase projectとSST stageを使用します。AWS regionは東京
-（`ap-northeast-1`）、Supabase projectもTokyo regionです。詳細は
+LocalはローカルPostgreSQL、Stagingは共有Supabase Projectの専用
+`stordex` Schema、ProductionはAWS PostgreSQLを使用します。AWSと
+Staging Supabaseはいずれも東京リージョンです。詳細は
 [`ARCHITECTURE.md`](ARCHITECTURE.md)、
 [`ENVIRONMENTS.md`](ENVIRONMENTS.md)、
 [`AWS_DEPLOY.md`](AWS_DEPLOY.md)を参照してください。

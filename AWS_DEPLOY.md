@@ -1,12 +1,12 @@
 # AWS deployment runbook
 
 Stordex is deployed through SST/OpenNext in AWS Tokyo (`ap-northeast-1`).
-Supabase also uses its Tokyo region and owns PostgreSQL; SST does not create a
-VPC, NAT Gateway or Aurora cluster.
+Staging PostgreSQL uses the shared Supabase Tokyo project. Production
+PostgreSQL runs on AWS; Supabase is not a production dependency.
 
 ## One-time prerequisites
 
-1. Create separate Supabase projects for staging and production in Tokyo.
+1. Use the private `stordex` schema in `nammoku-staging-tokyo` for staging.
 2. Create the GitHub Actions OIDC provider and environment-scoped IAM roles.
 3. Create GitHub Environments named `staging` and `production`.
 4. Add the secrets and domain variables listed in `ENVIRONMENTS.md`.
@@ -30,8 +30,8 @@ Normal staging releases use `.github/workflows/deploy-staging.yml`.
 - `/login` returns HTTP 200.
 - Login, tenant boundary, CRUD and sign-out work.
 - CloudWatch contains no repeated Lambda or database errors.
-- Supabase connection usage remains within the configured pool.
+- Staging Supabase connection usage remains within the configured pool.
 - No secret appears in build or application logs.
 
 Rollback application code by redeploying the previous commit. Roll back schema
-only with a reviewed forward migration or a tested Supabase restore.
+only with a reviewed forward migration or an environment-appropriate tested restore.
