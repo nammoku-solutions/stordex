@@ -19,6 +19,8 @@
     "db:seed:staging": "dotenv -e .env.staging -- tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "db:studio:staging": "dotenv -e .env.staging -- prisma studio",
+    "deploy:staging": "sst deploy --stage staging",
+    "remove:staging": "sst remove --stage staging",
     "issue-token": "tsx scripts/issue-signup-token.ts",
     "suspend-tenant": "tsx scripts/suspend-tenant.ts",
     "reactivate-tenant": "tsx scripts/reactivate-tenant.ts"
@@ -55,7 +57,8 @@
   },
   "overrides": {
     "esbuild": "0.28.2",
-    "deepmerge-ts": "^8.0.1"
+    "deepmerge-ts": "^8.0.1",
+    "mysql2": "^3.23.1"
   },
   "engines": {
     "node": "22.x"

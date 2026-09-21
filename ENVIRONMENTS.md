@@ -1,239 +1,41 @@
-# Stordex Environment Guide
+# Environments
 
-Stordex は Local / Staging / Production の 3 段階で運用します。
-
-| Environment | Purpose | Database | Application |
+| Environment | Compute | Database | Deployment |
 |---|---|---|---|
-| Local | 開発・自動テスト・機能確認 | PostgreSQL 16 local/Docker | Next.js dev server |
-| Staging | UAT・外部動作確認 | Neon PostgreSQL | Vercel Preview |
-| Production | 本番 | Aurora Serverless v2 PostgreSQL 16 | SST / OpenNext on AWS |
-
-共通 runtime baseline は **Node.js 22** です。
-
-## 1. Environment variables policy
-
-アプリで使用する主要変数名は環境間で共通にします。
-
-- `DATABASE_URL`
-- `NEXTAUTH_SECRET`
-- `NEXTAUTH_URL`
-- `APP_ENV`
-
-実 credential は Git に保存しません。
-
-| Location | Commit | Usage |
-|---|---|---|
-| `.env.example` | yes | Local template |
-| `.env.staging.example` | yes | Staging DB operation template |
-| `.env.prod.example` | yes | Production DB emergency/admin template |
-| `.env.local` / `.env` | no | Local values |
-| `.env.staging` | no | Local → staging DB admin |
-| `.env.prod` | no | Local → production DB admin only when explicitly required |
-| Vercel Environment Variables | n/a | Staging runtime |
-| SST Secrets/resources | n/a | Production runtime |
-
-Production の `DATABASE_URL` は `sst.config.ts` が Aurora resource から組み立てます。`DatabaseUrl` という SST Secret は使用していません。
-
-## 2. Local
-
-### Requirements
-
-- Node.js 22
-- npm
-- PostgreSQL 16 or Docker
-
-### Docker PostgreSQL
-
-```bash
-docker run -d --name stordex-pg \
-  -p 5432:5432 \
-  -e POSTGRES_USER=stordex \
-  -e POSTGRES_PASSWORD=stordex \
-  -e POSTGRES_DB=stordex \
-  postgres:16
-```
-
-### Recommended setup
-
-```bash
-./scripts/start-local.sh
-```
-
-または手動で:
-
-```bash
-cp .env.example .env
-npm ci
-npm run db:generate
-npm run db:push
-npm run db:seed
-npm run dev
-```
-
-通常 URL:
-
-```text
-http://localhost:3000
-```
-
-### Validation
-
-```bash
-npm audit --omit=dev --audit-level=low
-npm run typecheck
-npm test
-npm run build
-```
-
-## 3. Staging (Neon + Vercel)
-
-### Neon
-
-PostgreSQL connection string を `.env.staging` と Vercel の Environment Variables に設定します。
-
-例:
-
-```env
-DATABASE_URL="postgresql://<user>:<password>@<host>/<db>?sslmode=require"
-NEXTAUTH_SECRET="<random secret>"
-NEXTAUTH_URL="https://<staging-host>"
-APP_ENV="staging"
-```
-
-### Vercel
-
-Repository root が Next.js application root です。過去の `web-app/` directory を Root Directory に指定しないでください。
-
-Vercel Project には最低限次を設定します。
-
-- `DATABASE_URL`
-- `NEXTAUTH_SECRET`
-- `NEXTAUTH_URL`
-- `APP_ENV=staging`
-
-`.github/workflows/deploy-staging.yml` は `develop` push で Vercel Preview deployment を実行します。
-
-### Staging DB setup
-
-```bash
-cp .env.staging.example .env.staging
-npm run db:migrate:staging
-npm run db:seed:staging
-```
-
-`prisma db push` は disposable local DB のみで使用します。Staging を含む shared environment は committed migration を `prisma migrate deploy` で反映します。
-
-### Helper script
-
-```bash
-./scripts/start-staging.sh --schema
-./scripts/start-staging.sh --seed
-./scripts/start-staging.sh --studio
-./scripts/start-staging.sh --deploy
-./scripts/start-staging.sh --status
-```
-
-スクリプト内容と現在の branch 運用が一致することを確認してから実行してください。
-
-## 4. Production (AWS)
-
-Production application/infrastructure は `sst.config.ts` が定義します。
-
-主要構成:
-
-```text
-CloudFront / OpenNext
-        |
-Next.js Lambda + S3 assets
-        |
-       VPC
-        |
-Aurora Serverless v2 PostgreSQL 16
-```
-
-### Runtime configuration
-
-SST secrets:
-
-```text
-NextAuthSecret
-NextAuthUrl
-```
-
-`DATABASE_URL` は Aurora の host/user/password/database から SST が生成して Lambda へ渡します。
-
-### Deployment
-
-`main` push で `.github/workflows/deploy-prod.yml` が対象になります。
-
-Production workflow は:
-
-1. GitHub Environment `production` の保護/承認
-2. Node.js 22 setup
-3. `npm ci`
-4. production dependency audit
-5. Prisma client generation
-6. `npx sst deploy --stage prod`
-
-を行います。
-
-現行 AWS 認証は GitHub Secrets の access key を利用しています。実 IAM 構成を確認してから GitHub OIDC + least-privilege IAM Role へ移行してください。
-
-### Production DB schema changes
-
-Repository には `prisma/migrations/` history があり、production schema change は `prisma migrate deploy` を正規経路とします。
-
-2026-08-28 の AWS 確認では production Aurora は未作成でした。そのため initial migration は新規 empty database 用として作成済みです。ただし `sst.config.ts` が Aurora と application を同じ infrastructure rollout で作成し、DB は private VPC 内に置くため、通常の GitHub-hosted runner から migration を直接流す前提にはしません。
-
-初回 production rollout は:
-
-1. AWS account / region と OIDC deployment role を確認
-2. SST deploy で Aurora を作成
-3. VPC 内から接続できる controlled migration execution path で `prisma migrate deploy`
-4. `prisma migrate status` を確認
-5. application smoke test
-6. Aurora backup retention / PITR を確認
-
-の順で行います。詳細は [`DATABASE_MIGRATIONS.md`](DATABASE_MIGRATIONS.md) と [`AWS_DEPLOY.md`](AWS_DEPLOY.md) を参照してください。
-
-## 5. Branch flow
-
-推奨:
-
-```text
-feature/maintenance branch
-        |
-        v
-Pull Request + CI
-        |
-        v
-develop (staging verification when needed)
-        |
-        v
-main
-        |
-        v
-production approval + SST deploy
-```
-
-小規模な保守で `develop` を経由しない場合でも、PR CI を通し、production deployment が発生することを確認してから main に merge してください。
-
-## 6. Environment checklist
-
-| Check | Local | Staging | Production |
-|---|---|---|---|
-| Node.js | 22 | 22 | 22 |
-| DB | PostgreSQL 16 | Neon/PostgreSQL | Aurora PostgreSQL 16 |
-| `NEXTAUTH_SECRET` | local-only | Vercel secret | SST Secret |
-| `NEXTAUTH_URL` | localhost | staging URL | production URL |
-| DB destructive operation | disposable | verify first | backup + explicit review required |
-| Dependency audit | CI/local | CI before merge | deploy workflow gate |
-| Logs | terminal | Vercel | AWS/CloudWatch |
-
-## 7. Related documents
-
-- [`README.md`](README.md)
-- [`ARCHITECTURE.md`](ARCHITECTURE.md)
-- [`SECURITY.md`](SECURITY.md)
-- [`AWS_DEPLOY.md`](AWS_DEPLOY.md)
-- [`TEST_PLAN.md`](TEST_PLAN.md)
+| Local | Next.js dev server | Local PostgreSQL | Manual |
+| Staging | SST/OpenNext on AWS | Shared `nammoku-staging-tokyo` project, private `stordex` schema | Push to `main` or workflow dispatch |
+| Production | SST/OpenNext on AWS | AWS PostgreSQL | Protected manual workflow |
+
+AWS and the shared staging Supabase project are in Tokyo. Production does not
+use Supabase. Environments use separate SST stages, domains, GitHub
+Environments and secret sets.
+
+## GitHub Environment configuration
+
+Each environment requires:
+
+- Secret `AWS_DEPLOY_ROLE_ARN`
+- Secret `SUPABASE_DATABASE_URL` (Transaction Pooler, port 6543)
+- Secret `SUPABASE_DIRECT_URL` (Session Pooler, port 5432)
+- Secret `NEXTAUTH_SECRET`
+- Variable `STAGING_DOMAIN` or `PRODUCTION_DOMAIN`
+
+Never reuse the production database or authentication secret in staging.
+
+## Where to obtain each value
+
+| Name | Source / how to confirm |
+|---|---|
+| `AWS_DEPLOY_ROLE_ARN` | AWS Console > IAM > Roles > the environment-specific deploy role > ARN. The role trust must match the exact subject in `AWS_OIDC_SETUP.md`. |
+| `SUPABASE_DATABASE_URL` | `nammoku-staging-tokyo` > **Connect** > **Transaction pooler**. Copy the port `6543` URI, replace `[YOUR-PASSWORD]`, and append `schema=stordex` to its query parameters. |
+| `SUPABASE_DIRECT_URL` | The same project's **Session pooler** port `5432` URI with `schema=stordex`. This IPv4 endpoint is used by GitHub Actions migrations. |
+| `NEXTAUTH_SECRET` | Generate once with `openssl rand -base64 32`. Store the output unchanged; do not commit it. Replacing it invalidates existing sessions. |
+| `STAGING_DOMAIN` / `PRODUCTION_DOMAIN` | The Route 53 hostname selected for the environment, without `https://` or a trailing slash (for example `staging-stordex.nammoku-solutions.com`). |
+
+These two Supabase secrets belong only in the `staging` GitHub Environment.
+The database password is chosen when the Supabase project is created. If it
+is no longer known, reset it in Supabase **Project Settings > Database** and
+update both connection-string secrets. These are PostgreSQL connection URIs,
+not the Supabase API URL, anon/publishable key, or `service_role` key. If an
+The workflow rejects URLs that do not contain `schema=stordex`, preventing a
+migration from accidentally targeting another application's schema.

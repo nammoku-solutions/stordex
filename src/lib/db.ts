@@ -11,7 +11,12 @@ if (!connectionString) {
   throw new Error("DATABASE_URL is required to initialize Prisma Client");
 }
 
-const adapter = new PrismaPg({ connectionString });
+const adapter = new PrismaPg({
+  connectionString,
+  // Lambda containers are horizontally scaled. Keep each warm container's
+  // client-side pool small and let Supabase Supavisor pool server-side.
+  max: process.env.AWS_LAMBDA_FUNCTION_NAME ? 1 : 5,
+});
 
 export const prisma =
   global.prisma ??
