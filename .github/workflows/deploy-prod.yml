@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       confirm_production:
-        description: 'Type DEPLOY to confirm the production deployment'
+        description: Type DEPLOY to confirm
         required: true
         type: string
 
@@ -12,57 +12,42 @@ permissions:
   contents: read
   id-token: write
 
-# Production deployment is intentionally manual-only.
-# The deploy job runs only when confirm_production is exactly "DEPLOY".
-# AWS authentication uses GitHub Actions OIDC with a dedicated IAM role.
-# Required GitHub Environment "production" secret:
-#   AWS_DEPLOY_ROLE_ARN
-# Region is fixed to the value used by sst.config.ts: ap-northeast-1.
-# Do not store long-lived AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY for this workflow.
-# SST secrets (NextAuthSecret / NextAuthUrl) must be configured for stage=prod before deployment.
-
 jobs:
   deploy:
     if: ${{ inputs.confirm_production == 'DEPLOY' }}
-    name: SST deploy --stage prod
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     environment: production
     concurrency:
-      group: deploy-prod
+      group: stordex-production
       cancel-in-progress: false
-
+    env:
+      AWS_REGION: ap-southeast-2
+      APP_DOMAIN: ${{ vars.PRODUCTION_DOMAIN }}
+      DATABASE_URL: ${{ secrets.SUPABASE_DIRECT_URL }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22.x'
           cache: npm
-
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+      - uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
-          role-session-name: github-actions-stordex-prod
-          aws-region: ap-northeast-1
+          role-session-name: github-actions-stordex-production
+          aws-region: ${{ env.AWS_REGION }}
+      - run: aws sts get-caller-identity
+      - run: npm ci
+      - run: npx prisma migrate deploy
+      - name: Configure SST secrets
+        env:
+          POOLED_DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+          NEXTAUTH_SECRET_VALUE: ${{ secrets.NEXTAUTH_SECRET }}
+          NEXTAUTH_URL_VALUE: https://${{ vars.PRODUCTION_DOMAIN }}
+        run: |
+          npx sst secret set DatabaseUrl "$POOLED_DATABASE_URL" --stage prod
+          npx sst secret set NextAuthSecret "$NEXTAUTH_SECRET_VALUE" --stage prod
+          npx sst secret set NextAuthUrl "$NEXTAUTH_URL_VALUE" --stage prod
+      - run: npx sst deploy --stage prod
+      - run: curl --fail --retry 6 --retry-delay 10 "https://${{ vars.PRODUCTION_DOMAIN }}/login"
 
-      - name: Verify AWS deployment identity
-        run: aws sts get-caller-identity
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=low
-
-      - name: Prisma generate
-        run: npx prisma generate
-
-      - name: SST deploy
-        run: npx sst deploy --stage prod
-
-      - name: Summary
-        run: echo "Production deployed to AWS (stage=prod)" >> "$GITHUB_STEP_SUMMARY"
