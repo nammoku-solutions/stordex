@@ -9,7 +9,7 @@ export default $config({
       home: "aws",
       providers: {
         aws: {
-          region: "ap-southeast-2",
+          region: "ap-northeast-1",
           defaultTags: {
             tags: {
               Project: "Stordex",

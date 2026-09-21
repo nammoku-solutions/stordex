@@ -4,7 +4,7 @@ Repository identity:
 
 - Owner ID: `322632577`
 - Repository ID: `1220810506`
-- Region: `ap-southeast-2`
+- Region: `ap-northeast-1` (Tokyo)
 
 Create one least-privilege deploy role per GitHub Environment. Trust subjects:
 
@@ -18,4 +18,3 @@ long-lived AWS access keys. Store each role ARN as `AWS_DEPLOY_ROLE_ARN` in
 its matching GitHub Environment. The role needs the CloudFormation, Lambda,
 CloudFront, S3, Route 53, ACM, IAM and CloudWatch operations required by the
 reviewed SST plan.
-
