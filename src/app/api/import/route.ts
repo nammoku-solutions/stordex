@@ -27,6 +27,7 @@ import type { ImportTarget } from "@/generated/prisma/client";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+export const preferredRegion = "sin1";
 // 大きい CSV をハンドルするため body サイズの上限を緩める
 export const maxDuration = 60;
 
