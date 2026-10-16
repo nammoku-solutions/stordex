@@ -24,7 +24,7 @@ export function POStatusActions({
   };
 
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap items-center gap-2" aria-busy={pending}>
       {status === "DRAFT" && (
         <button disabled={pending} className="btn-primary" onClick={() => advance("ORDERED")}>
           → 発注済にする
@@ -48,6 +48,7 @@ export function POStatusActions({
           取消
         </button>
       )}
+      {pending && <span className="text-sm text-slate-600" role="status">処理中…</span>}
       {status !== "RECEIVED" && (
         <button
           disabled={pending}
