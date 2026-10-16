@@ -22,7 +22,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     return NextResponse.json({ ok: false, error: "エラー CSV はありません" }, { status: 404 });
   }
   // BOM を付けて Excel でも文字化けしないようにする
-  const body = "\uFEFF" + job.errorCsv;
+  const body = job.errorCsv;
   return new NextResponse(body, {
     status: 200,
     headers: {
