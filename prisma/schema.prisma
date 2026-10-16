@@ -60,6 +60,21 @@ enum TenantStatus {
   TERMINATED
 }
 
+enum ImportTarget {
+  CUSTOMER
+  SUPPLIER
+  ITEM
+  ORDER
+}
+
+enum ImportJobStatus {
+  PENDING
+  DRYRUN_OK
+  DRYRUN_FAILED
+  COMMITTED
+  FAILED
+}
+
 model Tenant {
   id        String   @id @default(cuid())
   name      String
@@ -83,6 +98,7 @@ model Tenant {
   invoices       Invoice[]
   businessUnits  BusinessUnit[]
   warehouses     Warehouse[]
+  importJobs     ImportJob[]
 }
 
 // テナント新規作成用の招待トークン（Nammoku Solutions が入金確認後に発行）
@@ -479,4 +495,26 @@ model InvoiceOrder {
 
   @@id([invoiceId, orderId])
   @@index([orderId])
+}
+
+// Tenant-local audit trail for CSV preview, dry run and commit results.
+model ImportJob {
+  id           String          @id @default(cuid())
+  tenantId     String
+  userId       String?
+  target       ImportTarget
+  fileName     String
+  rowCount     Int             @default(0)
+  createdCount Int             @default(0)
+  updatedCount Int             @default(0)
+  skippedCount Int             @default(0)
+  errorCount   Int             @default(0)
+  status       ImportJobStatus @default(PENDING)
+  errorCsv     String?
+  summary      String?
+  createdAt    DateTime        @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
 }
