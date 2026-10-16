@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireTenant } from "@/lib/session";
+import { nextDocumentNumber } from "@/lib/document-numbering";
 
 function manager(role: string) {
   if (role !== "OWNER" && role !== "ADMIN") {
@@ -64,16 +65,7 @@ export async function acceptInboundPurchaseOrder(formData: FormData) {
     });
     if (claimed.count !== 1) throw new Error("別の担当者がすでに処理しました");
 
-    const date = new Date();
-    const ymd = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
-    const prefix = `SO-${ymd}-`;
-    const last = await tx.order.findFirst({
-      where: { tenantId, orderNumber: { startsWith: prefix } },
-      orderBy: { orderNumber: "desc" },
-      select: { orderNumber: true },
-    });
-    const sequence = last ? Number(last.orderNumber.slice(prefix.length)) + 1 : 1;
-    const orderNumber = `${prefix}${String(sequence).padStart(4, "0")}`;
+    const orderNumber = await nextDocumentNumber(tx, tenantId, "SO");
 
     const order = await tx.order.create({
       data: {
