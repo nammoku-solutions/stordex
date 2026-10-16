@@ -8,7 +8,7 @@ import { OrderStatusActions } from "./OrderStatusActions";
 import { PO_STATUS_LABEL } from "../../purchase-orders/_status";
 
 export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { tenantId } = await requireTenant();
+  const { tenantId, role } = await requireTenant();
   const { id } = await params;
   const order = await prisma.order.findFirst({
     where: { id, tenantId },
@@ -117,12 +117,24 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             </p>}
           {order.linkedCompanyOrder.purchaseOrder.status === "RECEIVED" &&
             <p className="text-sm text-emerald-700">発注企業で入荷が確定されました。</p>}
+          {order.status === "CANCELLED" &&
+            order.linkedCompanyOrder.purchaseOrder.status === "ORDERED" && (
+              <p className="text-sm text-amber-800">
+                自社受注は取消済みです。発注元企業に自社発注の取消も依頼してください。
+              </p>
+            )}
+          {order.status === "CANCELLED" &&
+            order.linkedCompanyOrder.purchaseOrder.status === "CANCELLED" && (
+              <p className="text-sm text-emerald-700">
+                発注元企業の発注も取消済みです。両社の取消処理が完了しました。
+              </p>
+            )}
           <p className="text-xs text-slate-500">
             これらは双方の伝票ステータスを参照した表示です。出荷や入荷を自動実行するものではありません。
           </p>
         </section>
       )}
-      <OrderStatusActions orderId={order.id} status={order.status} linkedCompanyOrder={!!order.linkedCompanyOrder} />
+      <OrderStatusActions orderId={order.id} status={order.status} linkedCompanyOrder={!!order.linkedCompanyOrder} canManageLinkedCancellation={role === "OWNER" || role === "ADMIN"} />
     </>
   );
 }

@@ -11,15 +11,17 @@ export function OrderStatusActions({
   orderId,
   status,
   linkedCompanyOrder = false,
+  canManageLinkedCancellation = false,
 }: {
   orderId: string;
   status: OrderStatus;
   linkedCompanyOrder?: boolean;
+  canManageLinkedCancellation?: boolean;
 }) {
   const [pending, start] = useTransition();
   const router = useRouter();
   const next = ORDER_TRANSITIONS[status].filter((state) =>
-    !(linkedCompanyOrder && state === "CANCELLED")
+    !(linkedCompanyOrder && state === "CANCELLED" && !canManageLinkedCancellation)
   );
   const canDelete = !linkedCompanyOrder && (status === "DRAFT" || status === "CANCELLED");
 
@@ -33,9 +35,13 @@ export function OrderStatusActions({
           onClick={() => {
             if (
               s === "CANCELLED" &&
-              !window.confirm(status === "DRAFT"
-                ? "この下書きを取り消しますか？（在庫は変わりません）"
-                : "この注文を取消しますか？（引き当てた在庫が戻ります）")
+              !window.confirm(linkedCompanyOrder
+                ? (status === "DRAFT"
+                  ? "発注元と出荷前の取消について合意済みですか？ 受注を取り消し、発注元が後から発注取消できる状態にします。在庫は変わりません。"
+                  : "発注元と出荷前の取消について合意済みですか？ 受注を取り消し、在庫を戻します。発注元の発注取消は別途必要です。")
+                : (status === "DRAFT"
+                  ? "この下書きを取り消しますか？（在庫は変わりません）"
+                  : "この注文を取消しますか？（引き当てた在庫が戻ります）"))
             ) {
               return;
             }
@@ -45,7 +51,9 @@ export function OrderStatusActions({
             });
           }}
         >
-          → {ORDER_STATUS_LABEL[s]}
+          → {linkedCompanyOrder && s === "CANCELLED"
+            ? "出荷前の取消に合意して受注を取消"
+            : ORDER_STATUS_LABEL[s]}
         </button>
       ))}
       {pending && <span className="text-sm text-slate-600" role="status">処理中…</span>}

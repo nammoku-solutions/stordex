@@ -161,7 +161,18 @@ export default async function POPage({ params }: { params: Promise<{ id: string 
           )}
         </div>
       )}
-      <POStatusActions id={po.id} status={po.status} />
+      {po.linkedCompanyOrder?.sellerOrder?.status === "CANCELLED" && po.status === "ORDERED" && (
+        <p className="card p-4 mb-5 text-sm text-amber-800" role="status">
+          受注先が出荷前の受注を取り消しました。内容を確認し、下部の「取消」から自社の発注も取り消してください。
+        </p>
+      )}
+      <POStatusActions
+        id={po.id}
+        status={po.status}
+        linkedStatus={po.linkedCompanyOrder?.status}
+        sellerOrderStatus={po.linkedCompanyOrder?.sellerOrder?.status}
+        canManageLinkedCancellation={role === "OWNER" || role === "ADMIN"}
+      />
     </>
   );
 }

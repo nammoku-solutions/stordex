@@ -98,7 +98,14 @@ export async function createPurchaseOrder(formData: FormData) {
 }
 
 export async function setPurchaseOrderStatus(id: string, status: PurchaseOrderStatus) {
-  const { tenantId, userId } = await requireTenant();
+  const { tenantId, userId, role } = await requireTenant();
+  if (status === "CANCELLED" && role !== "OWNER" && role !== "ADMIN") {
+    const linked = await prisma.intercompanyOrder.findFirst({
+      where: { purchaseOrderId: id, buyerTenantId: tenantId },
+      select: { id: true },
+    });
+    if (linked) throw new Error("企業間発注の取消には管理者権限が必要です");
+  }
   await applyPurchaseOrderStatus({ tenantId, userId, id, status });
   revalidatePath("/purchase-orders");
   revalidatePath(`/purchase-orders/${id}`);

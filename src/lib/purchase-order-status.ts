@@ -24,12 +24,20 @@ export async function applyPurchaseOrderStatus({
 
     const linked = po.linkedCompanyOrder;
     if (linked && status === "CANCELLED") {
-      if (linked.status === "ACCEPTED") {
-        throw new Error("受注企業がすでに承認しています。先方と調整してから取り消してください");
+      // Future partial receipts require a separate return workflow, even if
+      // the PO status has not yet been moved to RECEIVED.
+      if (po.items.some(line => line.received > 0)) {
+        throw new Error("一部でも入荷済みの発注は、この取消機能では処理できません");
       }
-      if (linked.status === "SENT") {
+      if (linked.status === "ACCEPTED" && linked.sellerOrder?.status !== "CANCELLED") {
+        throw new Error("受注企業が承認済みです。先方が出荷前の受注を取り消した後に発注取消できます");
+      }
+      if (linked.status === "SENT" || linked.status === "ACCEPTED") {
         const changed = await tx.intercompanyOrder.updateMany({
-          where: { id: linked.id, buyerTenantId: tenantId, status: "SENT" },
+          where: {
+            id: linked.id, buyerTenantId: tenantId,
+            status: linked.status,
+          },
           data: { status: "CANCELLED" },
         });
         if (changed.count !== 1) throw new Error("先方で注文が処理されたため取消できません");
