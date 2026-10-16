@@ -303,7 +303,7 @@ async function upsertItem(
         const updatedStock = rec.stock == null ? current.stock : rec.stock;
         await tx.item.update({
           where: { id: current.id, tenantId },
-          data: { ...details, ...(rec.stock != null ? { stock: updatedStock } : {}) },
+          data: { ...Object.fromEntries(Object.entries(details).filter(([, value]) => value != null)), ...(rec.stock != null ? { stock: updatedStock } : {}) },
         });
         const change = updatedStock - current.stock;
         if (change !== 0) {
@@ -413,14 +413,8 @@ async function importOrders(opts: {
           result.errorCount += rows.length;
           continue;
         }
-        if (!dryrun) {
-          customer = await prisma.customer.create({
-            data: { tenantId, code: head.customerCode, name: head.customerName },
-            select: { id: true },
-          });
-        } else {
-          customer = { id: "DRYRUN_NEW_CUSTOMER" };
-        }
+        // Customer creation is deferred to the same transaction as the validated order.
+        customer = { id: "DRYRUN_NEW_CUSTOMER" };
       }
 
       // 明細
@@ -446,6 +440,17 @@ async function importOrders(opts: {
         const qty = itemRow.quantity ?? 0;
         const price = itemRow.unitPrice ?? 0;
         const amount = qty * price;
+        if (!Number.isSafeInteger(qty) || qty <= 0 || !Number.isSafeInteger(price) ||
+            price < 0 || !Number.isSafeInteger(amount)) {
+          result.errors.push({
+            row: r.rowNum,
+            reason: "受注明細の数量・金額が不正です",
+            raw: r.raw,
+          });
+          result.errorCount++;
+          lineErr = true;
+          continue;
+        }
         subtotal += amount;
         items.push({
           itemId: item.id,
@@ -468,21 +473,32 @@ async function importOrders(opts: {
       const total = subtotal + tax;
 
       if (!dryrun) {
-        await prisma.order.create({
-          data: {
-            tenantId,
-            orderNumber,
-            customerId: customer.id,
-            orderDate: head.orderDate ?? new Date(),
-            dueDate: head.dueDate,
-            orderer: head.orderer,
-            note: head.orderNote,
-            subtotal,
-            taxRate,
-            tax,
-            total,
-            items: { create: items },
-          },
+        await prisma.$transaction(async (tx) => {
+          const customerId = customer!.id === "DRYRUN_NEW_CUSTOMER"
+            ? (await tx.customer.upsert({
+                where: { tenantId_code: { tenantId, code: head.customerCode } },
+                update: {},
+                create: { tenantId, code: head.customerCode, name: head.customerName },
+                select: { id: true },
+              })).id
+            : customer!.id;
+          await tx.order.create({
+            data: {
+              tenantId,
+              orderNumber,
+              customerId,
+              orderDate: head.orderDate ?? new Date(),
+              dueDate: head.dueDate,
+              orderer: head.orderer,
+              note: head.orderNote,
+              status: "DRAFT",
+              subtotal,
+              taxRate,
+              tax,
+              total,
+              items: { create: items },
+            },
+          });
         });
       }
       result.createdCount++;
