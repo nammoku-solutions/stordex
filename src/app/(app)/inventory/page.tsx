@@ -41,6 +41,7 @@ export default async function InventoryPage() {
       <PageHeader
         title="在庫管理"
         description="入出庫の記録、在庫アラート、移動履歴"
+        action={<Link href="/inventory/history" className="btn-primary">過去の在庫を照会</Link>}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
