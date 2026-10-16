@@ -1,8 +1,18 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
+
+function LinkPendingIndicator() {
+  const { pending } = useLinkStatus();
+  return pending ? (
+    <span className="ml-auto text-xs text-slate-200 inline-flex items-center gap-1" aria-live="polite">
+      <span className="h-3 w-3 rounded-full border-2 border-current border-t-transparent animate-spin" aria-hidden="true" />
+      読込中
+    </span>
+  ) : null;
+}
 
 export function NavLink({ href, label }: { href: string; label: string }) {
   const pathname = usePathname();
@@ -11,13 +21,14 @@ export function NavLink({ href, label }: { href: string; label: string }) {
     <Link
       href={href}
       className={clsx(
-        "block px-3 py-2 rounded-md transition",
+        "flex items-center gap-2 px-3 py-2 rounded-md transition",
         active
           ? "bg-brand-600 text-white"
           : "text-slate-300 hover:bg-slate-800 hover:text-white"
       )}
     >
-      {label}
+      <span>{label}</span>
+      <LinkPendingIndicator />
     </Link>
   );
 }
