@@ -110,21 +110,50 @@ export async function createPurchaseOrder(formData: FormData) {
 }
 
 export async function setPurchaseOrderStatus(id: string, status: PurchaseOrderStatus) {
-  const { tenantId, session } = await requireTenant();
+  const { tenantId, userId } = await requireTenant();
 
-  const po = await prisma.purchaseOrder.findFirst({
-    where: { id, tenantId },
-    include: { items: true },
-  });
-  if (!po) throw new Error("発注が見つかりません");
+  await prisma.$transaction(async (tx) => {
+    const po = await tx.purchaseOrder.findFirst({
+      where: { id, tenantId },
+      include: { items: true, linkedCompanyOrder: true },
+    });
+    if (!po) throw new Error("発注が見つかりません");
+    if (po.status === status) return;
+    const valid =
+      (po.status === "DRAFT" && ["ORDERED", "CANCELLED"].includes(status)) ||
+      (po.status === "ORDERED" && ["RECEIVED", "CANCELLED"].includes(status));
+    if (!valid) throw new Error("許可されていない発注状態の変更です");
 
-  if (status === "RECEIVED" && po.status !== "RECEIVED") {
-    await prisma.$transaction(async (tx) => {
+    const linked = po.linkedCompanyOrder;
+    if (linked && status === "CANCELLED") {
+      if (linked.status === "ACCEPTED") {
+        throw new Error("受注企業がすでに承認しています。先方と調整してから取り消してください");
+      }
+      if (linked.status === "SENT") {
+        const changed = await tx.intercompanyOrder.updateMany({
+          where: { id: linked.id, buyerTenantId: tenantId, status: "SENT" },
+          data: { status: "CANCELLED" },
+        });
+        if (changed.count !== 1) throw new Error("先方で注文が処理されたため取消できません");
+      }
+    }
+    if (linked && status === "RECEIVED" && linked.status !== "ACCEPTED") {
+      throw new Error("送信した企業間発注は、先方の受注登録後に入荷を確定してください");
+    }
+
+    // Conditional claim prevents repeated RECEIVE from incrementing inventory twice.
+    const changed = await tx.purchaseOrder.updateMany({
+      where: { id: po.id, tenantId, status: po.status },
+      data: { status },
+    });
+    if (changed.count !== 1) throw new Error("発注が別の操作で変更されました");
+
+    if (status === "RECEIVED") {
       for (const line of po.items) {
         const delta = line.quantity - line.received;
         if (delta <= 0) continue;
         const updated = await tx.item.update({
-          where: { id: line.itemId },
+          where: { id: line.itemId, tenantId },
           data: { stock: { increment: delta } },
           select: { stock: true },
         });
@@ -137,7 +166,7 @@ export async function setPurchaseOrderStatus(id: string, status: PurchaseOrderSt
             balance: updated.stock,
             reference: po.poNumber,
             note: `仕入入庫: ${po.poNumber}`,
-            createdBy: session.user.id,
+            createdBy: userId,
           },
         });
         await tx.purchaseOrderItem.update({
@@ -145,30 +174,25 @@ export async function setPurchaseOrderStatus(id: string, status: PurchaseOrderSt
           data: { received: line.quantity },
         });
       }
-      await tx.purchaseOrder.update({
-        where: { id: po.id },
-        data: { status: "RECEIVED" },
-      });
-    });
-  } else {
-    await prisma.purchaseOrder.update({
-      where: { id: po.id },
-      data: { status },
-    });
-  }
-
+    }
+  });
   revalidatePath("/purchase-orders");
   revalidatePath(`/purchase-orders/${id}`);
   revalidatePath("/inventory");
+  revalidatePath("/orders/inbox");
 }
 
 export async function deletePurchaseOrder(id: string) {
   const { tenantId } = await requireTenant();
   const po = await prisma.purchaseOrder.findFirst({
     where: { id, tenantId },
-    select: { status: true },
+    select: { status: true, linkedCompanyOrder: { select: { id: true } } },
   });
-  if (po?.status === "RECEIVED") {
+  if (!po) return;
+  if (po.linkedCompanyOrder) {
+    throw new Error("企業間に送信した発注書は履歴保持のため削除できません");
+  }
+  if (po.status === "RECEIVED") {
     throw new Error("入荷済の発注は削除できません");
   }
   await prisma.purchaseOrder.deleteMany({ where: { id, tenantId } });
