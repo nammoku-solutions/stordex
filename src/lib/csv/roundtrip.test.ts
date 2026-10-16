@@ -99,6 +99,16 @@ describe("Stordex export/import sales-order round-trip", () => {
     expect(result.errors[0].reason).toContain("消費税率");
   });
 
+  it("rejects mismatched inventory units without creating partial orders", async () => {
+    const opts = load([mkrow("A-PAPER"), mkrow("A-PAPER", "2")]);
+    const unitIndex = opts.rows[0].indexOf("unit");
+    opts.rows[2][unitIndex] = "本";
+    const result = await runImport(opts);
+    expect(result).toMatchObject({createdCount:0,errorCount:1});
+    expect(result.errors[0].reason).toContain("単位");
+    expect(mocks.transaction).not.toHaveBeenCalled();
+  });
+
   it("does not evaluate text formula cells when exporting", () => {
     const csv = toCsv(["code", "name"], [["=1+1", "+HYPERLINK()"]]);
     expect(csv).toContain("'=1+1");
