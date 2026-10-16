@@ -21,7 +21,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireTenant } from "@/lib/session";
 import { decodeCsvBuffer, parseCsv } from "@/lib/csv/parse";
-import { autoMap } from "@/lib/csv/schema";
+import { autoMap, fieldsFor } from "@/lib/csv/schema";
 import { runImport, buildErrorCsv, type ImportConfig } from "@/lib/csv/import";
 import type { ImportTarget } from "@/generated/prisma/client";
 
@@ -33,7 +33,10 @@ export const maxDuration = 60;
 const VALID_TARGETS: ImportTarget[] = ["CUSTOMER", "SUPPLIER", "ITEM", "ORDER"];
 
 export async function POST(req: NextRequest) {
-  const { tenantId, userId } = await requireTenant();
+  const { tenantId, userId, role } = await requireTenant();
+  if (role !== "OWNER" && role !== "ADMIN") {
+    return NextResponse.json({ ok: false, error: "CSV取り込みには管理者権限が必要です" }, { status: 403 });
+  }
   const form = await req.formData();
   const file = form.get("file");
   const target = String(form.get("target") ?? "") as ImportTarget;
@@ -49,14 +52,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "mode が不正です" }, { status: 400 });
   }
 
+  if (file.size > 2 * 1024 * 1024) {
+    return NextResponse.json({ ok: false, error: "CSV は2MB以内にしてください" }, { status: 413 });
+  }
   const buf = new Uint8Array(await file.arrayBuffer());
   const encodingOpt = String(form.get("encoding") ?? "auto") as any;
   const { text, encoding } = decodeCsvBuffer(buf, encodingOpt);
+  if (!["auto", "utf-8", "shift_jis"].includes(encodingOpt)) {
+    return NextResponse.json({ ok: false, error: "文字コード設定が不正です" }, { status: 400 });
+  }
   const delimiter = String(form.get("delimiter") ?? ",");
+  if (![",", ";", "\t"].includes(delimiter)) {
+    return NextResponse.json({ ok: false, error: "CSV区切り文字が不正です" }, { status: 400 });
+  }
   const rows = parseCsv(text, delimiter);
   const headerRow = parseInt(String(form.get("headerRow") ?? "0"), 10) || 0;
   const skipRows = parseInt(String(form.get("skipRows") ?? "0"), 10) || 0;
+  if (headerRow < 0 || headerRow >= rows.length || skipRows < 0 || skipRows > 1000 ||
+      rows.length - headerRow - 1 - skipRows > 1000 || rows.length > 1100) {
+    return NextResponse.json({ ok: false, error: "CSVは最大1000明細行まで取り込めます" }, { status: 413 });
+  }
   const headers = rows[headerRow] ?? [];
+  if (!headers.length || headers.length > 100) {
+    return NextResponse.json({ ok: false, error: "CSVの列数は1～100列です" }, { status: 400 });
+  }
 
   if (mode === "preview") {
     return NextResponse.json({
@@ -77,6 +96,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "mapping JSON が不正です" }, { status: 400 });
   }
   const upsertMode = (String(form.get("upsertMode") ?? "skip") as "skip" | "update");
+  if (!["skip", "update"].includes(upsertMode)) {
+    return NextResponse.json({ ok: false, error: "上書きモードが不正です" }, { status: 400 });
+  }
+  const fieldKeys = new Set(fieldsFor(target).map(f => f.key));
+  if (!mapping || typeof mapping !== "object" || Array.isArray(mapping) ||
+      Object.entries(mapping).some(([key, value]) =>
+        !fieldKeys.has(key) || typeof value !== "string" || !headers.includes(value))) {
+    return NextResponse.json({ ok: false, error: "列マッピングが不正です" }, { status: 400 });
+  }
 
   const config: ImportConfig = {
     target,
