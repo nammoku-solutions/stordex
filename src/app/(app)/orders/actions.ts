@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { requireTenant } from "@/lib/session";
 import { assertTenantCustomer } from "@/lib/tenant-resources";
 import type { OrderStatus } from "@/generated/prisma/client";
+import { canTransitionOrder, requiresOutboundMovement, requiresReturnMovement } from "@/lib/order-transitions";
 
 const LineSchema = z.object({
   itemId: z.string().min(1),
@@ -19,7 +20,7 @@ const OrderSchema = z.object({
   orderDate: z.string().min(1),
   dueDate: z.string().optional().nullable(),
   taxRate: z.coerce.number().int().min(0).max(100).default(10),
-  status: z.enum(["DRAFT", "CONFIRMED", "SHIPPED", "COMPLETED", "CANCELLED"]).default("DRAFT"),
+  status: z.enum(["DRAFT", "CONFIRMED"]).default("DRAFT"),
   note: z.string().max(1000).optional().nullable(),
   lines: z.array(LineSchema).min(1, "明細が必要です"),
 });
@@ -106,15 +107,19 @@ export async function createOrder(formData: FormData) {
       },
     });
 
-    if (
-      data.status === "CONFIRMED" ||
-      data.status === "SHIPPED" ||
-      data.status === "COMPLETED"
-    ) {
+    if (data.status === "CONFIRMED") {
       for (const line of lineRecords) {
-        const updated = await tx.item.update({
-          where: { id: line.itemId },
+        // Claim available stock atomically. Never create a negative balance.
+        const changed = await tx.item.updateMany({
+          where: { id: line.itemId, tenantId, stock: { gte: line.quantity } },
           data: { stock: { decrement: line.quantity } },
+        });
+        if (changed.count !== 1) {
+          throw new Error("在庫不足または無効な商品です。数量を確認してください");
+        }
+        const updated = await tx.item.findUniqueOrThrow({
+          where: { id: line.itemId },
+          select: { stock: true },
         });
         await tx.inventoryMovement.create({
           data: {
@@ -148,38 +153,45 @@ export async function setOrderStatus(orderId: string, status: OrderStatus) {
       include: { items: true },
     });
     if (!order) throw new Error("注文が見つかりません");
+    // Retrying the same operation must never repeat an inventory movement.
+    if (order.status === status) return;
+    if (!canTransitionOrder(order.status, status)) {
+      throw new Error("許可されていない受注状態の変更です。画面を更新してください");
+    }
 
-    const wasOpen =
-      order.status === "CONFIRMED" ||
-      order.status === "SHIPPED" ||
-      order.status === "COMPLETED";
-    const willOpen =
-      status === "CONFIRMED" || status === "SHIPPED" || status === "COMPLETED";
-
-    if (wasOpen && status === "CANCELLED") {
-      for (const line of order.items) {
-        const updated = await tx.item.update({
-          where: { id: line.itemId },
-          data: { stock: { increment: line.quantity } },
-        });
-        await tx.inventoryMovement.create({
-          data: {
-            tenantId,
-            itemId: line.itemId,
-            type: "INBOUND",
-            quantity: line.quantity,
-            balance: updated.stock,
-            reference: `${order.orderNumber} 取消`,
-            createdBy: userId,
-          },
-        });
+    // Connected companies must coordinate cancellations and returns explicitly.
+    // Until that workflow exists, do not silently reverse one side's stock.
+    if (status === "CANCELLED") {
+      const linked = await tx.intercompanyOrder.findUnique({
+        where: { sellerOrderId: order.id },
+        select: { id: true },
+      });
+      if (linked) {
+        throw new Error("企業間の受注は個別に取り消せません。発注元と調整してください");
       }
     }
-    if (!wasOpen && willOpen) {
+
+    // Compare-and-swap protects against duplicate clicks and parallel transitions.
+    // A failed claim rolls back the entire transaction, including any movements.
+    const claim = await tx.order.updateMany({
+      where: { id: order.id, tenantId, status: order.status },
+      data: { status },
+    });
+    if (claim.count !== 1) {
+      throw new Error("別の担当者が注文を更新しました。画面を再読み込みしてください");
+    }
+
+    if (requiresOutboundMovement(order.status, status)) {
       for (const line of order.items) {
-        const updated = await tx.item.update({
-          where: { id: line.itemId },
+        const changed = await tx.item.updateMany({
+          where: { id: line.itemId, tenantId, stock: { gte: line.quantity } },
           data: { stock: { decrement: line.quantity } },
+        });
+        if (changed.count !== 1) {
+          throw new Error(`商品「${line.itemName}」の在庫が不足しています`);
+        }
+        const updated = await tx.item.findUniqueOrThrow({
+          where: { id: line.itemId }, select: { stock: true },
         });
         await tx.inventoryMovement.create({
           data: {
@@ -194,8 +206,26 @@ export async function setOrderStatus(orderId: string, status: OrderStatus) {
         });
       }
     }
-
-    await tx.order.update({ where: { id: orderId }, data: { status } });
+    if (requiresReturnMovement(order.status, status)) {
+      for (const line of order.items) {
+        const updated = await tx.item.update({
+          where: { id: line.itemId, tenantId },
+          data: { stock: { increment: line.quantity } },
+          select: { stock: true },
+        });
+        await tx.inventoryMovement.create({
+          data: {
+            tenantId,
+            itemId: line.itemId,
+            type: "INBOUND",
+            quantity: line.quantity,
+            balance: updated.stock,
+            reference: `${order.orderNumber} 取消`,
+            createdBy: userId,
+          },
+        });
+      }
+    }
   });
 
   revalidatePath("/orders");
@@ -203,15 +233,24 @@ export async function setOrderStatus(orderId: string, status: OrderStatus) {
   revalidatePath("/items");
   revalidatePath("/inventory");
   revalidatePath("/dashboard");
+  revalidatePath("/purchase-orders");
 }
 
 export async function deleteOrder(orderId: string) {
   const { tenantId } = await requireTenant();
-  const order = await prisma.order.findFirst({ where: { id: orderId, tenantId } });
+  const order = await prisma.order.findFirst({
+    where: { id: orderId, tenantId },
+    include: { linkedCompanyOrder: { select: { id: true } } },
+  });
   if (!order) return;
+  if (order.linkedCompanyOrder) {
+    throw new Error("企業間で受信した注文は履歴保持のため削除できません");
+  }
   if (order.status !== "DRAFT" && order.status !== "CANCELLED") {
     throw new Error("確定済みの注文は削除できません。先に取消してください。");
   }
-  await prisma.order.delete({ where: { id: orderId } });
+  await prisma.order.deleteMany({
+    where: { id: orderId, tenantId, status: { in: ["DRAFT", "CANCELLED"] } },
+  });
   revalidatePath("/orders");
 }
