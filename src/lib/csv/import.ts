@@ -11,7 +11,7 @@
 import type { ImportTarget } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { coerceValue, fieldsFor, type FieldDef } from "./schema";
-import { stringifyCsv } from "./parse";
+import { toCsv } from "@/lib/csv-export";
 
 export interface ImportConfig {
   target: ImportTarget;
@@ -520,11 +520,6 @@ async function importOrders(opts: {
  * 元のヘッダ + "_error" 列を末尾に付与。
  */
 export function buildErrorCsv(headers: string[], errors: ImportResult["errors"]): string {
-  if (errors.length === 0) return "";
-  const out: string[][] = [];
-  out.push([...headers, "_error"]);
-  for (const e of errors) {
-    out.push([...e.raw, e.reason]);
-  }
-  return stringifyCsv(out);
+  if (!errors.length) return "";
+  return toCsv([...headers, "_error"], errors.map(e => [...e.raw, e.reason]));
 }
