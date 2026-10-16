@@ -130,8 +130,15 @@ export async function createOrder(formData: FormData) {
 }
 
 export async function setOrderStatus(orderId: string, status: OrderStatus) {
-  const { tenantId, userId } = await requireTenant();
+  const { tenantId, userId, role } = await requireTenant();
 
+  if (status === "CANCELLED" && role !== "OWNER" && role !== "ADMIN") {
+    const linked = await prisma.intercompanyOrder.findFirst({
+      where: { sellerOrderId: orderId, sellerTenantId: tenantId },
+      select: { id: true },
+    });
+    if (linked) throw new Error("企業間取引の取消には管理者権限が必要です");
+  }
   await applyOrderStatus({ tenantId, userId, orderId, status });
 
   revalidatePath("/orders");
