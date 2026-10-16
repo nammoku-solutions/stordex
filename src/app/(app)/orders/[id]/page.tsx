@@ -5,12 +5,19 @@ import { requireTenant } from "@/lib/session";
 import { PageHeader } from "@/components/PageHeader";
 import { dateJP, yen, num, ORDER_STATUS_LABEL, ORDER_STATUS_BADGE } from "@/lib/format";
 import { OrderStatusActions } from "./OrderStatusActions";
+import { PO_STATUS_LABEL } from "../../purchase-orders/_status";
 
-export default async function OrderDetailPage({ params }: { params: { id: string } }) {
+export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { tenantId } = await requireTenant();
+  const { id } = await params;
   const order = await prisma.order.findFirst({
-    where: { id: params.id, tenantId },
-    include: { customer: true, items: true, linkedCompanyOrder: { select: { id: true } } },
+    where: { id, tenantId },
+    include: { customer: true, items: true, linkedCompanyOrder: {
+        include: {
+          buyer: { select: { name: true } },
+          purchaseOrder: { select: { poNumber: true, status: true } },
+        },
+      } },
   });
   if (!order) notFound();
 
@@ -93,6 +100,28 @@ export default async function OrderDetailPage({ params }: { params: { id: string
         </div>
       )}
 
+      {order.linkedCompanyOrder && (
+        <section className="card p-5 mb-6 space-y-2" aria-label="企業間連携の進行状況">
+          <h2 className="font-semibold text-lg">企業間取引の進行状況</h2>
+          <p className="text-sm text-slate-600">
+            先方の発注企業: {order.linkedCompanyOrder.buyer.name}
+            （発注番号: {order.linkedCompanyOrder.purchaseOrder.poNumber}）
+          </p>
+          <p className="text-sm">
+            自社受注: <strong>{ORDER_STATUS_LABEL[order.status]}</strong> ／
+            相手の発注: <strong>{PO_STATUS_LABEL[order.linkedCompanyOrder.purchaseOrder.status]}</strong>
+          </p>
+          {order.status === "SHIPPED" && order.linkedCompanyOrder.purchaseOrder.status === "ORDERED" &&
+            <p className="text-sm text-amber-800">
+              出荷済みです。相手企業での入荷確定をお待ちください。
+            </p>}
+          {order.linkedCompanyOrder.purchaseOrder.status === "RECEIVED" &&
+            <p className="text-sm text-emerald-700">発注企業で入荷が確定されました。</p>}
+          <p className="text-xs text-slate-500">
+            これらは双方の伝票ステータスを参照した表示です。出荷や入荷を自動実行するものではありません。
+          </p>
+        </section>
+      )}
       <OrderStatusActions orderId={order.id} status={order.status} linkedCompanyOrder={!!order.linkedCompanyOrder} />
     </>
   );

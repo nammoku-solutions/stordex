@@ -2,7 +2,8 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requireTenant } from "@/lib/session";
 import { PageHeader } from "@/components/PageHeader";
-import { dateJP, yen } from "@/lib/format";
+import { dateJP, yen, ORDER_STATUS_LABEL } from "@/lib/format";
+import { PO_STATUS_LABEL } from "../../purchase-orders/_status";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,7 @@ export default async function InboundOrdersPage() {
     include: {
       buyer: { select: { name: true, slug: true } },
       sellerOrder: { select: { id: true, orderNumber: true, status: true } },
+      purchaseOrder: { select: { status: true } },
       _count: { select: { items: true } },
     },
     orderBy: { createdAt: "desc" },
@@ -49,7 +51,12 @@ export default async function InboundOrdersPage() {
                 <td className="text-right">{r._count.items}</td>
                 <td className="text-right">{yen(r.total)}</td>
                 <td>{labels[r.status] ?? r.status}
-                  {r.sellerOrder && <div className="text-xs text-slate-500">{r.sellerOrder.orderNumber} / {r.sellerOrder.status}</div>}
+                  {r.sellerOrder && <div className="text-xs text-slate-500">
+                    自社受注: {r.sellerOrder.orderNumber} / {ORDER_STATUS_LABEL[r.sellerOrder.status]}
+                  </div>}
+                  <div className="text-xs text-slate-500">
+                    先方の発注: {PO_STATUS_LABEL[r.purchaseOrder.status]}
+                  </div>
                 </td>
                 <td><Link href={`/orders/inbox/${r.id}`} className="text-blue-700 underline">内容を見る</Link></td>
               </tr>
