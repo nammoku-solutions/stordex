@@ -43,6 +43,7 @@ function SidebarContent({
       >
         <NavLink href="/dashboard" label="ダッシュボード" />
         <NavLink href="/orders" label="受注管理" />
+        <NavLink href="/orders/inbox" label="企業間受注トレイ" />
         <NavLink href="/quotations" label="見積書" />
         <NavLink href="/purchase-orders" label="仕入先発注" />
         <NavLink href="/network" label="企業間取引" />

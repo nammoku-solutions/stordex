@@ -6,14 +6,36 @@ import { PageHeader } from "@/components/PageHeader";
 import { dateJP, yen, num } from "@/lib/format";
 import { PO_STATUS_BADGE, PO_STATUS_LABEL } from "../_status";
 import { POStatusActions } from "./POStatusActions";
+import { sendPurchaseOrderToPartner } from "../send-actions";
 
 export default async function POPage({ params }: { params: { id: string } }) {
-  const { tenantId } = await requireTenant();
+  const { tenantId, role } = await requireTenant();
   const po = await prisma.purchaseOrder.findFirst({
     where: { id: params.id, tenantId },
-    include: { supplier: true, items: { include: { item: true } } },
+    include: {
+      supplier: true,
+      items: { include: { item: true } },
+      linkedCompanyOrder: {
+        include: {
+          seller: { select: { name: true, slug: true } },
+          sellerOrder: { select: { orderNumber: true, status: true } },
+        },
+      },
+    },
   });
   if (!po) notFound();
+  const canSend = po.status === "ORDERED" && !po.linkedCompanyOrder &&
+    (role === "OWNER" || role === "ADMIN");
+  const connections = canSend ? await prisma.tradingConnection.findMany({
+    where: { status: "ACTIVE", OR: [{ tenantAId: tenantId }, { tenantBId: tenantId }] },
+    include: {
+      tenantA: { select: { id: true, name: true, status: true } },
+      tenantB: { select: { id: true, name: true, status: true } },
+    },
+  }) : [];
+  const partners = connections
+    .map(link => link.tenantAId === tenantId ? link.tenantB : link.tenantA)
+    .filter(partner => partner.status === "ACTIVE");
 
   return (
     <>
@@ -77,6 +99,49 @@ export default async function POPage({ params }: { params: { id: string } }) {
         </table>
       </div>
 
+      {po.linkedCompanyOrder && (
+        <div className="card p-5 mb-5">
+          <h2 className="font-semibold mb-2">企業間発注の送信状況</h2>
+          <p>送信先: {po.linkedCompanyOrder.seller.name}</p>
+          <p>送信状態: {po.linkedCompanyOrder.status}</p>
+          {po.linkedCompanyOrder.sellerOrder &&
+            <p className="text-sm text-slate-600">
+              先方の受注: {po.linkedCompanyOrder.sellerOrder.orderNumber} /
+              {po.linkedCompanyOrder.sellerOrder.status}
+            </p>
+          }
+        </div>
+      )}
+      {canSend && (
+        <div className="card p-5 mb-5 space-y-3">
+          <h2 className="text-lg font-semibold">Stordex利用企業へ発注を送信</h2>
+          {partners.length === 0 ? (
+            <p className="text-sm">接続済み企業がありません。
+              <Link href="/network" className="underline text-blue-700 ml-2">企業間接続へ</Link>
+            </p>
+          ) : (
+            <form action={sendPurchaseOrderToPartner} className="space-y-3">
+              <input type="hidden" name="purchaseOrderId" value={po.id}/>
+              <div>
+                <label className="label">送信先（接続済みの会社）*</label>
+                <select className="input" name="partnerId" required defaultValue="">
+                  <option value="">選択してください</option>
+                  {partners.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+              <p className="text-sm text-amber-800">
+                自社の仕入先「{po.supplier.name}」と選択した送信先企業が一致するか、
+                必ず確認してください。送信後は別企業の受信トレイに明細が届きます。
+              </p>
+              <label className="flex gap-2 text-sm items-start">
+                <input type="checkbox" name="confirmRecipient" value="yes" required className="mt-1"/>
+                発注書の内容・数量・金額・送信先企業を確認しました
+              </label>
+              <button type="submit" className="btn-primary">この企業へ発注書を送信</button>
+            </form>
+          )}
+        </div>
+      )}
       <POStatusActions id={po.id} status={po.status} />
     </>
   );
