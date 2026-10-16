@@ -115,6 +115,24 @@ export async function POST(req: NextRequest) {
   };
 
   const dryrun = mode === "dryrun";
+  // Do not start a committing import if a dry-run already finds malformed rows,
+  // missing references or internally inconsistent order lines.
+  // The commit still uses row-level error reporting for conflicts occurring later.
+  if (!dryrun) {
+    const preflight = await runImport({ tenantId, rows, config, dryrun: true });
+    if (preflight.errorCount > 0) {
+      return NextResponse.json({
+        ok: false,
+        status: "VALIDATION_FAILED",
+        error: "CSVの検証でエラーが見つかりました。修正後に再試行してください。データは取り込んでいません。",
+        result: {
+          ...preflight,
+          errors: preflight.errors.slice(0, 50),
+          hasErrorCsv: false,
+        },
+      }, { status: 422 });
+    }
+  }
   const result = await runImport({ tenantId, rows, config, dryrun });
 
   // ImportJob を記録
