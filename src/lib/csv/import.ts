@@ -411,7 +411,8 @@ async function importOrders(opts: {
     if (rows.some(({ rec }) =>
       rec.customerCode !== head.customerCode ||
       rec.orderDate?.getTime() !== head.orderDate?.getTime() ||
-      (rec.dueDate?.getTime() ?? null) !== (head.dueDate?.getTime() ?? null))) {
+      (rec.dueDate?.getTime() ?? null) !== (head.dueDate?.getTime() ?? null) ||
+      (rec.taxRate ?? 10) !== (head.taxRate ?? 10))) {
       for (const row of rows) {
         result.errors.push({ row: row.rowNum,
           reason: "同じ受注番号で得意先・受注日・納品日が一致しません",
