@@ -107,11 +107,7 @@ export async function createOrder(formData: FormData) {
       },
     });
 
-    if (
-      data.status === "CONFIRMED" ||
-      data.status === "SHIPPED" ||
-      data.status === "COMPLETED"
-    ) {
+    if (data.status === "CONFIRMED") {
       for (const line of lineRecords) {
         // Claim available stock atomically. Never create a negative balance.
         const changed = await tx.item.updateMany({
