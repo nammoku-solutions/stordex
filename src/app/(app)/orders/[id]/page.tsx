@@ -10,7 +10,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
   const { tenantId } = await requireTenant();
   const order = await prisma.order.findFirst({
     where: { id: params.id, tenantId },
-    include: { customer: true, items: true },
+    include: { customer: true, items: true, linkedCompanyOrder: { select: { id: true } } },
   });
   if (!order) notFound();
 
@@ -93,7 +93,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
         </div>
       )}
 
-      <OrderStatusActions orderId={order.id} status={order.status} />
+      <OrderStatusActions orderId={order.id} status={order.status} linkedCompanyOrder={!!order.linkedCompanyOrder} />
     </>
   );
 }
