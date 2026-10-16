@@ -27,7 +27,7 @@ export function OrderStatusActions({
   const canDelete = status === "DRAFT" || status === "CANCELLED";
 
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap items-center gap-2" aria-busy={pending}>
       {next.map((s) => (
         <button
           key={s}
@@ -49,6 +49,7 @@ export function OrderStatusActions({
           → {ORDER_STATUS_LABEL[s]}
         </button>
       ))}
+      {pending && <span className="text-sm text-slate-600" role="status">処理中…</span>}
       {canDelete && (
         <button
           disabled={pending}
