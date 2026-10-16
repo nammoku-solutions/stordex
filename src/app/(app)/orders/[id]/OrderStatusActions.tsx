@@ -20,7 +20,9 @@ export function OrderStatusActions({
 }) {
   const [pending, start] = useTransition();
   const router = useRouter();
-  const next = ORDER_TRANSITIONS[status];
+  const next = ORDER_TRANSITIONS[status].filter((state) =>
+    !(linkedCompanyOrder && state === "CANCELLED" && !canManageLinkedCancellation)
+  );
   const canDelete = !linkedCompanyOrder && (status === "DRAFT" || status === "CANCELLED");
 
   return (
