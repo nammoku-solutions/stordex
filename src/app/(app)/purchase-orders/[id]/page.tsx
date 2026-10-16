@@ -171,6 +171,7 @@ export default async function POPage({ params }: { params: Promise<{ id: string 
         status={po.status}
         linkedStatus={po.linkedCompanyOrder?.status}
         sellerOrderStatus={po.linkedCompanyOrder?.sellerOrder?.status}
+        canManageLinkedCancellation={role === "OWNER" || role === "ADMIN"}
       />
     </>
   );
