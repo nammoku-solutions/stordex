@@ -8,7 +8,7 @@ import { OrderStatusActions } from "./OrderStatusActions";
 import { PO_STATUS_LABEL } from "../../purchase-orders/_status";
 
 export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { tenantId } = await requireTenant();
+  const { tenantId, role } = await requireTenant();
   const { id } = await params;
   const order = await prisma.order.findFirst({
     where: { id, tenantId },
