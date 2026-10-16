@@ -4,7 +4,7 @@ on:
   push:
     branches: [test/csv-import-postgres-idempotence-20261017, "fix/b2b-safe-document-sequences-*"]
   pull_request:
-    branches: [main, develop]
+    branches: [main, develop, test/csv-import-postgres-idempotence-20261017]
   workflow_dispatch:
 
 permissions:
