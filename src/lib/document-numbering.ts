@@ -41,7 +41,7 @@ export async function nextDocumentNumber(
   await tx.$queryRaw`SELECT pg_advisory_xact_lock(
     hashtext(${"stordex:number:" + tenantId}),
     hashtext(${kind + ":" + day})
-  )`;
+  )::text AS lock_result`;
 
   const last = kind === "SO"
     ? await tx.order.findFirst({
