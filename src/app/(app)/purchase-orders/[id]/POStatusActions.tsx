@@ -21,7 +21,8 @@ export function POStatusActions({
   const [pending, start] = useTransition();
   const router = useRouter();
   const linkedCannotCancel = linkedStatus === "ACCEPTED" && sellerOrderStatus !== "CANCELLED";
-  const canCancel = (status === "DRAFT" || status === "ORDERED") && !linkedCannotCancel;
+  const canCancel = (status === "DRAFT" || status === "ORDERED") &&
+    !linkedCannotCancel && (!linkedStatus || canManageLinkedCancellation);
 
   const advance = async (next: PurchaseOrderStatus, msg?: string) => {
     if (msg && !window.confirm(msg)) return;
