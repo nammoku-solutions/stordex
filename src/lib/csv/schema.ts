@@ -102,6 +102,7 @@ export const ORDER_FIELDS: FieldDef[] = [
   { key: "unit", label: "単位", type: "string", aliases: ["単位", "Unit"] },
   { key: "quantity", label: "数量", type: "int", required: true, aliases: ["数量", "Quantity", "Qty"] },
   { key: "unitPrice", label: "単価", type: "int", aliases: ["単価", "UnitPrice", "Price"] },
+  { key: "taxRate", label: "消費税率", type: "int", aliases: ["税率", "消費税率", "TaxRate"] },
   { key: "remark", label: "明細備考", type: "string", aliases: ["摘要", "適用", "Remark"] },
 ];
 

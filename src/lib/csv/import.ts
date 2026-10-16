@@ -365,11 +365,19 @@ async function importOrders(opts: {
 
   // 行 → record
   const records: { rowNum: number; rec: Record<string, any>; raw: string[] }[] = [];
+  // A malformed detail must invalidate its entire source order, never create
+  // an incomplete order containing only the other (valid) details.
+  const rejectedOrderNumbers = new Set<string>();
+  const orderNumberColumn = headers.indexOf(config.mapping.orderNumber);
   for (let i = 0; i < data.length; i++) {
     const rowNum = headerRow + 1 + (config.skipRows ?? 0) + i + 1;
     const row = data[i];
     const r = rowToRecord(row, headers, config.mapping, fields);
     if (!r.ok) {
+      if (orderNumberColumn >= 0) {
+        const sourceOrderNumber = row[orderNumberColumn]?.trim();
+        if (sourceOrderNumber) rejectedOrderNumbers.add(sourceOrderNumber);
+      }
       result.errorCount++;
       result.errors.push({ row: rowNum, reason: r.error, raw: row });
       continue;
@@ -386,7 +394,33 @@ async function importOrders(opts: {
   }
 
   for (const [orderNumber, rows] of groups) {
+    if (rejectedOrderNumbers.has(orderNumber)) {
+      for (const row of rows) {
+        result.errors.push({
+          row: row.rowNum,
+          reason: "同一受注番号に不正な明細があります。受注全体を取り込みません",
+          raw: row.raw,
+        });
+        result.errorCount++;
+      }
+      continue;
+    }
     const head = rows[0].rec;
+    // Exported documents repeat header columns on every line. Discrepancies
+    // indicate merged or corrupted CSV data and should never be silently ignored.
+    if (rows.some(({ rec }) =>
+      rec.customerCode !== head.customerCode ||
+      rec.orderDate?.getTime() !== head.orderDate?.getTime() ||
+      (rec.dueDate?.getTime() ?? null) !== (head.dueDate?.getTime() ?? null) ||
+      (rec.taxRate ?? 10) !== (head.taxRate ?? 10))) {
+      for (const row of rows) {
+        result.errors.push({ row: row.rowNum,
+          reason: "同じ受注番号で得意先・受注日・納品日が一致しません",
+          raw: row.raw });
+        result.errorCount++;
+      }
+      continue;
+    }
     try {
       // 既存注文番号 → スキップ
       const existing = await prisma.order.findUnique({
@@ -468,7 +502,10 @@ async function importOrders(opts: {
       if (lineErr) continue;
       if (items.length === 0) continue;
 
-      const taxRate = 10;
+      const taxRate = head.taxRate ?? 10;
+      if (!Number.isSafeInteger(taxRate) || taxRate < 0 || taxRate > 100) {
+        throw new Error("消費税率は0～100の整数で指定してください");
+      }
       const tax = Math.floor(subtotal * (taxRate / 100));
       const total = subtotal + tax;
 

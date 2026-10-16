@@ -116,7 +116,14 @@ export function ImportClient({ fieldsByTarget, presetsByTarget }: Props) {
     try {
       const r = await fetch("/api/import", { method: "POST", body: buildForm(mode) });
       const j = (await r.json()) as RunResult & { error?: string };
-      if (!r.ok && j.error) throw new Error(j.error);
+      // A failed preflight contains per-row diagnostics and no DB writes.
+      // Show those details instead of hiding them behind a generic alert.
+      if (!r.ok && j.result) {
+        setResult(j);
+        setErr(j.error ?? "取り込み前の検証に失敗しました");
+        return;
+      }
+      if (!r.ok) throw new Error(j.error ?? "取り込みに失敗しました");
       setResult(j);
     } catch (e: any) {
       setErr(e.message);
