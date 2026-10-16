@@ -45,6 +45,7 @@ function SidebarContent({
         <NavLink href="/orders" label="受注管理" />
         <NavLink href="/quotations" label="見積書" />
         <NavLink href="/purchase-orders" label="仕入先発注" />
+        <NavLink href="/network" label="企業間取引" />
         <NavLink href="/invoices" label="請求書" />
         <NavLink href="/customers" label="得意先" />
         <NavLink href="/items" label="商品マスタ" />
