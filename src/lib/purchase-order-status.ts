@@ -24,6 +24,11 @@ export async function applyPurchaseOrderStatus({
 
     const linked = po.linkedCompanyOrder;
     if (linked && status === "CANCELLED") {
+      // Future partial receipts require a separate return workflow, even if
+      // the PO status has not yet been moved to RECEIVED.
+      if (po.items.some(line => line.received > 0)) {
+        throw new Error("一部でも入荷済みの発注は、この取消機能では処理できません");
+      }
       if (linked.status === "ACCEPTED" && linked.sellerOrder?.status !== "CANCELLED") {
         throw new Error("受注企業が承認済みです。先方が出荷前の受注を取り消した後に発注取消できます");
       }
