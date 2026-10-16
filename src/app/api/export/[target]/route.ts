@@ -4,6 +4,7 @@ import { requireTenant } from "@/lib/session";
 import { toCsv, exportDate, exportTimestamp, type CsvCell } from "@/lib/csv-export";
 
 export const runtime = "nodejs";
+export const preferredRegion = "sin1";
 export const dynamic = "force-dynamic";
 
 type Dataset = { headers: string[]; rows: CsvCell[][] };
