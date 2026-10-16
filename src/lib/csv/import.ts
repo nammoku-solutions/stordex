@@ -502,7 +502,10 @@ async function importOrders(opts: {
       if (lineErr) continue;
       if (items.length === 0) continue;
 
-      const taxRate = 10;
+      const taxRate = head.taxRate ?? 10;
+      if (!Number.isSafeInteger(taxRate) || taxRate < 0 || taxRate > 100) {
+        throw new Error("消費税率は0～100の整数で指定してください");
+      }
       const tax = Math.floor(subtotal * (taxRate / 100));
       const total = subtotal + tax;
 
