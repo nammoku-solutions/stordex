@@ -56,6 +56,12 @@ jobs:
       - name: Run CSV unit and real-DB integration tests
         run: npm test -- src/lib/csv/roundtrip.test.ts src/lib/csv/postgres-import.integration.test.ts src/lib/document-numbering.integration.test.ts src/lib/order-transitions.test.ts src/lib/order-status.integration.test.ts src/lib/b2b-races.integration.test.ts src/lib/b2b-coordinated-cancellation.integration.test.ts
 
+      - name: Typecheck Next.js and Prisma code
+        run: npm run typecheck
+
+      - name: Build application
+        run: npm run build
+
       - name: Report CSV integration check
         if: always()
         env:
@@ -70,4 +76,4 @@ jobs:
           gh api -X POST "repos/${{ github.repository }}/statuses/${{ github.sha }}" \
             -f state="$STATE" \
             -f context="Stordex B2B Cancellation PostgreSQL" \
-            -f description="Seller-first cancellation and inventory restoration tests ($JOB_RESULT)"
+            -f description="B2B cancel/stock tests and app build ($JOB_RESULT)"
