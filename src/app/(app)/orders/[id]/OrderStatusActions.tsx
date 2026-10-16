@@ -11,10 +11,12 @@ export function OrderStatusActions({
   orderId,
   status,
   linkedCompanyOrder = false,
+  canManageLinkedCancellation = false,
 }: {
   orderId: string;
   status: OrderStatus;
   linkedCompanyOrder?: boolean;
+  canManageLinkedCancellation?: boolean;
 }) {
   const [pending, start] = useTransition();
   const router = useRouter();
