@@ -301,10 +301,15 @@ async function upsertItem(
         });
         if (!current) throw new Error("取り込み対象の商品が見つかりません");
         const updatedStock = rec.stock == null ? current.stock : rec.stock;
-        await tx.item.update({
-          where: { id: current.id, tenantId },
+        // Compare-and-swap stock protects the ledger from overlapping
+        // adjustments, shipment confirmations and repeated CSV writes.
+        const updated = await tx.item.updateMany({
+          where: { id: current.id, tenantId, stock: current.stock },
           data: { ...Object.fromEntries(Object.entries(details).filter(([, value]) => value != null)), ...(rec.stock != null ? { stock: updatedStock } : {}) },
         });
+        if (updated.count !== 1) {
+          throw new Error("取込中に在庫が変更されました。最新の在庫を確認して再試行してください");
+        }
         const change = updatedStock - current.stock;
         if (change !== 0) {
           await tx.inventoryMovement.create({
@@ -465,6 +470,16 @@ async function importOrders(opts: {
           result.errors.push({
             row: r.rowNum,
             reason: `商品コード ${itemRow.itemCode} が未登録`,
+            raw: r.raw,
+          });
+          result.errorCount++;
+          lineErr = true;
+          continue;
+        }
+        if (itemRow.unit && itemRow.unit !== item.unit) {
+          result.errors.push({
+            row: r.rowNum,
+            reason: `商品コード ${itemRow.itemCode} の単位が商品マスタ（${item.unit}）と一致しません`,
             raw: r.raw,
           });
           result.errorCount++;
