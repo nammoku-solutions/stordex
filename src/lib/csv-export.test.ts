@@ -15,7 +15,7 @@ describe("CSV export encoder", () => {
       ["-remote", 1],
     ]);
     expect(csv).toContain("'=HYPERLINK");
-    expect(csv).toContain(", -2").toBe(false);
+    expect(csv).not.toContain(", -2");
     expect(csv).toContain(",-2");
     expect(csv).toContain("'  +SUM(A1:A2)");
     expect(csv).toContain("'@bad");
