@@ -60,6 +60,13 @@ enum TenantStatus {
   TERMINATED
 }
 
+enum TradingConnectionStatus {
+  PENDING
+  ACTIVE
+  DECLINED
+  REVOKED
+}
+
 model Tenant {
   id        String   @id @default(cuid())
   name      String
@@ -83,6 +90,8 @@ model Tenant {
   invoices       Invoice[]
   businessUnits  BusinessUnit[]
   warehouses     Warehouse[]
+  tradingConnectionsA TradingConnection[] @relation("TradingTenantA")
+  tradingConnectionsB TradingConnection[] @relation("TradingTenantB")
 }
 
 // テナント新規作成用の招待トークン（Nammoku Solutions が入金確認後に発行）
@@ -479,4 +488,23 @@ model InvoiceOrder {
 
   @@id([invoiceId, orderId])
   @@index([orderId])
+}
+
+// An approved trading relationship is required before any cross-tenant order exchange.
+// Always persist tenantAId < tenantBId to prevent reverse-direction duplicates.
+model TradingConnection {
+  id                  String                  @id @default(cuid())
+  tenantAId           String
+  tenantBId           String
+  requestedByTenantId String
+  status              TradingConnectionStatus @default(PENDING)
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+
+  tenantA Tenant @relation("TradingTenantA", fields: [tenantAId], references: [id], onDelete: Cascade)
+  tenantB Tenant @relation("TradingTenantB", fields: [tenantBId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantAId, tenantBId])
+  @@index([tenantBId, status])
+  @@index([tenantAId, status])
 }
