@@ -2,9 +2,9 @@ name: CSV PostgreSQL Integration
 
 on:
   push:
-    branches: [test/csv-import-postgres-idempotence-20261017, "fix/b2b-safe-document-sequences-*", test/order-ledger-concurrency-20261017]
+    branches: [test/csv-import-postgres-idempotence-20261017, "fix/b2b-safe-document-sequences-*", test/order-ledger-concurrency-20261017, "fix/b2b-accept-cancel-races-*"]
   pull_request:
-    branches: [main, develop, test/csv-import-postgres-idempotence-20261017, fix/b2b-safe-document-sequences-20261017]
+    branches: [main, develop, test/csv-import-postgres-idempotence-20261017, fix/b2b-safe-document-sequences-20261017, test/order-ledger-concurrency-20261017]
   workflow_dispatch:
 
 permissions:
@@ -54,7 +54,7 @@ jobs:
         run: npx prisma migrate deploy
 
       - name: Run CSV unit and real-DB integration tests
-        run: npm test -- src/lib/csv/roundtrip.test.ts src/lib/csv/postgres-import.integration.test.ts src/lib/document-numbering.integration.test.ts src/lib/order-transitions.test.ts src/lib/order-status.integration.test.ts
+        run: npm test -- src/lib/csv/roundtrip.test.ts src/lib/csv/postgres-import.integration.test.ts src/lib/document-numbering.integration.test.ts src/lib/order-transitions.test.ts src/lib/order-status.integration.test.ts src/lib/b2b-races.integration.test.ts
 
       - name: Report CSV integration check
         if: always()
@@ -69,5 +69,5 @@ jobs:
           fi
           gh api -X POST "repos/${{ github.repository }}/statuses/${{ github.sha }}" \
             -f state="$STATE" \
-            -f context="Stordex Order Ledger PostgreSQL" \
-            -f description="B2B numbering and order status ledger Postgres tests ($JOB_RESULT)"
+            -f context="Stordex B2B Race PostgreSQL" \
+            -f description="Concurrent B2B send/cancel/accept and stock ledger tests ($JOB_RESULT)"
