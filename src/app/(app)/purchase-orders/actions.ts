@@ -115,7 +115,7 @@ export async function setPurchaseOrderStatus(id: string, status: PurchaseOrderSt
   await prisma.$transaction(async (tx) => {
     const po = await tx.purchaseOrder.findFirst({
       where: { id, tenantId },
-      include: { items: true, linkedCompanyOrder: true },
+      include: { items: true, linkedCompanyOrder: { include: { sellerOrder: { select: { status: true } } } } },
     });
     if (!po) throw new Error("発注が見つかりません");
     if (po.status === status) return;
@@ -137,8 +137,11 @@ export async function setPurchaseOrderStatus(id: string, status: PurchaseOrderSt
         if (changed.count !== 1) throw new Error("先方で注文が処理されたため取消できません");
       }
     }
-    if (linked && status === "RECEIVED" && linked.status !== "ACCEPTED") {
-      throw new Error("送信した企業間発注は、先方の受注登録後に入荷を確定してください");
+    if (linked && status === "RECEIVED" &&
+        (linked.status !== "ACCEPTED" ||
+          !linked.sellerOrder ||
+          !["SHIPPED", "COMPLETED"].includes(linked.sellerOrder.status))) {
+      throw new Error("企業間発注の入荷は、先方の受注が出荷済みになってから確定してください");
     }
 
     // Conditional claim prevents repeated RECEIVE from incrementing inventory twice.
