@@ -45,6 +45,14 @@ export async function applyOrderStatus({
         if (buyerPO?.status !== "ORDERED") {
           throw new Error("発注元が入荷・取消処理済みのため、この受注は取り消せません");
         }
+        // Linked invoices require a separate credit-note workflow; never
+        // silently restore inventory while leaving billed documents intact.
+        const invoiceLink = await tx.invoiceOrder.findFirst({
+          where: { orderId: order.id }, select: { invoiceId: true },
+        });
+        if (invoiceLink) {
+          throw new Error("請求書に紐づく企業間受注は、この取消機能では処理できません");
+        }
       }
     }
 
