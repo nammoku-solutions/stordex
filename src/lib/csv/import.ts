@@ -255,20 +255,23 @@ async function upsertItem(
 ) {
   const existing = await prisma.item.findUnique({
     where: { tenantId_code: { tenantId, code: rec.code } },
-    select: { id: true },
+    select: { id: true, stock: true },
   });
 
-  // supplierCode → supplierId
   let supplierId: string | null = null;
   if (rec.supplierCode) {
-    const s = await prisma.supplier.findUnique({
+    const supplier = await prisma.supplier.findUnique({
       where: { tenantId_code: { tenantId, code: rec.supplierCode } },
       select: { id: true },
     });
-    supplierId = s?.id ?? null;
+    if (!supplier) throw new Error(`未登録の仕入先コード: ${rec.supplierCode}`);
+    supplierId = supplier.id;
   }
 
-  const data: any = {
+  if (rec.stock != null && (!Number.isSafeInteger(rec.stock) || rec.stock < 0)) {
+    throw new Error("在庫数は0以上の整数で指定してください");
+  }
+  const details = {
     name: rec.name,
     nameKana: rec.nameKana,
     unit: rec.unit ?? "個",
@@ -277,7 +280,6 @@ async function upsertItem(
     caseQty: rec.caseQty,
     orderUnit: rec.orderUnit,
     barcode: rec.barcode,
-    stock: rec.stock ?? 0,
     reorderPoint: rec.reorderPoint ?? 0,
     costPrice: rec.costPrice ?? 0,
     salesPrice: rec.salesPrice ?? 0,
@@ -292,13 +294,55 @@ async function upsertItem(
       return;
     }
     if (!dryrun) {
-      await prisma.item.update({ where: { id: existing.id }, data });
+      await prisma.$transaction(async (tx) => {
+        const current = await tx.item.findFirst({
+          where: { id: existing.id, tenantId },
+          select: { id: true, stock: true },
+        });
+        if (!current) throw new Error("取り込み対象の商品が見つかりません");
+        const updatedStock = rec.stock == null ? current.stock : rec.stock;
+        await tx.item.update({
+          where: { id: current.id, tenantId },
+          data: { ...details, ...(rec.stock != null ? { stock: updatedStock } : {}) },
+        });
+        const change = updatedStock - current.stock;
+        if (change !== 0) {
+          await tx.inventoryMovement.create({
+            data: {
+              tenantId,
+              itemId: current.id,
+              type: "ADJUSTMENT",
+              quantity: change,
+              balance: updatedStock,
+              note: "CSV在庫調整（移行・取込）",
+            },
+          });
+        }
+      });
     }
     result.updatedCount++;
     return;
   }
   if (!dryrun) {
-    await prisma.item.create({ data: { tenantId, code: rec.code, ...data } });
+    await prisma.$transaction(async (tx) => {
+      const stock = rec.stock ?? 0;
+      const created = await tx.item.create({
+        data: { tenantId, code: rec.code, ...details, stock },
+        select: { id: true },
+      });
+      if (stock !== 0) {
+        await tx.inventoryMovement.create({
+          data: {
+            tenantId,
+            itemId: created.id,
+            type: "ADJUSTMENT",
+            quantity: stock,
+            balance: stock,
+            note: "CSV初期在庫（移行・取込）",
+          },
+        });
+      }
+    });
   }
   result.createdCount++;
 }
