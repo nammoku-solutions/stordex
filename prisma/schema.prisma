@@ -67,6 +67,13 @@ enum TradingConnectionStatus {
   REVOKED
 }
 
+enum IntercompanyOrderStatus {
+  SENT
+  ACCEPTED
+  REJECTED
+  CANCELLED
+}
+
 model Tenant {
   id        String   @id @default(cuid())
   name      String
@@ -92,6 +99,8 @@ model Tenant {
   warehouses     Warehouse[]
   tradingConnectionsA TradingConnection[] @relation("TradingTenantA")
   tradingConnectionsB TradingConnection[] @relation("TradingTenantB")
+  outboundCompanyOrders IntercompanyOrder[] @relation("IntercompanyBuyer")
+  inboundCompanyOrders  IntercompanyOrder[] @relation("IntercompanySeller")
 }
 
 // テナント新規作成用の招待トークン（Nammoku Solutions が入金確認後に発行）
@@ -300,6 +309,7 @@ model Order {
   customer     Customer       @relation(fields: [customerId], references: [id], onDelete: Restrict)
   items        OrderItem[]
   invoiceLinks InvoiceOrder[]
+  linkedCompanyOrder IntercompanyOrder? @relation("IntercompanySellerOrder")
 
   @@unique([tenantId, orderNumber])
   @@index([tenantId, orderDate])
@@ -422,6 +432,7 @@ model PurchaseOrder {
   tenant   Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   supplier Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
   items    PurchaseOrderItem[]
+  linkedCompanyOrder IntercompanyOrder? @relation("IntercompanySourcePO")
 
   @@unique([tenantId, poNumber])
   @@index([tenantId, orderDate])
@@ -503,8 +514,58 @@ model TradingConnection {
 
   tenantA Tenant @relation("TradingTenantA", fields: [tenantAId], references: [id], onDelete: Cascade)
   tenantB Tenant @relation("TradingTenantB", fields: [tenantBId], references: [id], onDelete: Cascade)
+  companyOrders IntercompanyOrder[]
 
   @@unique([tenantAId, tenantBId])
   @@index([tenantBId, status])
   @@index([tenantAId, status])
+}
+
+// Immutable buyer order snapshot, routed only across an ACTIVE bilateral relationship.
+// The seller must explicitly map SKUs/customers before its own draft Order is created.
+model IntercompanyOrder {
+  id               String                   @id @default(cuid())
+  connectionId     String
+  buyerTenantId    String
+  sellerTenantId   String
+  purchaseOrderId  String                   @unique
+  sellerOrderId    String?                  @unique
+  poNumber         String
+  orderDate        DateTime
+  deliveryDate     DateTime?
+  subtotal         Int
+  taxRate          Int
+  tax              Int
+  total            Int
+  note             String?
+  status           IntercompanyOrderStatus  @default(SENT)
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+
+  connection    TradingConnection @relation(fields: [connectionId], references: [id], onDelete: Restrict)
+  buyer         Tenant            @relation("IntercompanyBuyer", fields: [buyerTenantId], references: [id], onDelete: Restrict)
+  seller        Tenant            @relation("IntercompanySeller", fields: [sellerTenantId], references: [id], onDelete: Restrict)
+  purchaseOrder PurchaseOrder     @relation("IntercompanySourcePO", fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  sellerOrder   Order?            @relation("IntercompanySellerOrder", fields: [sellerOrderId], references: [id], onDelete: Restrict)
+  items         IntercompanyOrderItem[]
+
+  @@index([sellerTenantId, status, createdAt])
+  @@index([buyerTenantId, createdAt])
+}
+
+model IntercompanyOrderItem {
+  id                         String @id @default(cuid())
+  intercompanyOrderId        String
+  sourcePurchaseOrderItemId  String
+  buyerItemCode              String
+  itemName                   String
+  unit                       String
+  quantity                   Int
+  unitPrice                  Int
+  amount                     Int
+
+  order IntercompanyOrder @relation(fields: [intercompanyOrderId], references: [id], onDelete: Cascade)
+
+  @@unique([intercompanyOrderId, sourcePurchaseOrderItemId])
+  @@index([intercompanyOrderId])
 }
