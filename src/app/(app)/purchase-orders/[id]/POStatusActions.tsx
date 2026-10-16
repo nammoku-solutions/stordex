@@ -10,11 +10,13 @@ export function POStatusActions({
   status,
   linkedStatus,
   sellerOrderStatus,
+  canManageLinkedCancellation = false,
 }: {
   id: string;
   status: PurchaseOrderStatus;
   linkedStatus?: "SENT" | "ACCEPTED" | "REJECTED" | "CANCELLED";
   sellerOrderStatus?: "DRAFT" | "CONFIRMED" | "SHIPPED" | "COMPLETED" | "CANCELLED";
+  canManageLinkedCancellation?: boolean;
 }) {
   const [pending, start] = useTransition();
   const router = useRouter();
