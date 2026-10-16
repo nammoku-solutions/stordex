@@ -8,6 +8,7 @@ import { requireTenant } from "@/lib/session";
 import { assertTenantCustomer } from "@/lib/tenant-resources";
 import type { OrderStatus } from "@/generated/prisma/client";
 import { canTransitionOrder, requiresOutboundMovement, requiresReturnMovement } from "@/lib/order-transitions";
+import { nextDocumentNumber } from "@/lib/document-numbering";
 
 const LineSchema = z.object({
   itemId: z.string().min(1),
@@ -44,21 +45,6 @@ function parseOrder(formData: FormData) {
   });
 }
 
-async function nextOrderNumber(tenantId: string) {
-  const today = new Date();
-  const ymd = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}${String(
-    today.getDate()
-  ).padStart(2, "0")}`;
-  const prefix = `SO-${ymd}-`;
-  const last = await prisma.order.findFirst({
-    where: { tenantId, orderNumber: { startsWith: prefix } },
-    orderBy: { orderNumber: "desc" },
-    select: { orderNumber: true },
-  });
-  const seq = last ? parseInt(last.orderNumber.slice(prefix.length), 10) + 1 : 1;
-  return `${prefix}${String(seq).padStart(4, "0")}`;
-}
-
 export async function createOrder(formData: FormData) {
   const { tenantId, userId } = await requireTenant();
   const data = parseOrder(formData);
@@ -87,9 +73,8 @@ export async function createOrder(formData: FormData) {
   const tax = Math.floor((subtotal * data.taxRate) / 100);
   const total = subtotal + tax;
 
-  const orderNumber = await nextOrderNumber(tenantId);
-
   const order = await prisma.$transaction(async (tx) => {
+    const orderNumber = await nextDocumentNumber(tx, tenantId, "SO");
     const created = await tx.order.create({
       data: {
         tenantId,

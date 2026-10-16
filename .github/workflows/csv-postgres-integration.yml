@@ -2,9 +2,9 @@ name: CSV PostgreSQL Integration
 
 on:
   push:
-    branches: [test/csv-import-postgres-idempotence-20261017]
+    branches: [test/csv-import-postgres-idempotence-20261017, "fix/b2b-safe-document-sequences-*"]
   pull_request:
-    branches: [main, develop]
+    branches: [main, develop, test/csv-import-postgres-idempotence-20261017]
   workflow_dispatch:
 
 permissions:
@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   csv-import:
-    name: CSV roundtrip / Postgres
+    name: B2B document serial / CSV / Postgres
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
@@ -54,7 +54,7 @@ jobs:
         run: npx prisma migrate deploy
 
       - name: Run CSV unit and real-DB integration tests
-        run: npm test -- src/lib/csv/roundtrip.test.ts src/lib/csv/postgres-import.integration.test.ts
+        run: npm test -- src/lib/csv/roundtrip.test.ts src/lib/csv/postgres-import.integration.test.ts src/lib/document-numbering.integration.test.ts src/lib/order-transitions.test.ts
 
       - name: Report CSV integration check
         if: always()
@@ -69,5 +69,5 @@ jobs:
           fi
           gh api -X POST "repos/${{ github.repository }}/statuses/${{ github.sha }}" \
             -f state="$STATE" \
-            -f context="Stordex CSV PostgreSQL" \
-            -f description="CSV unit + disposable Postgres 16 integration tests ($JOB_RESULT)"
+            -f context="Stordex B2B PostgreSQL" \
+            -f description="B2B document numbers + CSV tests on disposable Postgres 16 ($JOB_RESULT)"
