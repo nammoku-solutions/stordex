@@ -134,7 +134,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
           </p>
         </section>
       )}
-      <OrderStatusActions orderId={order.id} status={order.status} linkedCompanyOrder={!!order.linkedCompanyOrder} />
+      <OrderStatusActions orderId={order.id} status={order.status} linkedCompanyOrder={!!order.linkedCompanyOrder} canManageLinkedCancellation={role === "OWNER" || role === "ADMIN"} />
     </>
   );
 }
