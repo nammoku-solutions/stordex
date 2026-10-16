@@ -167,8 +167,13 @@ export function coerceValue(
       return { ok: true, value: s };
     case "int": {
       const cleaned = s.replace(/[,\s¥￥円]/g, "");
-      const n = parseInt(cleaned, 10);
-      if (isNaN(n)) return { ok: false, error: `"${s}" を数値に変換できません` };
+      if (!/^-?\d+$/.test(cleaned)) {
+        return { ok: false, error: `"${s}" は整数ではありません` };
+      }
+      const n = Number(cleaned);
+      if (!Number.isSafeInteger(n)) {
+        return { ok: false, error: `"${s}" は扱える範囲の整数ではありません` };
+      }
       return { ok: true, value: n };
     }
     case "bool": {
@@ -177,19 +182,17 @@ export function coerceValue(
       return { ok: false, error: `"${s}" を真偽値に変換できません` };
     }
     case "date": {
-      // YYYY/MM/DD, YYYY-MM-DD, YYYYMMDD, YYYY年MM月DD日
       let m: RegExpExecArray | null;
-      if ((m = /^(\d{4})[\/\-年](\d{1,2})[\/\-月](\d{1,2})日?$/.exec(s))) {
-        const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
-        if (!isNaN(d.getTime())) return { ok: true, value: d };
+      if ((m = /^(\d{4})[\/\-年](\d{1,2})[\/\-月](\d{1,2})日?$/.exec(s)) ||
+          (m = /^(\d{4})(\d{2})(\d{2})$/.exec(s))) {
+        const [year, month, day] = [+m[1], +m[2], +m[3]];
+        const date = new Date(Date.UTC(year, month - 1, day));
+        if (date.getUTCFullYear() === year && date.getUTCMonth() + 1 === month &&
+            date.getUTCDate() === day) {
+          return { ok: true, value: date };
+        }
       }
-      if ((m = /^(\d{4})(\d{2})(\d{2})$/.exec(s))) {
-        const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
-        if (!isNaN(d.getTime())) return { ok: true, value: d };
-      }
-      const fallback = new Date(s);
-      if (!isNaN(fallback.getTime())) return { ok: true, value: fallback };
-      return { ok: false, error: `"${s}" を日付に変換できません (YYYY-MM-DD 等)` };
+      return { ok: false, error: `"${s}" は正しい日付ではありません (YYYY-MM-DD 等)` };
     }
   }
 }
