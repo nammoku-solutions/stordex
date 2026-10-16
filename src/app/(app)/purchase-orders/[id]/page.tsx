@@ -3,15 +3,16 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireTenant } from "@/lib/session";
 import { PageHeader } from "@/components/PageHeader";
-import { dateJP, yen, num } from "@/lib/format";
+import { dateJP, yen, num, ORDER_STATUS_LABEL } from "@/lib/format";
 import { PO_STATUS_BADGE, PO_STATUS_LABEL } from "../_status";
 import { POStatusActions } from "./POStatusActions";
 import { sendPurchaseOrderToPartner } from "../send-actions";
 
-export default async function POPage({ params }: { params: { id: string } }) {
+export default async function POPage({ params }: { params: Promise<{ id: string }> }) {
   const { tenantId, role } = await requireTenant();
+  const { id } = await params;
   const po = await prisma.purchaseOrder.findFirst({
-    where: { id: params.id, tenantId },
+    where: { id, tenantId },
     include: {
       supplier: true,
       items: { include: { item: true } },
@@ -103,13 +104,31 @@ export default async function POPage({ params }: { params: { id: string } }) {
         <div className="card p-5 mb-5">
           <h2 className="font-semibold mb-2">企業間発注の送信状況</h2>
           <p>送信先: {po.linkedCompanyOrder.seller.name}</p>
-          <p>送信状態: {po.linkedCompanyOrder.status}</p>
+          <p>受け取り状態: {po.linkedCompanyOrder.status === "ACCEPTED"
+            ? "受注登録済み" : po.linkedCompanyOrder.status === "SENT"
+            ? "相手の確認待ち" : po.linkedCompanyOrder.status === "REJECTED"
+            ? "受注辞退" : "発注取消"}</p>
           {po.linkedCompanyOrder.sellerOrder &&
-            <p className="text-sm text-slate-600">
+            <p className="text-sm">
               先方の受注: {po.linkedCompanyOrder.sellerOrder.orderNumber} /
-              {po.linkedCompanyOrder.sellerOrder.status}
+              <strong className="ml-1">
+                {ORDER_STATUS_LABEL[po.linkedCompanyOrder.sellerOrder.status]}
+              </strong>
             </p>
           }
+          {po.linkedCompanyOrder.sellerOrder?.status === "SHIPPED" &&
+            po.status === "ORDERED" && (
+              <p className="text-sm text-amber-800">
+                先方で出荷済みです。現品を確認してから入荷確定してください。
+              </p>
+            )}
+          {po.status === "RECEIVED" &&
+            <p className="text-sm text-emerald-700">
+              自社で入荷確定済みです。
+            </p>}
+          <p className="text-xs text-slate-500">
+            先方の受注状態を参照しています。自社の入荷処理が自動的に実行されるわけではありません。
+          </p>
         </div>
       )}
       {canSend && (
