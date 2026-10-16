@@ -138,6 +138,30 @@ describe("agreed pre-shipment B2B cancellation and inventory reconciliation", ()
         expect((await stockOf(sellerItem.id)).stock).toBe(18);
         await expect(purchasing(shipped.po.id, "CANCELLED")).rejects.toThrow();
 
+        // An invoiced seller order needs credit-note reconciliation;
+        // do not allow a simple cancellation (or buyer-side unilateral cancel).
+        const billed = await linkedPO();
+        await prisma.invoice.create({
+          data: {
+            tenantId: seller.id, customerId: customer.id,
+            invoiceNumber: "CI-INVOICE-" + suffix,
+            periodYear: 2026, periodMonth: 10,
+            orders: { create: [{ orderId: billed.sellerOrderId }] },
+          },
+        });
+        await expect(sales(billed.sellerOrderId, "CANCELLED")).rejects.toThrow(/請求書/);
+        await expect(purchasing(billed.po.id, "CANCELLED")).rejects.toThrow();
+
+        // Partial receipt is never undone using simple document cancellation.
+        const partiallyReceived = await linkedPO();
+        await sales(partiallyReceived.sellerOrderId, "CANCELLED");
+        await prisma.purchaseOrderItem.updateMany({
+          where: { purchaseOrderId: partiallyReceived.po.id },
+          data: { received: 1 },
+        });
+        await expect(purchasing(partiallyReceived.po.id, "CANCELLED"))
+          .rejects.toThrow(/入荷済み/);
+
         // Shipment competing with agreed cancellation: one winner only.
         const race = await linkedPO();
         await sales(race.sellerOrderId, "CONFIRMED");
@@ -170,6 +194,7 @@ describe("agreed pre-shipment B2B cancellation and inventory reconciliation", ()
         await prisma.intercompanyOrder.deleteMany({
           where: { buyerTenantId: buyer.id },
         });
+        await prisma.invoice.deleteMany({ where: { tenantId: seller.id } });
         await prisma.order.deleteMany({ where: { tenantId: seller.id } });
         await prisma.purchaseOrder.deleteMany({ where: { tenantId: buyer.id } });
         await prisma.item.deleteMany({
