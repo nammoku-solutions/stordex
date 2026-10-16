@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { requireTenant } from "@/lib/session";
 import { assertTenantSupplier } from "@/lib/tenant-resources";
 import type { PurchaseOrderStatus } from "@/generated/prisma/client";
+import { nextDocumentNumber } from "@/lib/document-numbering";
 
 const Line = z.object({
   itemId: z.string().min(1),
@@ -41,21 +42,6 @@ function parsePO(formData: FormData) {
   });
 }
 
-async function nextPONumber(tenantId: string) {
-  const t = new Date();
-  const ymd = `${t.getFullYear()}${String(t.getMonth() + 1).padStart(2, "0")}${String(
-    t.getDate()
-  ).padStart(2, "0")}`;
-  const prefix = `P-${ymd}-`;
-  const last = await prisma.purchaseOrder.findFirst({
-    where: { tenantId, poNumber: { startsWith: prefix } },
-    orderBy: { poNumber: "desc" },
-    select: { poNumber: true },
-  });
-  const seq = last ? parseInt(last.poNumber.slice(prefix.length), 10) + 1 : 1;
-  return `${prefix}${String(seq).padStart(4, "0")}`;
-}
-
 export async function createPurchaseOrder(formData: FormData) {
   const { tenantId } = await requireTenant();
   const data = parsePO(formData);
@@ -86,10 +72,10 @@ export async function createPurchaseOrder(formData: FormData) {
   });
   const tax = Math.floor((subtotal * data.taxRate) / 100);
   const total = subtotal + tax;
-  const poNumber = await nextPONumber(tenantId);
-
-  const po = await prisma.purchaseOrder.create({
-    data: {
+  const po = await prisma.$transaction(async (tx) => {
+    const poNumber = await nextDocumentNumber(tx, tenantId, "P");
+    return tx.purchaseOrder.create({
+      data: {
       tenantId,
       poNumber,
       supplierId: data.supplierId,
@@ -102,7 +88,8 @@ export async function createPurchaseOrder(formData: FormData) {
       total,
       note: data.note,
       items: { create: lineRecords },
-    },
+      },
+    });
   });
 
   revalidatePath("/purchase-orders");
