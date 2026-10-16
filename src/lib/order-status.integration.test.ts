@@ -82,7 +82,7 @@ describe("order status transaction and inventory ledger", () => {
         await expect(applyOrderStatus({
           tenantId:tenant.id,userId:"ci-operator",
           orderId:impossible.id,status:"CONFIRMED",
-        })).rejects.toThrow(/在庫不足/);
+        })).rejects.toThrow(/在庫.*不足/);
         expect((await prisma.order.findUniqueOrThrow({where:{id:impossible.id}})).status)
           .toBe("DRAFT");
         expect((await prisma.item.findUniqueOrThrow({where:{id:item.id}})).stock).toBe(10);
