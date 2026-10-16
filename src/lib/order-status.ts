@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import type { OrderStatus } from "@/generated/prisma/client";
 import { canTransitionOrder, requiresOutboundMovement, requiresReturnMovement } from "@/lib/order-transitions";
+import { lockBuyerPurchaseOrder } from "@/lib/b2b-locks";
 
 /** Shared, database-tested atomic state transition used by the server action. */
 export async function applyOrderStatus({
@@ -23,15 +24,27 @@ export async function applyOrderStatus({
       throw new Error("許可されていない受注状態の変更です。画面を更新してください");
     }
 
-    // Connected companies must coordinate cancellations and returns explicitly.
-    // Until that workflow exists, do not silently reverse one side's stock.
+    // For a connected-company order, the seller records the agreed cancellation
+    // first; the buyer then cancels their own PO after seeing that status.
+    // Do not allow unilateral cancellation after shipment/receipt.
     if (status === "CANCELLED") {
       const linked = await tx.intercompanyOrder.findUnique({
         where: { sellerOrderId: order.id },
-        select: { id: true },
+        select: { id: true, status: true, buyerTenantId: true, sellerTenantId: true, purchaseOrderId: true },
       });
       if (linked) {
-        throw new Error("企業間の受注は個別に取り消せません。発注元と調整してください");
+        if (linked.sellerTenantId !== tenantId || linked.status !== "ACCEPTED") {
+          throw new Error("企業間受注の状態が変更されました。画面を更新してください");
+        }
+        // Same lock ordering as buyer PO cancellation. Prevents receipt/cancel
+        // from passing a stale buyer status while seller reverses inventory.
+        await lockBuyerPurchaseOrder(tx, linked.buyerTenantId, linked.purchaseOrderId);
+        const buyerPO = await tx.purchaseOrder.findUnique({
+          where: { id: linked.purchaseOrderId }, select: { status: true },
+        });
+        if (buyerPO?.status !== "ORDERED") {
+          throw new Error("発注元が入荷・取消処理済みのため、この受注は取り消せません");
+        }
       }
     }
 
