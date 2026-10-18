@@ -7,6 +7,7 @@ import { dateJP, yen, num, ORDER_STATUS_LABEL } from "@/lib/format";
 import { PO_STATUS_BADGE, PO_STATUS_LABEL } from "../_status";
 import { POStatusActions } from "./POStatusActions";
 import { sendPurchaseOrderToPartner } from "../send-actions";
+import { PendingSubmitButton } from "@/components/PendingSubmitButton";
 
 export default async function POPage({ params }: { params: Promise<{ id: string }> }) {
   const { tenantId, role } = await requireTenant();
