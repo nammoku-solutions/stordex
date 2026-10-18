@@ -5,6 +5,7 @@ import { requireTenant } from "@/lib/session";
 import { PageHeader } from "@/components/PageHeader";
 import { dateJP, yen } from "@/lib/format";
 import { acceptInboundPurchaseOrder, rejectInboundPurchaseOrder } from "../actions";
+import { PendingSubmitButton } from "@/components/PendingSubmitButton";
 
 export const dynamic = "force-dynamic";
 
@@ -103,16 +104,19 @@ export default async function InboundOrderDetailPage({
               </div>
             </div>
             <div className="flex flex-wrap gap-3">
-              <button type="submit" className="btn-primary" disabled={!customers.length || order.items.some(l => !products.some(p => p.unit === l.unit))}>
+              <PendingSubmitButton
+                pendingLabel="受注下書きを作成中…"
+                disabled={!customers.length || order.items.some(l => !products.some(p => p.unit === l.unit))}
+              >
                 確認した内容で受注下書きを作成
-              </button>
+              </PendingSubmitButton>
               <Link href="/items" className="btn-secondary">商品マスタへ</Link>
             </div>
           </form>
           <form action={rejectInboundPurchaseOrder} className="mt-6 card p-4">
             <input type="hidden" name="inboundId" value={order.id}/>
             <p className="text-xs text-slate-600 mb-2">この発注を受けられない場合は、辞退できます。後から取り消せません。</p>
-            <button type="submit" className="btn-danger">この発注を辞退する</button>
+            <PendingSubmitButton className="btn-danger" pendingLabel="辞退を処理中…">この発注を辞退する</PendingSubmitButton>
           </form>
         </>
       ) : order.status === "SENT" ? (

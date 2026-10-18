@@ -2,9 +2,9 @@ name: CSV PostgreSQL Integration
 
 on:
   push:
-    branches: [test/csv-import-postgres-idempotence-20261017, "fix/b2b-safe-document-sequences-*", test/order-ledger-concurrency-20261017, "fix/b2b-accept-cancel-races-*", "feat/b2b-pre-shipment-coordinated-cancel-*"]
+    branches: [test/csv-import-postgres-idempotence-20261017, "fix/b2b-safe-document-sequences-*", test/order-ledger-concurrency-20261017, "fix/b2b-accept-cancel-races-*", "feat/b2b-pre-shipment-coordinated-cancel-*", "fix/b2b-form-submitting-feedback-*"]
   pull_request:
-    branches: [main, develop, test/csv-import-postgres-idempotence-20261017, fix/b2b-safe-document-sequences-20261017, test/order-ledger-concurrency-20261017, fix/b2b-accept-cancel-races-20261017]
+    branches: [main, develop, test/csv-import-postgres-idempotence-20261017, fix/b2b-safe-document-sequences-20261017, test/order-ledger-concurrency-20261017, fix/b2b-accept-cancel-races-20261017, feat/b2b-pre-shipment-coordinated-cancel-20261017]
   workflow_dispatch:
 
 permissions:
