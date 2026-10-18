@@ -104,9 +104,12 @@ export default async function InboundOrderDetailPage({
               </div>
             </div>
             <div className="flex flex-wrap gap-3">
-              <button type="submit" className="btn-primary" disabled={!customers.length || order.items.some(l => !products.some(p => p.unit === l.unit))}>
+              <PendingSubmitButton
+                pendingLabel="受注下書きを作成中…"
+                disabled={!customers.length || order.items.some(l => !products.some(p => p.unit === l.unit))}
+              >
                 確認した内容で受注下書きを作成
-              </button>
+              </PendingSubmitButton>
               <Link href="/items" className="btn-secondary">商品マスタへ</Link>
             </div>
           </form>
