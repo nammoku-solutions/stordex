@@ -1,9 +1,10 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useFormStatus } from "react-dom";
 
 type Props = {
-  children: React.ReactNode;
+  children: ReactNode;
   pendingLabel: string;
   className?: string;
   disabled?: boolean;
