@@ -157,7 +157,7 @@ export default async function POPage({ params }: { params: Promise<{ id: string 
                 <input type="checkbox" name="confirmRecipient" value="yes" required className="mt-1"/>
                 発注書の内容・数量・金額・送信先企業を確認しました
               </label>
-              <button type="submit" className="btn-primary">この企業へ発注書を送信</button>
+              <PendingSubmitButton pendingLabel="発注書を送信中…">この企業へ発注書を送信</PendingSubmitButton>
             </form>
           )}
         </div>
