@@ -116,7 +116,7 @@ export default async function InboundOrderDetailPage({
           <form action={rejectInboundPurchaseOrder} className="mt-6 card p-4">
             <input type="hidden" name="inboundId" value={order.id}/>
             <p className="text-xs text-slate-600 mb-2">この発注を受けられない場合は、辞退できます。後から取り消せません。</p>
-            <button type="submit" className="btn-danger">この発注を辞退する</button>
+            <PendingSubmitButton className="btn-danger" pendingLabel="辞退を処理中…">この発注を辞退する</PendingSubmitButton>
           </form>
         </>
       ) : order.status === "SENT" ? (
