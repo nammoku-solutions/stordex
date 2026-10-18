@@ -5,6 +5,7 @@ import { requireTenant } from "@/lib/session";
 import { PageHeader } from "@/components/PageHeader";
 import { dateJP, yen } from "@/lib/format";
 import { acceptInboundPurchaseOrder, rejectInboundPurchaseOrder } from "../actions";
+import { PendingSubmitButton } from "@/components/PendingSubmitButton";
 
 export const dynamic = "force-dynamic";
 
