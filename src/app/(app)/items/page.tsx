@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { yen, num } from "@/lib/format";
 import { deleteItem } from "./actions";
 import { DeleteForm } from "@/components/DeleteForm";
+import { belowMinimumStock } from "@/lib/inventory-policy";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +36,8 @@ export default async function ItemsPage({
     take: 300,
   });
 
-  const filtered = low ? items.filter((i) => i.stock <= i.reorderPoint) : items;
+  const alerted = new Set(belowMinimumStock(items).map(item => item.id));
+  const filtered = low ? items.filter(item => alerted.has(item.id)) : items;
 
   return (
     <>
@@ -64,7 +66,7 @@ export default async function ItemsPage({
             defaultChecked={low}
             className="rounded-sm border-slate-300"
           />
-          発注点以下のみ
+          最低在庫割れの常備品のみ
         </label>
         <button className="btn-secondary">適用</button>
       </form>
@@ -76,8 +78,10 @@ export default async function ItemsPage({
               <th>コード</th>
               <th>商品名</th>
               <th>仕入先</th>
+              <th>商品区分</th>
+              <th>仕入荷姿</th>
               <th className="text-right">在庫</th>
-              <th className="text-right">発注点</th>
+              <th className="text-right">最低在庫</th>
               <th className="text-right">仕入単価</th>
               <th className="text-right">販売単価</th>
               <th></th>
@@ -85,7 +89,7 @@ export default async function ItemsPage({
           </thead>
           <tbody>
             {filtered.map((it) => {
-              const lowStock = it.stock <= it.reorderPoint;
+              const lowStock = alerted.has(it.id);
               return (
                 <tr key={it.id}>
                   <td className="font-mono">{it.code}</td>
@@ -101,6 +105,12 @@ export default async function ItemsPage({
                     )}
                   </td>
                   <td>{it.supplier?.name ?? "—"}</td>
+                  <td>{it.stockPolicy === "STOCKED" ? "常備在庫品" : "受注後仕入品"}</td>
+                  <td className="text-sm">
+                    {it.purchaseMode === "PACK" && it.caseQty
+                      ? `1${it.orderUnit || "パック"} = ${num(it.caseQty)} ${it.unit}`
+                      : "個別単位"}
+                  </td>
                   <td className="text-right">
                     <span
                       className={
@@ -112,7 +122,7 @@ export default async function ItemsPage({
                       {num(it.stock)} {it.unit}
                     </span>
                   </td>
-                  <td className="text-right">{num(it.reorderPoint)}</td>
+                  <td className="text-right">{it.stockPolicy === "STOCKED" && it.reorderPoint > 0 ? num(it.reorderPoint) : "—"}</td>
                   <td className="text-right">{yen(it.costPrice)}</td>
                   <td className="text-right">{yen(it.salesPrice)}</td>
                   <td className="text-right">
