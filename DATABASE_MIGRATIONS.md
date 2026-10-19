@@ -59,12 +59,32 @@ This intentionally fails if:
 - migration history is inconsistent;
 - the migrated database differs from `schema.prisma`.
 
-## Staging
+## Staging — populated Neon database migration baseline
 
-Staging uses Neon/PostgreSQL. Apply committed migrations before or together with a staging application rollout:
+**CAUTION (2026-10-19, Issue #70):** Existing Staging data is populated but there is **no** `public._prisma_migrations` table. The base schema and three additive migrations were created/applied outside Prisma's migration ledger. Do **not** run `npm run db:migrate:staging` yet: it may try to recreate existing tables and fail.
+
+Before any automatic migration in Staging:
+
+1. Verify the intended Neon Staging project and branch (`dry-feather-14704968` / `br-sparkling-boat-ao9nrctp`). Never substitute the Neon Production branch.
+2. Run the safe **read-only** preflight; it intentionally exits with code 2 until a valid migration ledger exists:
 
 ```bash
 cp .env.staging.example .env.staging
+# Set the correct Neon Staging DATABASE_URL and APP_ENV=staging in the local ignored file.
+npm run db:migrate:preflight:staging
+```
+
+3. Compare the database's actual tables, constraints and indexes against the **initial** migration and the later trading connections / intercompany orders / CSV import migrations.
+4. Create another Neon branch cloned from Staging, rehearse Prisma's `migrate resolve --applied` **on that disposable rehearsal branch only**, in committed migration order. Inspect `prisma migrate status` and schema drift. Resolve only migrations that were actually applied.
+5. Take/verify a current backup or branch snapshot. Require explicit approval for the carefully reviewed ledger-only writes on Staging. Do not drop, recreate or reseed existing tables.
+6. Re-run the preflight and `prisma migrate status` on Staging; only after history is consistent may reviewed future migrations use `npm run db:migrate:staging`.
+
+The preflight script opens a **read-only PostgreSQL transaction** and never creates or alters a migration ledger. It requires `APP_ENV=staging` and a Neon database hostname, but this guard alone cannot prove that a supplied URL belongs to the correct branch; separately verify the Neon branch ID before running it.
+
+### Standard staging migrations (ONLY after baselining)
+
+```bash
+npm run db:migrate:preflight:staging
 npm run db:migrate:staging
 ```
 
