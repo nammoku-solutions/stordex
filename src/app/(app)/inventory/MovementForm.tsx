@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { recordMovement } from "./actions";
+import { ButtonPendingContent } from "@/components/ButtonPendingContent";
 
 type Item = { id: string; code: string; name: string; unit: string; stock: number };
 
@@ -79,7 +80,7 @@ export function MovementForm({ items }: { items: Item[] }) {
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
       <button type="submit" className="btn-primary" disabled={pending}>
-        {pending ? "登録中..." : "記録する"}
+        <ButtonPendingContent pending={pending} pendingText="登録中…">記録する</ButtonPendingContent>
       </button>
     </form>
   );
