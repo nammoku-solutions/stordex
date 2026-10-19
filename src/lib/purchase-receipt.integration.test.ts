@@ -24,7 +24,7 @@ describe("actual counted purchase receipt", () => {
         data:{
           tenantId:tenant.id,code:"ON-DEMAND",name:"On demand item",
           unit:"個",stock:0,stockPolicy:"ON_DEMAND",
-          purchaseMode:"PACK",caseQty:10,orderUnit:"箱",costPrice:90,
+          purchaseMode:"UNIT",costPrice:90,
         },
       });
       let poCount=0;
@@ -37,9 +37,7 @@ describe("actual counted purchase receipt", () => {
             items:{create:[{
               itemId:item.id,itemName:item.name,unit:"個",
               quantity:qty,unitPrice:90,amount:qty*90,
-              packSize:qty%10===0?10:null,
-              packUnit:qty%10===0?"箱":null,
-              packCount:qty%10===0?qty/10:null,
+
             }]},
           },
           include:{items:true},
