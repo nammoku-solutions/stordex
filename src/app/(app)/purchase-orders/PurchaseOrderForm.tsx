@@ -10,6 +10,9 @@ type Item = {
   unit: string;
   costPrice: number;
   supplierId: string | null;
+  purchaseMode: "UNIT" | "PACK";
+  caseQty: number | null;
+  orderUnit: string | null;
 };
 type Supplier = { id: string; code: string; name: string };
 
@@ -65,6 +68,7 @@ export function PurchaseOrderForm({
             next.itemName = it.name;
             next.unit = it.unit;
             next.unitPrice = it.costPrice;
+            next.quantity = it.purchaseMode === "PACK" ? (it.caseQty || 1) : 1;
           }
         }
         return next;
@@ -145,9 +149,9 @@ export function PurchaseOrderForm({
             <thead>
               <tr>
                 <th>商品 *</th>
-                <th className="text-right" style={{ width: 100 }}>数量</th>
+                <th className="text-right" style={{ width: 100 }}>発注数</th>
                 <th style={{ width: 70 }}>単位</th>
-                <th className="text-right" style={{ width: 130 }}>仕入単価</th>
+                <th className="text-right" style={{ width: 130 }}>単価（在庫1単位）</th>
                 <th className="text-right" style={{ width: 130 }}>金額</th>
                 <th style={{ width: 60 }}></th>
               </tr>
@@ -172,17 +176,28 @@ export function PurchaseOrderForm({
                     <input
                       type="number"
                       min={1}
-                      value={l.quantity}
-                      onChange={(e) => setLine(l.key, { quantity: parseInt(e.target.value || "0", 10) })}
+                      value={itemMap.get(l.itemId)?.purchaseMode === "PACK"
+                        ? l.quantity / (itemMap.get(l.itemId)?.caseQty || 1)
+                        : l.quantity}
+                      onChange={(e) => setLine(l.key, { quantity:
+                        parseInt(e.target.value || "0", 10) *
+                        (itemMap.get(l.itemId)?.purchaseMode === "PACK"
+                          ? itemMap.get(l.itemId)?.caseQty || 1 : 1)
+                      })}
                       className="input text-right"
                     />
+                    {itemMap.get(l.itemId)?.purchaseMode === "PACK" && (
+                      <p className="text-xs text-slate-500">
+                        {itemMap.get(l.itemId)?.orderUnit || "パック"}数
+                        （1{itemMap.get(l.itemId)?.orderUnit || "パック"} =
+                        {itemMap.get(l.itemId)?.caseQty} {l.unit}）
+                        <span className="block">発注合計 {l.quantity} {l.unit}</span>
+                      </p>
+                    )}
                   </td>
                   <td>
-                    <input
-                      value={l.unit}
-                      onChange={(e) => setLine(l.key, { unit: e.target.value })}
-                      className="input"
-                    />
+                    <span className="text-sm">{itemMap.get(l.itemId)?.purchaseMode === "PACK"
+                      ? (itemMap.get(l.itemId)?.orderUnit || "パック") : l.unit}</span>
                   </td>
                   <td>
                     <input
