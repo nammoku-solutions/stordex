@@ -86,14 +86,14 @@ export default async function NetworkPage({
                 {manager && link.status === "PENDING" && received && (
                   <form action={respondTradingConnection} className="flex gap-2">
                     <input type="hidden" name="id" value={link.id} />
-                    <button name="decision" value="accept" className="btn-primary">承認</button>
-                    <button name="decision" value="decline" className="btn-secondary">辞退</button>
+                    <SubmitPendingButton name="decision" value="accept" pendingText="承認中…">承認</SubmitPendingButton>
+                    <SubmitPendingButton name="decision" value="decline" className="btn-secondary" pendingText="辞退中…">辞退</SubmitPendingButton>
                   </form>
                 )}
                 {manager && link.status === "ACTIVE" && (
                   <form action={revokeTradingConnection}>
                     <input type="hidden" name="id" value={link.id} />
-                    <button className="btn-secondary">接続解除</button>
+                    <SubmitPendingButton className="btn-secondary" pendingText="接続解除中…">接続解除</SubmitPendingButton>
                   </form>
                 )}
               </div>
