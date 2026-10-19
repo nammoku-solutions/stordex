@@ -128,6 +128,40 @@ export async function setPurchaseOrderStatus(id: string, status: PurchaseOrderSt
   revalidatePath("/orders/inbox");
 }
 
+/**
+ * Confirm physical receipt based on counted base-unit quantities, not only
+ * the original purchase quantity. The transaction verifies every owned line.
+ */
+export async function confirmCountedPurchaseReceipt(id: string, formData: FormData) {
+  const { tenantId, userId } = await requireTenant();
+  const actualReceipts: Record<string, number> = {};
+  for (const [key, value] of formData.entries()) {
+    if (!key.startsWith("received_")) continue;
+    if (typeof value !== "string" || !/^(0|[1-9][0-9]*)$/.test(value)) {
+      throw new Error("実入荷数量は0以上の整数で入力してください");
+    }
+    const lineId = key.slice("received_".length);
+    if (!lineId || Object.hasOwn(actualReceipts, lineId)) {
+      throw new Error("入荷明細が重複しています");
+    }
+    const number = Number(value);
+    if (!Number.isSafeInteger(number) || number > 100000000) {
+      throw new Error("入荷数が許容範囲を超えています");
+    }
+    actualReceipts[lineId] = number;
+  }
+  const reason = String(formData.get("discrepancyReason") || "").trim();
+  await applyPurchaseOrderStatus({
+    tenantId, userId, id, status: "RECEIVED",
+    actualReceipts, discrepancyReason: reason,
+  });
+  revalidatePath("/purchase-orders");
+  revalidatePath(`/purchase-orders/${id}`);
+  revalidatePath("/inventory");
+  revalidatePath("/dashboard");
+  revalidatePath("/orders/inbox");
+}
+
 export async function deletePurchaseOrder(id: string) {
   const { tenantId } = await requireTenant();
   const po = await prisma.purchaseOrder.findFirst({
