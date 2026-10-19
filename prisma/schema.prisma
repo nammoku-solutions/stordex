@@ -481,6 +481,10 @@ model PurchaseOrderItem {
   amount          Int
   // 入荷済数量（部分入荷対応）
   received        Int    @default(0)
+  // Immutable order-time supplier pack snapshot; quantity remains BASE units.
+  packSize        Int?
+  packUnit        String?
+  packCount       Int?
 
   purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
   item          Item          @relation(fields: [itemId], references: [id], onDelete: Restrict)
