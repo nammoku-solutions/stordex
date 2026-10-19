@@ -54,7 +54,7 @@ jobs:
         run: npx prisma migrate deploy
 
       - name: Run CSV unit and real-DB integration tests
-        run: npm test -- src/lib/csv/roundtrip.test.ts src/lib/csv/postgres-import.integration.test.ts src/lib/document-numbering.integration.test.ts src/lib/order-transitions.test.ts src/lib/order-status.integration.test.ts src/lib/b2b-races.integration.test.ts src/lib/b2b-coordinated-cancellation.integration.test.ts
+        run: npm test -- src/lib/csv/roundtrip.test.ts src/lib/csv/postgres-import.integration.test.ts src/lib/document-numbering.integration.test.ts src/lib/order-transitions.test.ts src/lib/order-status.integration.test.ts src/lib/b2b-races.integration.test.ts src/lib/b2b-coordinated-cancellation.integration.test.ts scripts/preflight-staging-migrations.test.mjs
 
       - name: Typecheck Next.js and Prisma code
         run: npm run typecheck
