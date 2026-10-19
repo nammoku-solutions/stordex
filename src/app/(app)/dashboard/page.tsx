@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requireTenant } from "@/lib/session";
 import { PageHeader } from "@/components/PageHeader";
+import { belowMinimumStock, onDemandRemaining } from "@/lib/inventory-policy";
 import {
   yen,
   num,
@@ -44,9 +45,8 @@ export default async function DashboardPage() {
       _count: { _all: true },
     }),
     prisma.item.findMany({
-      where: { tenantId, active: true },
+      where: { tenantId, active: true, stockPolicy: "STOCKED", reorderPoint: { gt: 0 } },
       orderBy: { code: "asc" },
-      take: 200,
     }),
     prisma.order.findMany({
       where: { tenantId },
@@ -56,7 +56,26 @@ export default async function DashboardPage() {
     }),
   ]);
 
-  const lowAlerts = lowItems.filter((i) => i.stock <= i.reorderPoint);
+  const lowAlerts = belowMinimumStock(lowItems);
+  const stockOnDemand = await prisma.item.findMany({
+    where: { tenantId, active: true, stockPolicy: "ON_DEMAND", stock: { gt: 0 } },
+    orderBy: { code: "asc" },
+  });
+  // Draft sales demand is shown separately as a *planning estimate*. CONFIRMED
+  // orders already depleted physical stock, so subtracting them again is wrong.
+  const pendingDemand = stockOnDemand.length
+    ? await prisma.orderItem.groupBy({
+        by: ["itemId"],
+        where: {
+          itemId: { in: stockOnDemand.map(item => item.id) },
+          order: { tenantId, status: "DRAFT" },
+        },
+        _sum: { quantity: true },
+      }) : [];
+  const onDemand = onDemandRemaining(
+    stockOnDemand,
+    new Map(pendingDemand.map(line => [line.itemId, line._sum.quantity ?? 0])),
+  );
 
   return (
     <>
@@ -72,7 +91,7 @@ export default async function DashboardPage() {
         <Stat label="進行中の注文" value={num(openOrders)} href="/orders" />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
         <div className="card p-5">
           <div className="text-xs text-slate-500">今月の売上（税込）</div>
           <div className="text-2xl font-bold mt-1">
@@ -87,7 +106,14 @@ export default async function DashboardPage() {
           <div className="text-2xl font-bold mt-1 text-red-600">
             {num(lowAlerts.length)}
           </div>
-          <div className="text-xs text-slate-500 mt-1">発注点以下の商品</div>
+          <div className="text-xs text-slate-500 mt-1">最低在庫を下回った常備品</div>
+        </div>
+        <div className="card p-5">
+          <div className="text-xs text-slate-500">余剰在庫のある受注後仕入品</div>
+          <div className="text-2xl font-bold mt-1 text-amber-700">
+            {num(onDemand.length)}
+          </div>
+          <div className="text-xs text-slate-500 mt-1">詳細は画面下部 / 在庫管理へ</div>
         </div>
         <div className="card p-5">
           <div className="text-xs text-slate-500">クイックリンク</div>
@@ -180,6 +206,36 @@ export default async function DashboardPage() {
                   <span className="text-red-600 font-medium">
                     {num(i.stock)} / {num(i.reorderPoint)} {i.unit}
                   </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+        <section className="card p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-semibold">受注後仕入品の余剰在庫</h2>
+            <Link href="/inventory" className="text-sm text-brand-600 hover:underline">
+              在庫管理 →
+            </Link>
+          </div>
+          <p className="text-xs text-slate-600 mb-3">
+            実在庫から未確定の受注下書き数量を差し引いた参考値です。確定済み受注は出庫済みのため重複して差し引きません。
+          </p>
+          {onDemand.length === 0 ? (
+            <p className="text-sm text-slate-500">余剰在庫のある受注後仕入品はありません</p>
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {onDemand.slice(0, 10).map(item => (
+                <li key={item.id} className="py-2 text-sm">
+                  <Link href={`/items/${item.id}`} className="text-brand-600 font-medium">
+                    {item.code} {item.name}
+                  </Link>
+                  <div className="text-slate-700">
+                    現物 {num(item.stock)} {item.unit} ／ 受注下書き {num(item.pendingDraftUnits)} {item.unit}
+                    <span className="block font-medium text-amber-800">
+                      追加注文に使える見込み: {num(item.estimatedAvailable)} {item.unit}
+                    </span>
+                  </div>
                 </li>
               ))}
             </ul>
