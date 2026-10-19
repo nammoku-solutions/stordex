@@ -227,6 +227,7 @@ model Customer {
 
   @@unique([tenantId, code])
   @@index([tenantId, name])
+  @@index([tenantId, stockPolicy, active])
 }
 
 model Supplier {
@@ -254,6 +255,16 @@ model Supplier {
   @@index([tenantId, name])
 }
 
+enum StockPolicy {
+  STOCKED
+  ON_DEMAND
+}
+
+enum PurchaseMode {
+  UNIT
+  PACK
+}
+
 model Item {
   id            String   @id @default(cuid())
   tenantId      String
@@ -276,6 +287,10 @@ model Item {
   deliveryCycle String?
   // バーコード/JAN
   barcode       String?
+  // 在庫管理方針: 常備品/受注後仕入品（既存商品は従来どおり常備品）
+  stockPolicy   StockPolicy @default(STOCKED)
+  // 仕入単位。PACK の場合 caseQty 個で1パック/箱
+  purchaseMode  PurchaseMode @default(UNIT)
   // 在庫数量
   stock         Int      @default(0)
   // 発注点（これを下回るとアラート）
