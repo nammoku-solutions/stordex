@@ -1,6 +1,7 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
+import { ButtonPendingContent } from "@/components/ButtonPendingContent";
 import { useRouter } from "next/navigation";
 import type { OrderStatus } from "@/generated/prisma/client";
 import { setOrderStatus, deleteOrder } from "../actions";
@@ -19,11 +20,20 @@ export function OrderStatusActions({
   canManageLinkedCancellation?: boolean;
 }) {
   const [pending, start] = useTransition();
+  const [activeAction, setActiveAction] = useState<string | null>(null);
   const router = useRouter();
   const next = ORDER_TRANSITIONS[status].filter((state) =>
     !(linkedCompanyOrder && state === "CANCELLED" && !canManageLinkedCancellation)
   );
   const canDelete = !linkedCompanyOrder && (status === "DRAFT" || status === "CANCELLED");
+
+  function runAction(key: string, work: () => Promise<void>) {
+    if (pending) return;
+    setActiveAction(key);
+    start(async () => {
+      try { await work(); } finally { setActiveAction(null); }
+    });
+  }
 
   return (
     <div className="flex flex-wrap items-center gap-2" aria-busy={pending}>
@@ -45,31 +55,32 @@ export function OrderStatusActions({
             ) {
               return;
             }
-            start(async () => {
+            runAction(s, async () => {
               await setOrderStatus(orderId, s);
               router.refresh();
             });
           }}
         >
-          → {linkedCompanyOrder && s === "CANCELLED"
-            ? "出荷前の取消に合意して受注を取消"
-            : ORDER_STATUS_LABEL[s]}
+          <ButtonPendingContent pending={pending && activeAction === s}>
+            → {linkedCompanyOrder && s === "CANCELLED"
+              ? "出荷前の取消に合意して受注を取消"
+              : ORDER_STATUS_LABEL[s]}
+          </ButtonPendingContent>
         </button>
       ))}
-      {pending && <span className="text-sm text-slate-600" role="status">処理中…</span>}
       {canDelete && (
         <button
           disabled={pending}
           className="btn-secondary"
           onClick={() => {
             if (!window.confirm("この注文を削除しますか？")) return;
-            start(async () => {
+            runAction("DELETE", async () => {
               await deleteOrder(orderId);
               router.push("/orders");
             });
           }}
         >
-          削除
+          <ButtonPendingContent pending={pending && activeAction === "DELETE"}>削除</ButtonPendingContent>
         </button>
       )}
     </div>
