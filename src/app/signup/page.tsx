@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
+import { ButtonPendingContent } from "@/components/ButtonPendingContent";
 
 function SignupForm() {
   const router = useRouter();
@@ -154,7 +155,7 @@ function SignupForm() {
           </div>
           {error && <p className="text-sm text-red-600">{error}</p>}
           <button type="submit" className="btn-primary w-full" disabled={busy}>
-            {busy ? "作成中..." : "登録する"}
+            <ButtonPendingContent pending={busy} pendingText="作成中…">登録する</ButtonPendingContent>
           </button>
         </form>
         <p className="text-sm text-slate-500 text-center">

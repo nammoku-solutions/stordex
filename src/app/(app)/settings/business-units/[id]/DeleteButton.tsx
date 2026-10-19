@@ -3,6 +3,7 @@
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { deleteBusinessUnit } from "../actions";
+import { ButtonPendingContent } from "@/components/ButtonPendingContent";
 
 export function DeleteButton({ id }: { id: string }) {
   const [pending, start] = useTransition();
@@ -19,7 +20,7 @@ export function DeleteButton({ id }: { id: string }) {
         });
       }}
     >
-      削除
+      <ButtonPendingContent pending={pending} pendingText="削除中…">削除</ButtonPendingContent>
     </button>
   );
 }

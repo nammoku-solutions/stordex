@@ -4,6 +4,7 @@ import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import Link from "next/link";
+import { ButtonPendingContent } from "@/components/ButtonPendingContent";
 
 function LoginForm() {
   const router = useRouter();
@@ -89,7 +90,7 @@ function LoginForm() {
           </div>
           {error && <p className="text-sm text-red-600">{error}</p>}
           <button type="submit" className="btn-primary w-full" disabled={busy}>
-            {busy ? "ログイン中..." : "ログイン"}
+            <ButtonPendingContent pending={busy} pendingText="ログイン中…">ログイン</ButtonPendingContent>
           </button>
         </form>
         <p className="text-sm text-slate-500 text-center">

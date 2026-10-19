@@ -1,5 +1,7 @@
 "use client";
 
+import { SubmitPendingButton } from "@/components/SubmitPendingButton";
+
 export function DeleteForm({
   id,
   action,
@@ -23,9 +25,9 @@ export function DeleteForm({
       }}
       className="inline"
     >
-      <button type="submit" className="text-red-600 hover:underline text-sm">
+      <SubmitPendingButton className="text-red-600 hover:underline text-sm" pendingText="削除中…">
         {label}
-      </button>
+      </SubmitPendingButton>
     </form>
   );
 }
