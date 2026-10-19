@@ -1,6 +1,7 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
+import { ButtonPendingContent } from "@/components/ButtonPendingContent";
 import { useRouter } from "next/navigation";
 import type { QuotationStatus } from "@/generated/prisma/client";
 import { setQuotationStatus, deleteQuotation } from "../actions";
@@ -28,6 +29,15 @@ export function QuotationStatusActions({
   status: QuotationStatus;
 }) {
   const [pending, start] = useTransition();
+  const [activeAction, setActiveAction] = useState<string | null>(null);
+
+  function runAction(key: string, work: () => Promise<void>) {
+    if (pending) return;
+    setActiveAction(key);
+    start(async () => {
+      try { await work(); } finally { setActiveAction(null); }
+    });
+  }
   const router = useRouter();
   const next = NEXT[status];
 
@@ -38,13 +48,15 @@ export function QuotationStatusActions({
           disabled={pending}
           className="btn-primary"
           onClick={() =>
-            start(async () => {
+            runAction(next, async () => {
               await setQuotationStatus(id, next);
               router.refresh();
             })
           }
         >
-          → {NEXT_LABEL[status]}
+          <ButtonPendingContent pending={pending && activeAction === next}>
+            → {NEXT_LABEL[status]}
+          </ButtonPendingContent>
         </button>
       )}
       {(status === "DRAFT" || status === "SENT") && (
@@ -53,13 +65,13 @@ export function QuotationStatusActions({
           className="btn-danger"
           onClick={() => {
             if (!window.confirm("この見積を却下にしますか？")) return;
-            start(async () => {
+            runAction("REJECTED", async () => {
               await setQuotationStatus(id, "REJECTED");
               router.refresh();
             });
           }}
         >
-          却下
+          <ButtonPendingContent pending={pending && activeAction === "REJECTED"}>却下</ButtonPendingContent>
         </button>
       )}
       <button
@@ -67,13 +79,13 @@ export function QuotationStatusActions({
         className="btn-secondary"
         onClick={() => {
           if (!window.confirm("この見積書を削除しますか？")) return;
-          start(async () => {
+          runAction("DELETE", async () => {
             await deleteQuotation(id);
             router.push("/quotations");
           });
         }}
       >
-        削除
+        <ButtonPendingContent pending={pending && activeAction === "DELETE"}>削除</ButtonPendingContent>
       </button>
     </div>
   );
