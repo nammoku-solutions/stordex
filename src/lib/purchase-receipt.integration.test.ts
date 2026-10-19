@@ -79,6 +79,41 @@ describe("actual counted purchase receipt", () => {
       expect((await prisma.item.findUniqueOrThrow({where:{id:item.id}})).stock).toBe(18);
       expect((await prisma.purchaseOrderItem.findUniqueOrThrow({where:{id:short.line.id}})).received).toBe(8);
 
+      // A whole supplier PACK can deliver an extra base unit. This remains a
+      // count discrepancy, not a fractional-pack order or automatic repricing.
+      const packItem=await prisma.item.create({
+        data:{
+          tenantId:tenant.id,code:"ON-DEMAND-PACK",name:"Pack of ten",
+          unit:"個",stock:0,stockPolicy:"ON_DEMAND",purchaseMode:"PACK",
+          caseQty:10,orderUnit:"箱",costPrice:100,
+        },
+      });
+      const packPO=await prisma.purchaseOrder.create({
+        data:{
+          tenantId:tenant.id,supplierId:supplier.id,
+          poNumber:"CI-PACK-"+uuid,status:"ORDERED",
+          subtotal:1000,tax:100,total:1100,
+          items:{create:[{
+            itemId:packItem.id,itemName:packItem.name,unit:"個",
+            quantity:10,unitPrice:100,amount:1000,
+            packSize:10,packUnit:"箱",packCount:1,
+          }]},
+        },
+        include:{items:true},
+      });
+      await prisma.item.update({where:{id:packItem.id},data:{caseQty:12}});
+      await receipt(packPO.id,packPO.items[0].id,11,"1箱10個のはずが11個入荷");
+      const recorded=await prisma.purchaseOrderItem.findUniqueOrThrow({
+        where:{id:packPO.items[0].id},
+      });
+      expect(recorded).toMatchObject({
+        quantity:10,received:11,packSize:10,packCount:1,packUnit:"箱",
+      });
+      expect((await prisma.item.findUniqueOrThrow({where:{id:packItem.id}})).stock).toBe(11);
+      expect((await prisma.inventoryMovement.findFirstOrThrow({
+        where:{tenantId:tenant.id,reference:packPO.poNumber},
+      })).quantity).toBe(11);
+
       const duplicate=await makePO(10);
       const concurrent=await Promise.allSettled([
         receipt(duplicate.po.id,duplicate.line.id,10),
