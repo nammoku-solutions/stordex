@@ -14,6 +14,7 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:migrate:status": "prisma migrate status",
     "db:migrate:staging": "dotenv -e .env.staging -- prisma migrate deploy",
+    "db:migrate:preflight:staging": "dotenv -e .env.staging -- node scripts/preflight-staging-migrations.mjs",
     "db:generate": "prisma generate",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:staging": "dotenv -e .env.staging -- tsx prisma/seed.ts",
