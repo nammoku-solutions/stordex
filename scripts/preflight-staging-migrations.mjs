@@ -4,7 +4,7 @@
  * Usage: dotenv -e .env.staging -- node scripts/preflight-staging-migrations.mjs
  */
 import { readdir, stat } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 
@@ -103,7 +103,7 @@ async function main() {
   }
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   main().catch(err => {
     console.error("Staging migration preflight stopped:", err.message);
     process.exitCode = 2;
