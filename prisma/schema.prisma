@@ -227,7 +227,6 @@ model Customer {
 
   @@unique([tenantId, code])
   @@index([tenantId, name])
-  @@index([tenantId, stockPolicy, active])
 }
 
 model Supplier {
@@ -317,6 +316,7 @@ model Item {
 
   @@unique([tenantId, code])
   @@index([tenantId, name])
+  @@index([tenantId, stockPolicy, active])
 }
 
 model Order {
