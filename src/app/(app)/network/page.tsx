@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { requireTenant } from "@/lib/session";
 import { PageHeader } from "@/components/PageHeader";
+import { SubmitPendingButton } from "@/components/SubmitPendingButton";
 import {
   requestTradingConnection,
   respondTradingConnection,
@@ -58,7 +59,7 @@ export default async function NetworkPage({
               <input name="partnerSlug" className="input" required maxLength={63}
                 autoComplete="off" placeholder="例: acme" />
             </div>
-            <button className="btn-primary">接続を申請</button>
+            <SubmitPendingButton pendingText="申請中…">接続を申請</SubmitPendingButton>
           </form>
         ) : (
           <p className="text-sm text-slate-500">接続申請・承認は管理者（OWNER / ADMIN）のみ操作できます。</p>
