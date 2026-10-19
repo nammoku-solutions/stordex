@@ -9,6 +9,7 @@ import { assertTenantSupplier } from "@/lib/tenant-resources";
 import type { PurchaseOrderStatus } from "@/generated/prisma/client";
 import { nextDocumentNumber } from "@/lib/document-numbering";
 import { applyPurchaseOrderStatus } from "@/lib/purchase-order-status";
+import { purchaseLinePackSnapshot } from "@/lib/purchase-pack";
 
 const Line = z.object({
   itemId: z.string().min(1),
@@ -62,10 +63,7 @@ export async function createPurchaseOrder(formData: FormData) {
     if (!item || !item.active || item.unit !== line.unit) {
       throw new Error("商品マスタの単位または状態が正しくありません");
     }
-    if (item.purchaseMode === "PACK" &&
-        (!item.caseQty || item.caseQty < 2 || line.quantity % item.caseQty !== 0)) {
-      throw new Error("パック仕入品は1パック入数の整数倍で発注してください");
-    }
+    purchaseLinePackSnapshot(item, line.quantity);
   }
 
   let subtotal = 0;
@@ -80,10 +78,7 @@ export async function createPurchaseOrder(formData: FormData) {
       unitPrice: l.unitPrice,
       amount,
       received: 0,
-      packSize: itemMap.get(l.itemId)?.purchaseMode === "PACK" ? itemMap.get(l.itemId)?.caseQty : null,
-      packUnit: itemMap.get(l.itemId)?.purchaseMode === "PACK" ? (itemMap.get(l.itemId)?.orderUnit || "パック") : null,
-      packCount: itemMap.get(l.itemId)?.purchaseMode === "PACK"
-        ? l.quantity / (itemMap.get(l.itemId)?.caseQty || 1) : null,
+      ...purchaseLinePackSnapshot(itemMap.get(l.itemId)!, l.quantity),
     };
   });
   const tax = Math.floor((subtotal * data.taxRate) / 100);
