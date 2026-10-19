@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { requireTenant } from "@/lib/session";
 import { PageHeader } from "@/components/PageHeader";
 import { createInvoice } from "../actions";
+import { SubmitPendingButton } from "@/components/SubmitPendingButton";
 
 export default async function NewInvoicePage() {
   const { tenantId } = await requireTenant();
@@ -74,7 +75,7 @@ export default async function NewInvoicePage() {
           </div>
         </div>
         <div className="flex gap-3">
-          <button type="submit" className="btn-primary">請求書を作成</button>
+          <SubmitPendingButton pendingText="請求書を作成中…">請求書を作成</SubmitPendingButton>
           <a href="/invoices" className="btn-secondary">キャンセル</a>
         </div>
       </form>
