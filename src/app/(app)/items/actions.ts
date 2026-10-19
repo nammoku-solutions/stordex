@@ -15,7 +15,7 @@ const Schema = z.object({
   reorderPoint: z.coerce.number().int().min(0).default(0),
   stockPolicy: z.enum(["STOCKED", "ON_DEMAND"]).default("STOCKED"),
   purchaseMode: z.enum(["UNIT", "PACK"]).default("UNIT"),
-  caseQty: z.number().int().min(2).nullable().optional(),
+  caseQty: z.number().int().min(0).nullable().optional(),
   orderUnit: z.string().trim().max(20).nullable().optional(),
   costPrice: z.coerce.number().int().min(0).default(0),
   salesPrice: z.coerce.number().int().min(0).default(0),
@@ -42,7 +42,7 @@ function parseForm(formData: FormData) {
     category: obj.category || null,
     note: obj.note || null,
   });
-  if (data.purchaseMode === "PACK" && (!data.caseQty || !data.orderUnit)) {
+  if (data.purchaseMode === "PACK" && (!data.caseQty || data.caseQty < 2 || !data.orderUnit)) {
     throw new Error("パック仕入の商品には1パックの入数（2以上）と単位名（パック・箱など）が必要です");
   }
   // The reorder point remains a stored preference, but dashboard alerts
