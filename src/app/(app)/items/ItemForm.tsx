@@ -114,8 +114,8 @@ export function ItemForm({
           )}
           {purchaseMode === "UNIT" && (
             <>
-              <input type="hidden" name="caseQty" value="" />
-              <input type="hidden" name="orderUnit" value="" />
+              <input type="hidden" name="caseQty" value={initial?.caseQty ?? ""} />
+              <input type="hidden" name="orderUnit" value={initial?.orderUnit ?? ""} />
             </>
           )}
         </div>
