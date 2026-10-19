@@ -9,3 +9,10 @@ ALTER TABLE "Item"
 
 CREATE INDEX "Item_tenantId_stockPolicy_active_idx"
   ON "Item"("tenantId", "stockPolicy", "active");
+
+-- Preserve buying terms as they were when each PO line was created.
+-- Legacy PO rows retain NULL snapshots and their original unit quantity.
+ALTER TABLE "PurchaseOrderItem"
+  ADD COLUMN "packSize" INTEGER,
+  ADD COLUMN "packUnit" TEXT,
+  ADD COLUMN "packCount" INTEGER;
