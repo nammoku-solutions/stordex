@@ -91,7 +91,14 @@ export default async function POPage({ params }: { params: Promise<{ id: string 
               <tr key={l.id}>
                 <td className="font-mono">{l.item.code}</td>
                 <td>{l.itemName}</td>
-                <td className="text-right">{num(l.quantity)} {l.unit}</td>
+                <td className="text-right">
+                  {num(l.quantity)} {l.unit}
+                  {l.packCount != null && l.packSize && (
+                    <span className="block text-xs text-slate-500">
+                      {l.packCount} {l.packUnit || "パック"}（1{l.packUnit || "パック"} {l.packSize} {l.unit}）
+                    </span>
+                  )}
+                </td>
                 <td className="text-right">{num(l.received)}</td>
                 <td className="text-right">{yen(l.unitPrice)}</td>
                 <td className="text-right font-medium">{yen(l.amount)}</td>
@@ -173,6 +180,10 @@ export default async function POPage({ params }: { params: Promise<{ id: string 
         linkedStatus={po.linkedCompanyOrder?.status}
         sellerOrderStatus={po.linkedCompanyOrder?.sellerOrder?.status}
         canManageLinkedCancellation={role === "OWNER" || role === "ADMIN"}
+        receiptLines={po.items.map(line => ({
+          id: line.id, itemName: line.itemName, quantity: line.quantity,
+          received: line.received, unit: line.unit,
+        }))}
       />
     </>
   );
