@@ -24,6 +24,10 @@ export function POStatusActions({
 }) {
   const [pending, start] = useTransition();
   const [activeAction, setActiveAction] = useState<string | null>(null);
+  const [countedReceipts, setCountedReceipts] = useState<Record<string, number>>({});
+  const hasCountDifference = receiptLines.some(line =>
+    (countedReceipts[line.id] ?? line.quantity) !== line.quantity
+  );
   const router = useRouter();
   const linkedCannotCancel = linkedStatus === "ACCEPTED" && sellerOrderStatus !== "CANCELLED";
   const canCancel = (status === "DRAFT" || status === "ORDERED") &&
@@ -78,8 +82,11 @@ export function POStatusActions({
                     <span className="text-slate-500">実入荷：</span>
                     <input type="number" name={`received_${line.id}`}
                       min={line.received} max={100000000} step={1}
-                      defaultValue={line.quantity} required
-                      className="input w-28" />
+                      value={countedReceipts[line.id] ?? line.quantity}
+                      onChange={(e) => setCountedReceipts(prev => ({
+                        ...prev, [line.id]: Number(e.target.value),
+                      }))}
+                      required className="input w-28" />
                     <span>{line.unit}</span>
                   </label>
                 ))}
@@ -87,7 +94,13 @@ export function POStatusActions({
               <div>
                 <label className="label">入荷差異の理由（発注数と実数が異なる場合は必須）</label>
                 <textarea name="discrepancyReason" maxLength={500} rows={2}
+                  required={hasCountDifference}
                   className="input" placeholder="例：仕入先から1個多く納品された。数量を確認済み" />
+                {hasCountDifference && (
+                  <p className="text-xs text-amber-800 mt-1" role="status">
+                    発注数量と実入荷数量に差があります。差異理由を入力してください。
+                  </p>
+                )}
                 <p className="text-xs text-slate-500 mt-1">
                   差異は元の発注数量や金額を自動修正せず、実入荷数を在庫・履歴へ反映して記録します。
                   請求金額の調整は別途確認してください。
