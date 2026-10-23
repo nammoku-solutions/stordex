@@ -140,6 +140,7 @@ describe("real PostgreSQL CSV import idempotence and tenant isolation", () => {
     } finally {
       // Never executed on non-CI/non-local databases.
       await prisma.order.deleteMany({where:{tenantId:tenantA.id}});
+      await prisma.inventoryMovement.deleteMany({where:{tenantId:tenantA.id}});
       await prisma.item.deleteMany({where:{tenantId:tenantA.id}});
       await prisma.customer.deleteMany({where:{tenantId:tenantA.id}});
       await prisma.customer.deleteMany({where:{tenantId:tenantB.id}});
