@@ -52,8 +52,8 @@ jobs:
           npm install --global npm@11
           npm --version
           npm install --save next@16 @prisma/client@7 --no-fund --no-audit
-          npm install --save-dev prisma@7 --no-fund --no-audit
-          npm audit fix --no-fund --no-audit
+          npm install --save-dev prisma@7 vitest@4 @vitest/ui@4 --no-fund --no-audit
+          npm audit fix --no-fund
           npm ci --no-fund --no-audit
           git diff --stat -- package.json package-lock.json
           git diff --stat -- package.json package-lock.json
