@@ -93,6 +93,50 @@ describe("real PostgreSQL CSV import idempotence and tenant isolation", () => {
       expect(await prisma.order.count({
         where:{tenantId:tenantA.id,orderNumber:"CI-BAD-001"},
       })).toBe(0);
+
+      // Item CSV exports must round-trip the new policies and supplier pack sizing.
+      const itemHeaders = [
+        "code","name","unit","stock","stockPolicy","purchaseMode","caseQty","orderUnit",
+      ];
+      const parseItemRows = (values:string[]) => parseCsv(decodeCsvBuffer(
+        new TextEncoder().encode(toCsv(itemHeaders,[values]))
+      ).text);
+      const itemConfig = (itemRows:string[][]) => ({
+        target: "ITEM" as const,
+        mapping: autoMap("ITEM", itemRows[0]),
+        headerRow: 0,
+        skipRows: 0,
+        upsertMode: "skip" as const,
+      });
+      const itemValues = ["CI-NEW-PACK","梱包商品","個","5","ON_DEMAND","PACK","10","箱"];
+      const itemRows = parseItemRows(itemValues);
+      const beforeItems = await prisma.item.count({where:{tenantId:tenantA.id}});
+      const itemPreview = await runImport({
+        tenantId:tenantA.id,rows:itemRows,config:itemConfig(itemRows),dryrun:true,
+      });
+      expect(itemPreview).toMatchObject({createdCount:1,errorCount:0});
+      expect(await prisma.item.count({where:{tenantId:tenantA.id}})).toBe(beforeItems);
+      const imported = await runImport({
+        tenantId:tenantA.id,rows:itemRows,config:itemConfig(itemRows),dryrun:false,
+      });
+      expect(imported).toMatchObject({createdCount:1,errorCount:0});
+      const pack = await prisma.item.findUniqueOrThrow({
+        where:{tenantId_code:{tenantId:tenantA.id,code:"CI-NEW-PACK"}},
+      });
+      expect(pack).toMatchObject({
+        stock:5,stockPolicy:"ON_DEMAND",purchaseMode:"PACK",caseQty:10,orderUnit:"箱",
+      });
+
+      // Invalid package terms must fail as one row, without creating a SKU.
+      const brokenRows = parseItemRows([
+        "CI-BAD-PACK","不正な箱商品","個","0","ON_DEMAND","PACK","1","箱",
+      ]);
+      const broken = await runImport({
+        tenantId:tenantA.id,rows:brokenRows,config:itemConfig(brokenRows),dryrun:false,
+      });
+      expect(broken).toMatchObject({createdCount:0,errorCount:1});
+      expect(broken.errors[0].reason).toMatch(/入数/);
+      expect(await prisma.item.count({where:{tenantId:tenantA.id}})).toBe(beforeItems+1);
     } finally {
       // Never executed on non-CI/non-local databases.
       await prisma.order.deleteMany({where:{tenantId:tenantA.id}});
