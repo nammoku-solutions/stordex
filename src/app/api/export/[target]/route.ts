@@ -61,11 +61,11 @@ async function loadDataset(tenantId: string, target: string): Promise<Dataset | 
       checkCount(records);
       return {
         headers: ["code", "name", "nameKana", "nameEn", "unit", "spec", "origin",
-          "caseQty", "orderUnit", "isImported", "deliveryCycle", "barcode",
+          "caseQty", "orderUnit", "stockPolicy", "purchaseMode", "isImported", "deliveryCycle", "barcode",
           "stock", "reorderPoint", "reorderPeak", "costPrice", "salesPrice",
           "supplierCode", "category", "note", "active", "createdAt", "updatedAt"],
         rows: records.map(r => [r.code, r.name, r.nameKana, r.nameEn, r.unit,
-          r.spec, r.origin, r.caseQty, r.orderUnit, r.isImported, r.deliveryCycle,
+          r.spec, r.origin, r.caseQty, r.orderUnit, r.stockPolicy, r.purchaseMode, r.isImported, r.deliveryCycle,
           r.barcode, r.stock, r.reorderPoint, r.reorderPeak, r.costPrice, r.salesPrice,
           r.supplier?.code, r.category, r.note, r.active,
           exportTimestamp(r.createdAt), exportTimestamp(r.updatedAt)]),
@@ -114,14 +114,14 @@ async function loadDataset(tenantId: string, target: string): Promise<Dataset | 
           exportDate(po.pickupDate), po.status, po.note, po.taxRate,
           po.subtotal, po.tax, po.total, line?.item?.code, line?.itemName,
           line?.unit, line?.quantity, line?.unitPrice, line?.amount,
-          line?.received, exportTimestamp(po.createdAt), exportTimestamp(po.updatedAt),
+          line?.received, line?.packSize, line?.packCount, line?.packUnit, exportTimestamp(po.createdAt), exportTimestamp(po.updatedAt),
         ]));
       checkLines(rows);
       return {
         headers: ["poNumber", "supplierCode", "supplierName",
           "orderDate", "pickupDate", "status", "note", "taxRate",
           "subtotal", "tax", "total", "itemCode", "itemName", "unit",
-          "quantity", "unitPrice", "amount", "received",
+          "quantity", "unitPrice", "amount", "received", "packSize", "packCount", "packUnit",
           "createdAt", "updatedAt"],
         rows,
       };
