@@ -28,6 +28,17 @@ describe("CSV import validation", () => {
       quantity: "数量",
     });
   });
+  it("does not infer supplierCode from the same code column as SKU", () => {
+    const headers = ["code", "name", "unit", "stock", "stockPolicy", "purchaseMode", "caseQty", "orderUnit"];
+    const mapping = autoMap("ITEM", headers);
+    expect(mapping).toMatchObject({
+      code: "code", name: "name", unit: "unit", stock: "stock",
+      stockPolicy: "stockPolicy", purchaseMode: "purchaseMode",
+      caseQty: "caseQty", orderUnit: "orderUnit",
+    });
+    expect(mapping.supplierCode).toBeUndefined();
+    expect(new Set(Object.values(mapping)).size).toBe(Object.values(mapping).length);
+  });
   it("decodes UTF-8 BOM text", () => {
     const input = new TextEncoder().encode("\uFEFF商品コード,商品名\r\nA,商品\r\n");
     expect(decodeCsvBuffer(input).text.startsWith("商品コード")).toBe(true);
