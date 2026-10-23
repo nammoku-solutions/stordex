@@ -53,6 +53,12 @@ export async function applyPurchaseOrderStatus({
       throw new Error("企業間発注の入荷は、先方の受注が出荷済みになってから確定してください");
     }
 
+    // Every receipt must be based on verified physical counts. The legacy
+    // generic status action must not bypass the counted-receipt workflow.
+    if (status === "RECEIVED" && !actualReceipts) {
+      throw new Error("入荷確定には現品を検数した実入荷数量が必要です");
+    }
+
     if (status === "RECEIVED" && actualReceipts) {
       const expectedIds = new Set(po.items.map(line => line.id));
       if (Object.keys(actualReceipts).length !== expectedIds.size ||
