@@ -36,6 +36,8 @@ export const ITEM_FIELDS: FieldDef[] = [
   { key: "origin", label: "産地", type: "string", aliases: ["産地", "原産地", "Origin"] },
   { key: "caseQty", label: "ケース入数", type: "int", aliases: ["ケース入数", "入数", "CaseQty"] },
   { key: "orderUnit", label: "発注単位", type: "string", aliases: ["発注単位", "OrderUnit"] },
+  { key: "stockPolicy", label: "在庫区分", type: "string", aliases: ["在庫区分", "StockPolicy", "StockType"] },
+  { key: "purchaseMode", label: "仕入方式", type: "string", aliases: ["仕入方式", "PurchaseMode", "PurchaseType"] },
   { key: "barcode", label: "バーコード", type: "string", aliases: ["バーコード", "JAN", "Barcode"] },
   { key: "stock", label: "在庫数", type: "int", aliases: ["在庫", "在庫数", "Stock"] },
   { key: "reorderPoint", label: "発注点", type: "int", aliases: ["発注点", "ReorderPoint"] },
