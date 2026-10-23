@@ -50,6 +50,11 @@ describe("actual counted purchase receipt", () => {
           actualReceipts:{[lineId]:n},discrepancyReason:reason,
         });
       const nine=await makePO(9);
+      // Generic status mutations must not bypass the mandatory stock count.
+      await expect(applyPurchaseOrderStatus({
+        tenantId:tenant.id,userId:"ci-receiver",id:nine.po.id,status:"RECEIVED",
+      })).rejects.toThrow(/実入荷数量/);
+      expect((await prisma.item.findUniqueOrThrow({where:{id:item.id}})).stock).toBe(0);
       await expect(receipt(nine.po.id,nine.line.id,10)).rejects.toThrow(/理由/);
       expect((await prisma.item.findUniqueOrThrow({where:{id:item.id}})).stock).toBe(0);
       await expect(receipt(nine.po.id,nine.line.id,10,"多く納品",intruder.id))
