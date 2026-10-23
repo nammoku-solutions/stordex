@@ -177,3 +177,38 @@ Then run `npx prisma migrate status`, separately compare full types, defaults,
 constraints and drift, and rehearse the reviewed inventory migration on this
 isolated branch. A successful rehearsal does NOT authorize writes to Staging;
 perform a current Staging backup and obtain owner approval first.
+
+
+### Pre-change Staging backup, branch limit and secure local archive
+
+On 2026-10-23, Neon rejected create_snapshot for the Staging branch
+(HTTP 400: not allowed to snapshot non-root branch). The project already
+has the maximum number of branches. Do not delete old snapshots/branches
+just to free a slot without explicit owner approval.
+
+Use the guarded scripts/backup-neon-staging.mjs on a trusted WSL machine.
+It is read-only by default, checks the server-reported Neon project/branch
+ID before backup, requires a direct non-pooled connection, and does not
+alter Staging. The PostgreSQL 16+ CLI writes a private custom-format
+archive outside the repository, validates its table-of-contents with
+pg_restore --list, and writes SHA-256 and an evidence manifest.
+
+Never share or commit a DATABASE_URL or database dump. Put the *Staging*
+direct URL in NEON_STAGING_DIRECT_URL (not the rehearsal clone URL).
+
+```bash
+APP_ENV=staging DATABASE_URL="$NEON_STAGING_DIRECT_URL" \
+  node scripts/backup-neon-staging.mjs --check
+
+APP_ENV=staging DATABASE_URL="$NEON_STAGING_DIRECT_URL" \
+  STORDEX_STAGING_BACKUP_CONFIRM=backup-only-on-br-sparkling-boat-ao9nrctp \
+  node scripts/backup-neon-staging.mjs --execute
+```
+
+The default archive directory is ~/stordex-staging-backups. Contents include
+sensitive Staging data. pg_restore --list checks archive structure only:
+run a full test restore into a separate disposable PostgreSQL database
+and validate the records before accepting the backup as restorable.
+Do not perform recovery tests against Staging itself. Do not apply
+Prisma migrations to Staging until the backup is secured, clone rehearsal
+is complete, and the owner has approved live schema and ledger changes.
