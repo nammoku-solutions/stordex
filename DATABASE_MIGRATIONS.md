@@ -133,3 +133,27 @@ For every production schema change:
 7. Run post-deploy smoke tests.
 
 For destructive or long-running migrations, use a dedicated migration plan and maintenance window rather than relying only on the standard application deployment workflow.
+
+
+### Pinned inventory migration rehearsal — after initial Prisma ledger baseline
+
+After official Prisma migrate resolve applied the initial plus three 2026-10-16
+migrations on Neon clone br-solitary-tooth-aoom13fn, use the inventory-feature
+branch's guarded script (direct Neon URL ONLY, never pooled).
+
+Run `node scripts/rehearse-neon-inventory-migration.mjs --check` with
+`APP_ENV=staging-rehearsal` and `DATABASE_URL` set to the clone's direct URL.
+The script checks the actual server-reported Neon project/branch ID, the exact
+five committed migrations, all four applied migration checksums, and that
+the inventory schema change is still unapplied. It is read-only by default.
+
+After confirming the target, run with `--execute` and
+`STORDEX_INVENTORY_CONFIRM=migrate-on-br-solitary-tooth-aoom13fn`.
+This invokes the official Prisma CLI `migrate deploy` only on that pinned clone,
+then verifies the fifth migration ledger checksum, two enum types, five
+new columns, the index, legacy STOCKED/UNIT defaults, NULL historical PO
+pack snapshots, and unchanged tenant/item/PO/stock records and fingerprints.
+
+Do not point this script at the populated staging branch or production,
+do not commit or paste the URL, and do not treat a clone PASS as permission
+to deploy or repair the Staging DB without a fresh backup and explicit approval.
