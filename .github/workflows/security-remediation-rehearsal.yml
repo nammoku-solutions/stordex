@@ -51,9 +51,11 @@ jobs:
           # instead of force-upgrading major versions or suppressing the audit.
           npm install --global npm@11
           npm --version
-          rm package-lock.json
-          npm install --package-lock-only --ignore-scripts --no-fund --no-audit
+          npm install --save next@16 @prisma/client@7 --no-fund --no-audit
+          npm install --save-dev prisma@7 --no-fund --no-audit
+          npm audit fix --no-fund --no-audit
           npm ci --no-fund --no-audit
+          git diff --stat -- package.json package-lock.json
           git diff --stat -- package.json package-lock.json
       - name: Require zero known production advisories
         run: npm audit --omit=dev --audit-level=low
