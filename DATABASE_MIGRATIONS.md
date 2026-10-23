@@ -79,7 +79,7 @@ npm run db:migrate:preflight:staging
 5. Take/verify a current backup or branch snapshot. Require explicit approval for the carefully reviewed ledger-only writes on Staging. Do not drop, recreate or reseed existing tables.
 6. Re-run the preflight and `prisma migrate status` on Staging. `READY_PENDING_MIGRATIONS` means only that the applied ledger is a valid ordered prefix; it does **not** certify that the existing physical schema matches it. Verify the actual schema/constraints/indexes on an isolated clone against the baseline and every already-applied migration, explicitly approve pending SQL, and only then use `npm run db:migrate:staging`. `READY` means every committed migration is applied; it also does not replace schema-drift validation.
 
-The preflight script opens a **read-only PostgreSQL transaction** and never creates or alters a migration ledger. It requires `APP_ENV=staging` and a Neon database hostname, but this guard alone cannot prove that a supplied URL belongs to the correct branch; separately verify the Neon branch ID before running it.
+The preflight script opens a **read-only PostgreSQL transaction** and never creates or alters a migration ledger. It requires `APP_ENV=staging` and validates **the server-reported Neon project (`dry-feather-14704968`), branch (`br-sparkling-boat-ao9nrctp`) and database (`neondb`)** before inspecting migration history. It refuses Production, clones and any mismatched connection even if `APP_ENV=staging` is set. This is a read-only gate, not authorization to run write migrations.
 
 ### Standard staging migrations (ONLY after baselining)
 

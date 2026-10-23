@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { evaluateMigrationState } from "./preflight-staging-migrations.mjs";
+import { evaluateMigrationState, STAGING_IDENTITY, assertStagingDatabaseIdentity } from "./preflight-staging-migrations.mjs";
 
 const committed = ["20260828090000_init", "20261016070000_trading_connections", "20261016093000_intercompany_orders"];
 const applied = committed.map(migration_name => ({
@@ -71,5 +71,28 @@ describe("read-only Neon Staging migration preflight", () => {
     expect(evaluateMigrationState({
       committed, applied, hasLedger:true, tables:["Tenant","Order","_prisma_migrations"],
     })).toMatchObject({ok:true,reason:"READY",missing:[]});
+  });
+});
+
+describe("pinned Staging branch identity protection", () => {
+  const direct = new URL("postgresql://owner:secret@ep-clone.neon.tech/neondb?sslmode=require");
+  const identity = {
+    appEnv: "staging", connection: direct,
+    project: STAGING_IDENTITY.project, branch: STAGING_IDENTITY.branch,
+    database: STAGING_IDENTITY.database,
+  };
+  it("accepts only the authentic Stordex Staging project and server branch", () => {
+    expect(() => assertStagingDatabaseIdentity(identity)).not.toThrow();
+    for (const patch of [
+      {branch: "br-dry-heart-ao0s2ngj"},
+      {branch: "br-solitary-tooth-aoom13fn"},
+      {project: "other-project"},
+      {database: "other_db"},
+      {appEnv: "production"},
+      {connection: new URL("postgresql://u:p@localhost/neondb")},
+      {connection: new URL("postgresql://u:p@ep-clone.neon.tech/anotherdb")},
+    ]) {
+      expect(() => assertStagingDatabaseIdentity({...identity, ...patch})).toThrow();
+    }
   });
 });

@@ -11,6 +11,28 @@ import pg from "pg";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const migrationDir = join(root, "prisma", "migrations");
 
+export const STAGING_IDENTITY = Object.freeze({
+  project: "dry-feather-14704968",
+  branch: "br-sparkling-boat-ao9nrctp",
+  database: "neondb",
+});
+
+/** Verify the Neon server identity, not just the connection URL hostname. */
+export function assertStagingDatabaseIdentity({ appEnv, connection, project, branch, database }) {
+  if (appEnv !== "staging") throw new Error("APP_ENV must equal staging");
+  if (!connection || !["postgresql:", "postgres:"].includes(connection.protocol) ||
+      !connection.hostname.endsWith(".neon.tech") ||
+      connection.pathname !== "/" + STAGING_IDENTITY.database) {
+    throw new Error("Expected Stordex Staging on a Neon PostgreSQL neondb connection");
+  }
+  if (project !== STAGING_IDENTITY.project ||
+      branch !== STAGING_IDENTITY.branch ||
+      database !== STAGING_IDENTITY.database) {
+    throw new Error("Neon server identity does not match exact Stordex Staging project/branch; STOP");
+  }
+}
+
+
 /** Pure evaluator, used by tests and the CLI. No SQL or network side effects. */
 export function evaluateMigrationState({ committed, applied, hasLedger, tables }) {
   const names = new Set(committed);
@@ -66,8 +88,8 @@ async function readMigrationNames() {
 }
 
 async function main() {
-  // Two explicit safeguards: never accidentally connect to Production or a
-  // local disposable DB. Run with the intended .env.staging only.
+  // Validate pre-connection arguments, then verify project+branch against
+  // Neon server settings INSIDE the read-only transaction before inspecting DB.
   if (process.env.APP_ENV !== "staging") {
     throw new Error("APP_ENV must equal staging; no database connection attempted.");
   }
@@ -85,6 +107,16 @@ async function main() {
   try {
     await client.connect();
     await client.query("BEGIN TRANSACTION READ ONLY");
+    const actual = (await client.query(
+      "SELECT current_setting('neon.project_id',true) AS project, " +
+      "current_setting('neon.branch_id',true) AS branch, " +
+      "current_database() AS database"
+    )).rows[0];
+    assertStagingDatabaseIdentity({
+      appEnv: process.env.APP_ENV,
+      connection: url,
+      ...actual,
+    });
     const tablesResult = await client.query(
       "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY table_name"
     );
@@ -102,6 +134,8 @@ async function main() {
     console.log(JSON.stringify({
       check: "Stordex Neon Staging migration preflight (READ ONLY)",
       database: url.pathname.slice(1),
+      verifiedNeonProject: actual.project,
+      verifiedNeonBranch: actual.branch,
       tableCount: tables.length,
       committedMigrations: committed,
       appliedMigrations: applied.map(x => x.migration_name),
