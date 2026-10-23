@@ -133,7 +133,15 @@ describe("agreed pre-shipment B2B cancellation and inventory reconciliation", ()
         expect((await stockOf(sellerItem.id)).stock).toBe(18);
         await expect(sales(shipped.sellerOrderId, "CANCELLED")).rejects.toThrow();
         await expect(purchasing(shipped.po.id, "CANCELLED")).rejects.toThrow();
-        await purchasing(shipped.po.id, "RECEIVED");
+        const shippedLines = await prisma.purchaseOrderItem.findMany({
+          where: { purchaseOrderId: shipped.po.id },
+          select: { id: true, quantity: true },
+        });
+        await applyPurchaseOrderStatus({
+          tenantId: buyer.id, userId: "ci-buyer", id: shipped.po.id,
+          status: "RECEIVED",
+          actualReceipts: Object.fromEntries(shippedLines.map(line => [line.id, line.quantity])),
+        });
         expect((await stockOf(buyerItem.id)).stock).toBe(12);
         expect((await stockOf(sellerItem.id)).stock).toBe(18);
         await expect(purchasing(shipped.po.id, "CANCELLED")).rejects.toThrow();
