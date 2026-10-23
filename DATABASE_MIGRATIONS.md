@@ -133,3 +133,47 @@ For every production schema change:
 7. Run post-deploy smoke tests.
 
 For destructive or long-running migrations, use a dedicated migration plan and maintenance window rather than relying only on the standard application deployment workflow.
+
+
+### Clone-only rehearsal runner (2026-10-23)
+
+A fresh Staging clone was verified on Neon project `dry-feather-14704968`,
+branch `br-solitary-tooth-aoom13fn` (`stordex-baseline-clean-rehearsal-20261023`).
+Read-only structural catalog comparison with the initial migration and the three
+2026-10-16 migrations matched 21 tables, 11 enums, 59 indexes, 62 constraints
+and 266 columns. The catalog check accounts for PostgreSQL's 63-byte index
+identifier truncation. The inventory migration is NOT physically applied and
+`_prisma_migrations` is absent. This object-name parity is a prerequisite,
+not a complete type/default/semantic drift verification.
+
+The new `scripts/rehearse-neon-baseline.mjs` defaults to READ ONLY.
+It checks the **database-server-reported** `neon.project_id` and
+`neon.branch_id` before any mutation, and refuses Staging or Production.
+It accepts only an unpooled **direct** Neon connection for `neondb`.
+Run locally or on a trusted runner using the clone's direct DATABASE_URL;
+do not commit credentials, copy the real Staging DATABASE_URL, or point it at
+the Neon default/Production branch.
+
+```bash
+# Use a private shell environment containing the clone's direct URL.
+APP_ENV=staging-rehearsal DATABASE_URL='<NEON_CLONE_DIRECT_URL>' \
+  node scripts/rehearse-neon-baseline.mjs --check
+
+# Execute official `prisma migrate resolve --applied` for the four migrations
+# only after check output identifies the intended disposable branch.
+APP_ENV=staging-rehearsal DATABASE_URL='<NEON_CLONE_DIRECT_URL>' \
+  STORDEX_BASELINE_CONFIRM=apply-on-br-solitary-tooth-aoom13fn \
+  node scripts/rehearse-neon-baseline.mjs --execute
+```
+
+Only these four existing migrations are marked applied (in exact order):
+`20260828093000_initial`, `20261016070000_trading_connections`,
+`20261016093000_intercompany_orders`, and
+`20261016110000_csv_import_jobs`.
+The runner verifies the resulting four finished ledger records, unchanged
+application catalog and unchanged tenant count. The future
+`20261019090000_inventory_policy_purchase_mode` migration MUST remain pending.
+Then run `npx prisma migrate status`, separately compare full types, defaults,
+constraints and drift, and rehearse the reviewed inventory migration on this
+isolated branch. A successful rehearsal does NOT authorize writes to Staging;
+perform a current Staging backup and obtain owner approval first.
