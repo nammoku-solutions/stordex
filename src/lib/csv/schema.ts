@@ -36,6 +36,8 @@ export const ITEM_FIELDS: FieldDef[] = [
   { key: "origin", label: "産地", type: "string", aliases: ["産地", "原産地", "Origin"] },
   { key: "caseQty", label: "ケース入数", type: "int", aliases: ["ケース入数", "入数", "CaseQty"] },
   { key: "orderUnit", label: "発注単位", type: "string", aliases: ["発注単位", "OrderUnit"] },
+  { key: "stockPolicy", label: "在庫区分", type: "string", aliases: ["在庫区分", "StockPolicy", "StockType"] },
+  { key: "purchaseMode", label: "仕入方式", type: "string", aliases: ["仕入方式", "PurchaseMode", "PurchaseType"] },
   { key: "barcode", label: "バーコード", type: "string", aliases: ["バーコード", "JAN", "Barcode"] },
   { key: "stock", label: "在庫数", type: "int", aliases: ["在庫", "在庫数", "Stock"] },
   { key: "reorderPoint", label: "発注点", type: "int", aliases: ["発注点", "ReorderPoint"] },
@@ -128,12 +130,15 @@ export function autoMap(target: ImportTarget, headers: string[]): Record<string,
   const norm = (s: string) => s.replace(/[\s\u3000　\(\)（）\[\]［］]/g, "").toLowerCase();
   const normHeaders = headers.map((h) => ({ raw: h, n: norm(h) }));
   const out: Record<string, string> = {};
+  // Never infer multiple target fields from a single source column. In
+  // particular, a bare "code" must not also auto-map to "supplierCode".
+  const usedHeaders = new Set<string>();
   for (const f of fields) {
     const candidates = [f.label, ...(f.aliases ?? []), f.key];
     let matched: string | null = null;
     for (const c of candidates) {
       const cn = norm(c);
-      const hit = normHeaders.find((h) => h.n === cn);
+      const hit = normHeaders.find((h) => !usedHeaders.has(h.raw) && h.n === cn);
       if (hit) {
         matched = hit.raw;
         break;
@@ -143,14 +148,18 @@ export function autoMap(target: ImportTarget, headers: string[]): Record<string,
       // 部分一致
       for (const c of candidates) {
         const cn = norm(c);
-        const hit = normHeaders.find((h) => h.n.includes(cn) || cn.includes(h.n));
+        const hit = normHeaders.find((h) => !usedHeaders.has(h.raw) &&
+          (h.n.includes(cn) || cn.includes(h.n)));
         if (hit) {
           matched = hit.raw;
           break;
         }
       }
     }
-    if (matched) out[f.key] = matched;
+    if (matched) {
+      out[f.key] = matched;
+      usedHeaders.add(matched);
+    }
   }
   return out;
 }

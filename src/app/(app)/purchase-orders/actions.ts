@@ -9,6 +9,7 @@ import { assertTenantSupplier } from "@/lib/tenant-resources";
 import type { PurchaseOrderStatus } from "@/generated/prisma/client";
 import { nextDocumentNumber } from "@/lib/document-numbering";
 import { applyPurchaseOrderStatus } from "@/lib/purchase-order-status";
+import { purchaseLinePackSnapshot } from "@/lib/purchase-pack";
 
 const Line = z.object({
   itemId: z.string().min(1),
@@ -51,10 +52,18 @@ export async function createPurchaseOrder(formData: FormData) {
   const itemIds = data.lines.map((l) => l.itemId);
   const items = await prisma.item.findMany({
     where: { id: { in: itemIds }, tenantId },
-    select: { id: true },
+    select: { id: true, unit: true, purchaseMode: true, caseQty: true, orderUnit: true, active: true },
   });
   if (items.length !== new Set(itemIds).size) {
     throw new Error("商品が無効です");
+  }
+  const itemMap = new Map(items.map((item) => [item.id, item]));
+  for (const line of data.lines) {
+    const item = itemMap.get(line.itemId);
+    if (!item || !item.active || item.unit !== line.unit) {
+      throw new Error("商品マスタの単位または状態が正しくありません");
+    }
+    purchaseLinePackSnapshot(item, line.quantity);
   }
 
   let subtotal = 0;
@@ -69,6 +78,7 @@ export async function createPurchaseOrder(formData: FormData) {
       unitPrice: l.unitPrice,
       amount,
       received: 0,
+      ...purchaseLinePackSnapshot(itemMap.get(l.itemId)!, l.quantity),
     };
   });
   const tax = Math.floor((subtotal * data.taxRate) / 100);
@@ -110,6 +120,40 @@ export async function setPurchaseOrderStatus(id: string, status: PurchaseOrderSt
   revalidatePath("/purchase-orders");
   revalidatePath(`/purchase-orders/${id}`);
   revalidatePath("/inventory");
+  revalidatePath("/orders/inbox");
+}
+
+/**
+ * Confirm physical receipt based on counted base-unit quantities, not only
+ * the original purchase quantity. The transaction verifies every owned line.
+ */
+export async function confirmCountedPurchaseReceipt(id: string, formData: FormData) {
+  const { tenantId, userId } = await requireTenant();
+  const actualReceipts: Record<string, number> = {};
+  for (const [key, value] of formData.entries()) {
+    if (!key.startsWith("received_")) continue;
+    if (typeof value !== "string" || !/^(0|[1-9][0-9]*)$/.test(value)) {
+      throw new Error("実入荷数量は0以上の整数で入力してください");
+    }
+    const lineId = key.slice("received_".length);
+    if (!lineId || Object.hasOwn(actualReceipts, lineId)) {
+      throw new Error("入荷明細が重複しています");
+    }
+    const number = Number(value);
+    if (!Number.isSafeInteger(number) || number > 100000000) {
+      throw new Error("入荷数が許容範囲を超えています");
+    }
+    actualReceipts[lineId] = number;
+  }
+  const reason = String(formData.get("discrepancyReason") || "").trim();
+  await applyPurchaseOrderStatus({
+    tenantId, userId, id, status: "RECEIVED",
+    actualReceipts, discrepancyReason: reason,
+  });
+  revalidatePath("/purchase-orders");
+  revalidatePath(`/purchase-orders/${id}`);
+  revalidatePath("/inventory");
+  revalidatePath("/dashboard");
   revalidatePath("/orders/inbox");
 }
 

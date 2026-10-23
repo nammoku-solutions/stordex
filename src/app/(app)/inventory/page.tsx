@@ -4,6 +4,7 @@ import { requireTenant } from "@/lib/session";
 import { PageHeader } from "@/components/PageHeader";
 import { dateTimeJP, num, MOVEMENT_TYPE_LABEL } from "@/lib/format";
 import { MovementForm } from "./MovementForm";
+import { belowMinimumStock, onDemandRemaining } from "@/lib/inventory-policy";
 
 export const dynamic = "force-dynamic";
 
@@ -22,9 +23,8 @@ export default async function InventoryPage() {
       orderBy: { code: "asc" },
     }),
     prisma.item.findMany({
-      where: { tenantId, active: true },
+      where: { tenantId, active: true, stockPolicy: "STOCKED", reorderPoint: { gt: 0 } },
       orderBy: { code: "asc" },
-      take: 200,
     }),
     prisma.inventoryMovement.findMany({
       where: { tenantId },
@@ -34,7 +34,21 @@ export default async function InventoryPage() {
     }),
   ]);
 
-  const lowAlerts = lowStock.filter((i) => i.stock <= i.reorderPoint);
+  const lowAlerts = belowMinimumStock(lowStock);
+  const pendingItems = await prisma.item.findMany({
+    where: { tenantId, active: true, stockPolicy: "ON_DEMAND" },
+    orderBy: { code: "asc" },
+  });
+  const pendingOrders = pendingItems.length ? await prisma.orderItem.groupBy({
+    by: ["itemId"],
+    where: {
+      itemId: { in: pendingItems.map(item => item.id) },
+      order: { tenantId, status: "DRAFT" },
+    },
+    _sum: { quantity: true },
+  }) : [];
+  const leftover = onDemandRemaining(pendingItems,
+    new Map(pendingOrders.map(line => [line.itemId, line._sum.quantity ?? 0])));
 
   return (
     <>
@@ -53,7 +67,7 @@ export default async function InventoryPage() {
 
           <div className="card p-6">
             <h2 className="text-lg font-semibold mb-4">
-              在庫アラート（発注点以下）
+              常備在庫品の最低在庫割れ
             </h2>
             {lowAlerts.length === 0 ? (
               <p className="text-sm text-slate-500">アラート対象はありません</p>
@@ -68,6 +82,35 @@ export default async function InventoryPage() {
                     <span className="text-red-600 font-medium">
                       {num(i.stock)} / 発注点 {num(i.reorderPoint)} {i.unit}
                     </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div className="card p-6">
+            <h2 className="text-lg font-semibold mb-3">受注後仕入品の残在庫・仕入不足</h2>
+            <p className="text-xs text-slate-600 mb-3">
+              現物在庫と未確定受注下書きの数量を比較します。利用可能見込み・仕入不足は参考値であり、
+              下書きは在庫の引当を保証しません。
+            </p>
+            {leftover.length === 0 ? (
+              <p className="text-sm text-slate-500">残在庫・未確定受注のある受注後仕入品はありません</p>
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {leftover.map(item => (
+                  <li key={item.id} className="py-2 text-sm">
+                    <Link href={`/items/${item.id}`} className="text-brand-600 font-medium">
+                      {item.code} {item.name}
+                    </Link>
+                    <p>現物 {num(item.stock)} {item.unit} ／ 下書き受注 {num(item.pendingDraftUnits)} {item.unit}</p>
+                    <p className="font-medium text-amber-800">
+                      次の注文に利用できる見込み: {num(item.estimatedAvailable)} {item.unit}
+                    </p>
+                    {item.additionalUnitsNeeded > 0 && (
+                      <p className="font-medium text-red-700">
+                        下書き受注に対する仕入不足: {num(item.additionalUnitsNeeded)} {item.unit}
+                      </p>
+                    )}
                   </li>
                 ))}
               </ul>

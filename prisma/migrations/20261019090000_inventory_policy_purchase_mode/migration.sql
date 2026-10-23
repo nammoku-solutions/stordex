@@ -1,0 +1,18 @@
+-- Existing tenants and item balances remain unchanged. Policies are explicitly
+-- classified before using on-demand leftover-stock alerts.
+CREATE TYPE "StockPolicy" AS ENUM ('STOCKED', 'ON_DEMAND');
+CREATE TYPE "PurchaseMode" AS ENUM ('UNIT', 'PACK');
+
+ALTER TABLE "Item"
+  ADD COLUMN "stockPolicy" "StockPolicy" NOT NULL DEFAULT 'STOCKED',
+  ADD COLUMN "purchaseMode" "PurchaseMode" NOT NULL DEFAULT 'UNIT';
+
+CREATE INDEX "Item_tenantId_stockPolicy_active_idx"
+  ON "Item"("tenantId", "stockPolicy", "active");
+
+-- Preserve buying terms as they were when each PO line was created.
+-- Legacy PO rows retain NULL snapshots and their original unit quantity.
+ALTER TABLE "PurchaseOrderItem"
+  ADD COLUMN "packSize" INTEGER,
+  ADD COLUMN "packUnit" TEXT,
+  ADD COLUMN "packCount" INTEGER;
