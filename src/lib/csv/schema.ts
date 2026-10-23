@@ -130,12 +130,15 @@ export function autoMap(target: ImportTarget, headers: string[]): Record<string,
   const norm = (s: string) => s.replace(/[\s\u3000　\(\)（）\[\]［］]/g, "").toLowerCase();
   const normHeaders = headers.map((h) => ({ raw: h, n: norm(h) }));
   const out: Record<string, string> = {};
+  // Never infer multiple target fields from a single source column. In
+  // particular, a bare "code" must not also auto-map to "supplierCode".
+  const usedHeaders = new Set<string>();
   for (const f of fields) {
     const candidates = [f.label, ...(f.aliases ?? []), f.key];
     let matched: string | null = null;
     for (const c of candidates) {
       const cn = norm(c);
-      const hit = normHeaders.find((h) => h.n === cn);
+      const hit = normHeaders.find((h) => !usedHeaders.has(h.raw) && h.n === cn);
       if (hit) {
         matched = hit.raw;
         break;
@@ -145,14 +148,18 @@ export function autoMap(target: ImportTarget, headers: string[]): Record<string,
       // 部分一致
       for (const c of candidates) {
         const cn = norm(c);
-        const hit = normHeaders.find((h) => h.n.includes(cn) || cn.includes(h.n));
+        const hit = normHeaders.find((h) => !usedHeaders.has(h.raw) &&
+          (h.n.includes(cn) || cn.includes(h.n)));
         if (hit) {
           matched = hit.raw;
           break;
         }
       }
     }
-    if (matched) out[f.key] = matched;
+    if (matched) {
+      out[f.key] = matched;
+      usedHeaders.add(matched);
+    }
   }
   return out;
 }
