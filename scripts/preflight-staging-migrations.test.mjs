@@ -31,6 +31,42 @@ describe("read-only Neon Staging migration preflight", () => {
     expect(result.incomplete).toEqual([committed[2]]);
     expect(result.missing).toEqual([committed[2]]);
   });
+  it("permits known unapplied migrations only after a complete ordered applied prefix", () => {
+    const result = evaluateMigrationState({
+      committed, applied: applied.slice(0, 2),
+      hasLedger: true, tables: ["Tenant", "Order", "_prisma_migrations"],
+    });
+    expect(result).toMatchObject({
+      ok: true, reason: "READY_PENDING_MIGRATIONS", missing: [committed[2]],
+    });
+  });
+  it("blocks out-of-order migration history even when every migration is present", () => {
+    const result = evaluateMigrationState({
+      committed, applied: [applied[1], applied[0], applied[2]],
+      hasLedger: true, tables: ["Tenant", "_prisma_migrations"],
+    });
+    expect(result).toMatchObject({
+      ok: false, reason: "INCONSISTENT_MIGRATION_LEDGER", outOfOrder: true,
+    });
+  });
+  it("blocks missing middle migrations even when a later migration is applied", () => {
+    const result = evaluateMigrationState({
+      committed, applied: [applied[0], applied[2]],
+      hasLedger: true, tables: ["Tenant", "_prisma_migrations"],
+    });
+    expect(result).toMatchObject({
+      ok: false, reason: "INCONSISTENT_MIGRATION_LEDGER", missing: [committed[1]],
+    });
+  });
+  it("rejects duplicate applied migration rows", () => {
+    const result = evaluateMigrationState({
+      committed, applied: [applied[0], applied[0]],
+      hasLedger: true, tables: ["Tenant", "_prisma_migrations"],
+    });
+    expect(result).toMatchObject({
+      ok: false, reason: "INCONSISTENT_MIGRATION_LEDGER", outOfOrder: true,
+    });
+  });
   it("permits a populated DB only when committed migrations are all recorded as finished", () => {
     expect(evaluateMigrationState({
       committed, applied, hasLedger:true, tables:["Tenant","Order","_prisma_migrations"],

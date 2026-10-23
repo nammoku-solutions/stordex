@@ -14,10 +14,15 @@ const migrationDir = join(root, "prisma", "migrations");
 /** Pure evaluator, used by tests and the CLI. No SQL or network side effects. */
 export function evaluateMigrationState({ committed, applied, hasLedger, tables }) {
   const names = new Set(committed);
-  const finished = new Set(applied.filter(x => x.finished_at && !x.rolled_back_at).map(x => x.migration_name));
+  const recorded = applied.filter(x => x.finished_at && !x.rolled_back_at).map(x => x.migration_name);
+  const finished = new Set(recorded);
   const incomplete = applied.filter(x => !x.finished_at && !x.rolled_back_at).map(x => x.migration_name);
   const unknown = [...finished].filter(x => !names.has(x));
   const missing = committed.filter(x => !finished.has(x));
+  // A healthy ledger may have future migrations pending, but the migrations
+  // that ARE applied must be a unique, ordered prefix of the committed chain.
+  // A hole or reorder can cause migrate deploy to rerun SQL against existing tables.
+  const outOfOrder = recorded.some((name, index) => committed[index] !== name);
   const appTables = tables.filter(x => x !== "_prisma_migrations");
   if (!hasLedger && appTables.length) {
     return {
@@ -33,11 +38,18 @@ export function evaluateMigrationState({ committed, applied, hasLedger, tables }
       detail: "No migration ledger on this branch. Confirm environment before any migrate deploy.", missing,
     };
   }
-  if (incomplete.length || unknown.length || missing.length) {
+  if (incomplete.length || unknown.length || outOfOrder) {
     return {
       ok: false, reason: "INCONSISTENT_MIGRATION_LEDGER",
-      detail: "Applied history differs from repository. Do not deploy migrations.",
-      incomplete, unknown, missing,
+      detail: "Applied migrations are not a clean ordered prefix. Do not deploy migrations.",
+      incomplete, unknown, missing, outOfOrder,
+    };
+  }
+  if (missing.length) {
+    return {
+      ok: true, reason: "READY_PENDING_MIGRATIONS",
+      detail: "Ledger contains a valid applied prefix. Pending schema changes still require drift checks, migration SQL review, branch verification and explicit approval before deployment.",
+      missing,
     };
   }
   return { ok: true, reason: "READY", detail: "All repository migrations are recorded as applied.", missing: [] };
