@@ -44,11 +44,16 @@ jobs:
           cache: npm
       - name: Start from locked clean install
         run: npm ci
-      - name: Refresh semver-compatible dependency graph
+      - name: Re-resolve manifest with a clean lockfile using npm 11
         run: |
-          # npm audit fix crashes with an Arborist edgesOut null error on the
-          # current lockfile. Update compatible packages without force/major bumps.
-          npm update --no-fund --no-audit
+          # npm 10 Arborist throws an edgesOut null error on both audit fix
+          # and update. Resolve a new lockfile from the unchanged manifest
+          # instead of force-upgrading major versions or suppressing the audit.
+          npm install --global npm@11
+          npm --version
+          rm package-lock.json
+          npm install --package-lock-only --ignore-scripts --no-fund --no-audit
+          npm ci --no-fund --no-audit
           git diff --stat -- package.json package-lock.json
       - name: Require zero known production advisories
         run: npm audit --omit=dev --audit-level=low
