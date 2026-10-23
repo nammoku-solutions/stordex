@@ -36,7 +36,7 @@ export default async function InventoryPage() {
 
   const lowAlerts = belowMinimumStock(lowStock);
   const pendingItems = await prisma.item.findMany({
-    where: { tenantId, active: true, stockPolicy: "ON_DEMAND", stock: { gt: 0 } },
+    where: { tenantId, active: true, stockPolicy: "ON_DEMAND" },
     orderBy: { code: "asc" },
   });
   const pendingOrders = pendingItems.length ? await prisma.orderItem.groupBy({
@@ -88,13 +88,13 @@ export default async function InventoryPage() {
             )}
           </div>
           <div className="card p-6">
-            <h2 className="text-lg font-semibold mb-3">受注後仕入品の残在庫</h2>
+            <h2 className="text-lg font-semibold mb-3">受注後仕入品の残在庫・仕入不足</h2>
             <p className="text-xs text-slate-600 mb-3">
-              余剰の現物在庫を表示します。未確定受注を考慮した残数は参考値であり、
-              取り置きが保証されるわけではありません。
+              現物在庫と未確定受注下書きの数量を比較します。利用可能見込み・仕入不足は参考値であり、
+              下書きは在庫の引当を保証しません。
             </p>
             {leftover.length === 0 ? (
-              <p className="text-sm text-slate-500">残在庫のある受注後仕入品はありません</p>
+              <p className="text-sm text-slate-500">残在庫・未確定受注のある受注後仕入品はありません</p>
             ) : (
               <ul className="divide-y divide-slate-100">
                 {leftover.map(item => (
@@ -106,6 +106,11 @@ export default async function InventoryPage() {
                     <p className="font-medium text-amber-800">
                       次の注文に利用できる見込み: {num(item.estimatedAvailable)} {item.unit}
                     </p>
+                    {item.additionalUnitsNeeded > 0 && (
+                      <p className="font-medium text-red-700">
+                        下書き受注に対する仕入不足: {num(item.additionalUnitsNeeded)} {item.unit}
+                      </p>
+                    )}
                   </li>
                 ))}
               </ul>

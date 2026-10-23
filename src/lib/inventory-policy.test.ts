@@ -20,7 +20,23 @@ describe("inventory policy", () => {
       id:"spare",stock:6,pendingDraftUnits:4,estimatedAvailable:2,
     });
   });
-  it("never shows a negative estimated available amount", () => {
-    expect(onDemandRemaining(items,new Map([["spare",9]]))[0].estimatedAvailable).toBe(0);
+  it("shows shortages rather than counting committed draft demand as spare inventory", () => {
+    const rows = onDemandRemaining(items,new Map([["spare",9]]));
+    expect(rows[0]).toMatchObject({
+      id:"spare",stock:6,pendingDraftUnits:9,estimatedAvailable:0,additionalUnitsNeeded:3,
+    });
+  });
+  it("shows a zero-stock on-demand SKU when a draft order requires procurement", () => {
+    const rows = onDemandRemaining(items,new Map([["none",9]]));
+    expect(rows.find(item => item.id === "none")).toMatchObject({
+      stock:0,pendingDraftUnits:9,estimatedAvailable:0,additionalUnitsNeeded:9,
+    });
+    expect(onDemandRemaining(items).find(item => item.id === "none")).toBeUndefined();
+  });
+  it("does not suppress unexpected negative physical stock in the dashboard", () => {
+    const rows = onDemandRemaining([
+      { ...items[3], stock:-2 },
+    ]);
+    expect(rows[0]).toMatchObject({stock:-2,estimatedAvailable:0,additionalUnitsNeeded:2});
   });
 });

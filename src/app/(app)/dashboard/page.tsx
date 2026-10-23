@@ -58,7 +58,7 @@ export default async function DashboardPage() {
 
   const lowAlerts = belowMinimumStock(lowItems);
   const stockOnDemand = await prisma.item.findMany({
-    where: { tenantId, active: true, stockPolicy: "ON_DEMAND", stock: { gt: 0 } },
+    where: { tenantId, active: true, stockPolicy: "ON_DEMAND" },
     orderBy: { code: "asc" },
   });
   // Draft sales demand is shown separately as a *planning estimate*. CONFIRMED
@@ -76,6 +76,7 @@ export default async function DashboardPage() {
     stockOnDemand,
     new Map(pendingDemand.map(line => [line.itemId, line._sum.quantity ?? 0])),
   );
+  const spareSkuCount = onDemand.filter(item => item.estimatedAvailable > 0).length;
 
   return (
     <>
@@ -111,9 +112,9 @@ export default async function DashboardPage() {
         <div className="card p-5">
           <div className="text-xs text-slate-500">余剰在庫のある受注後仕入品</div>
           <div className="text-2xl font-bold mt-1 text-amber-700">
-            {num(onDemand.length)}
+            {num(spareSkuCount)}
           </div>
-          <div className="text-xs text-slate-500 mt-1">詳細は画面下部 / 在庫管理へ</div>
+          <div className="text-xs text-slate-500 mt-1">未確定の受注数量を考慮した参考値</div>
         </div>
         <div className="card p-5">
           <div className="text-xs text-slate-500">クイックリンク</div>
@@ -213,16 +214,16 @@ export default async function DashboardPage() {
         </section>
         <section className="card p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-semibold">受注後仕入品の余剰在庫</h2>
+            <h2 className="text-lg font-semibold">受注後仕入品の残在庫・仕入不足</h2>
             <Link href="/inventory" className="text-sm text-brand-600 hover:underline">
               在庫管理 →
             </Link>
           </div>
           <p className="text-xs text-slate-600 mb-3">
-            実在庫から未確定の受注下書き数量を差し引いた参考値です。確定済み受注は出庫済みのため重複して差し引きません。
+            実在庫と受注下書きの数量を比較した参考値です。下書きは在庫の引当ではありません。確定済み受注は出庫済みなので二重に差し引きません。
           </p>
           {onDemand.length === 0 ? (
-            <p className="text-sm text-slate-500">余剰在庫のある受注後仕入品はありません</p>
+            <p className="text-sm text-slate-500">残在庫・未確定受注のある受注後仕入品はありません</p>
           ) : (
             <ul className="divide-y divide-slate-100">
               {onDemand.slice(0, 10).map(item => (
@@ -235,6 +236,11 @@ export default async function DashboardPage() {
                     <span className="block font-medium text-amber-800">
                       追加注文に使える見込み: {num(item.estimatedAvailable)} {item.unit}
                     </span>
+                    {item.additionalUnitsNeeded > 0 && (
+                      <span className="block font-medium text-red-700">
+                        下書き受注に対する仕入不足: {num(item.additionalUnitsNeeded)} {item.unit}
+                      </span>
+                    )}
                   </div>
                 </li>
               ))}
