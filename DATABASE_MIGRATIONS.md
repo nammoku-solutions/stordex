@@ -157,3 +157,43 @@ pack snapshots, and unchanged tenant/item/PO/stock records and fingerprints.
 Do not point this script at the populated staging branch or production,
 do not commit or paste the URL, and do not treat a clone PASS as permission
 to deploy or repair the Staging DB without a fresh backup and explicit approval.
+
+
+### Staging migration execution after full backup-restore rehearsal (approval required)
+
+Preconditions verified 2026-10-23:
+- Clone `br-solitary-tooth-aoom13fn`: official 4-migration Prisma baseline then fifth inventory migration succeeded; `prisma migrate status` is current and Prisma schema diff is empty.
+- Actual Staging direct-connection private custom-format `pg_dump` created and TOC/SHA validated; PostgreSQL 16 Docker restore test recovered 2 tenants, 8 items, stock 1655, 5 POs, 5 lines, 14 movements; no Prisma ledger as expected.
+- GitHub Issue #70 contains evidence. **Do not treat rehearsal or backup evidence as authorization to modify the live Staging branch.**
+
+The feature-branch script `scripts/apply-neon-staging-migrations.mjs` is
+**read-only by default**, with independent `--baseline` (official Prisma
+`migrate resolve --applied` for four previously deployed migrations) and
+`--inventory` (official Prisma `migrate deploy` for fifth migration) stages.
+It pins the Neon server-reported project and *actual Staging branch*;
+rejects pooled/cloned/Production URLs, unknown migrations or hashes, partial
+ledger, unexpected catalog drift, changed item/PO record fingerprints,
+unapproved history/schema transitions or mismatched prior archive SHA-256.
+
+The only accepted pre-change archive for this specific rehearsal is
+`stordex-staging-2026-10-23T07-45-23-904Z-cc8596b6.dump`,
+67,396 bytes, SHA-256
+`a8ef4098f48b0384cd52d208c4959c6f0578744b179df15e904c169681076db9`.
+A more recent or different backup requires updating the reviewed guard
+with new evidence and retesting; do **not** bypass checks.
+
+Before any live Staging mutation, owner must explicitly approve the exact
+target, maintenance period and this staged runbook; assess active writes and
+verify a realistic recovery method. Never paste credentials or archive into
+chat, issue comments or GitHub Actions logs.
+
+After approval, in a private trusted WSL session using Direct Staging URL
+and the private archive file path in
+`STORDEX_STAGING_BACKUP_ARCHIVE`, run `--check` before `--baseline`.
+After baselining, inspect `prisma migrate status` to ensure exactly the fifth
+migration is pending, then independently authorize and run `--inventory`.
+Verify `migrate status`, full schema diff, fingerprints and UAT.
+
+The exact mutating shell commands are intentionally not provided as a casual
+copy/paste step: the operator must review the script and record specific
+owner approval for each Staging-writing phase first.
