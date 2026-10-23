@@ -255,7 +255,7 @@ async function upsertItem(
 ) {
   const existing = await prisma.item.findUnique({
     where: { tenantId_code: { tenantId, code: rec.code } },
-    select: { id: true, stock: true },
+    select: { id: true, stock: true, purchaseMode: true, caseQty: true, orderUnit: true },
   });
 
   let supplierId: string | null = null;
@@ -271,7 +271,30 @@ async function upsertItem(
   if (rec.stock != null && (!Number.isSafeInteger(rec.stock) || rec.stock < 0)) {
     throw new Error("在庫数は0以上の整数で指定してください");
   }
+  // Old CSVs have no policy columns: preserve current policies on update and
+  // use the database's STOCKED/UNIT defaults for newly created SKUs.
+  const stockPolicy = rec.stockPolicy == null ? null : String(rec.stockPolicy).trim().toUpperCase();
+  const purchaseMode = rec.purchaseMode == null ? null : String(rec.purchaseMode).trim().toUpperCase();
+  if (stockPolicy && stockPolicy !== "STOCKED" && stockPolicy !== "ON_DEMAND") {
+    throw new Error("在庫区分は STOCKED または ON_DEMAND を指定してください");
+  }
+  if (purchaseMode && purchaseMode !== "UNIT" && purchaseMode !== "PACK") {
+    throw new Error("仕入方式は UNIT または PACK を指定してください");
+  }
+  if (rec.caseQty != null && (!Number.isSafeInteger(rec.caseQty) || rec.caseQty < 0)) {
+    throw new Error("ケース入数は0以上の整数で指定してください");
+  }
+  const effectiveMode = purchaseMode ?? existing?.purchaseMode ?? "UNIT";
+  const effectiveCaseQty = rec.caseQty ?? existing?.caseQty;
+  const effectiveOrderUnit = rec.orderUnit ?? existing?.orderUnit;
+  if (effectiveMode === "PACK" &&
+      (!effectiveCaseQty || effectiveCaseQty < 2 || !effectiveOrderUnit)) {
+    throw new Error("パック仕入品には入数（2以上）と発注単位が必要です");
+  }
+
   const details = {
+    ...(stockPolicy ? { stockPolicy: stockPolicy as "STOCKED" | "ON_DEMAND" } : {}),
+    ...(purchaseMode ? { purchaseMode: purchaseMode as "UNIT" | "PACK" } : {}),
     name: rec.name,
     nameKana: rec.nameKana,
     unit: rec.unit ?? "個",
