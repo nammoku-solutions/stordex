@@ -11,11 +11,64 @@ import { spawnSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
-import { assertStagingDatabaseIdentity, STAGING_IDENTITY } from "./preflight-staging-migrations.mjs";
 import { APPLIED_BASELINE, INVENTORY_MIGRATION } from "./rehearse-neon-inventory-migration.mjs";
-import { expectedBaselineCatalog, compareCatalog } from "./rehearse-neon-baseline.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+export const STAGING_IDENTITY = Object.freeze({
+  project: "dry-feather-14704968",
+  branch: "br-sparkling-boat-ao9nrctp",
+  database: "neondb",
+});
+
+export function assertStagingDatabaseIdentity({appEnv, connection, project, branch, database}) {
+  if (appEnv !== "staging" ||
+      !connection || !["postgres:", "postgresql:"].includes(connection.protocol) ||
+      !connection.hostname.endsWith(".neon.tech") ||
+      connection.hostname.includes("-pooler.") ||
+      connection.pathname !== "/neondb" ||
+      project !== STAGING_IDENTITY.project ||
+      branch !== STAGING_IDENTITY.branch ||
+      database !== STAGING_IDENTITY.database) {
+    throw new Error("Connection is not verified direct Stordex Staging. STOP.");
+  }
+}
+
+export function expectedBaselineCatalog(migrationSqls) {
+  const sections = ["tables", "enums", "indexes", "constraints", "columns"];
+  const result = Object.fromEntries(sections.map(key => [key, new Set()]));
+  for (const sql of migrationSqls) {
+    for (const m of sql.matchAll(/CREATE TYPE "([^"]+)"/g)) result.enums.add(m[1]);
+    for (const m of sql.matchAll(/CREATE TABLE "([^"]+)"\s*\(([\s\S]*?)\n\);/g)) {
+      result.tables.add(m[1]);
+      for (const line of m[2].split("\n")) {
+        const col = line.match(/^\s*"([^"]+)"\s+/);
+        if (col) result.columns.add(m[1] + "." + col[1]);
+      }
+      for (const pk of m[2].matchAll(/CONSTRAINT "([^"]+)"/g)) {
+        result.constraints.add(pk[1]);
+        if (pk[1].endsWith("_pkey")) result.indexes.add(pk[1]);
+      }
+    }
+    for (const m of sql.matchAll(/CREATE (?:UNIQUE )?INDEX "([^"]+)"/g)) {
+      result.indexes.add(m[1].slice(0,63));
+    }
+    for (const m of sql.matchAll(/ADD CONSTRAINT "([^"]+)"/g)) result.constraints.add(m[1]);
+  }
+  return result;
+}
+
+export function compareCatalog(expected, actual) {
+  const differences = {};
+  for (const key of ["tables", "enums", "indexes", "constraints", "columns"]) {
+    const a = new Set(expected[key]), b = new Set(actual[key]);
+    const missing = [...a].filter(v=>!b.has(v));
+    const extra = [...b].filter(v=>!a.has(v));
+    if (missing.length || extra.length) differences[key] = {missing,extra};
+  }
+  return differences;
+}
+
 const expectedChain = [...APPLIED_BASELINE, INVENTORY_MIGRATION];
 const BACKUP_SHA = "a8ef4098f48b0384cd52d208c4959c6f0578744b179df15e904c169681076db9";
 const EXPECTED = Object.freeze({
