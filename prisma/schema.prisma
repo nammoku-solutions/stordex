@@ -583,7 +583,7 @@ model IntercompanyOrderItem {
 
   order IntercompanyOrder @relation(fields: [intercompanyOrderId], references: [id], onDelete: Cascade)
 
-  @@unique([intercompanyOrderId, sourcePurchaseOrderItemId])
+  @@unique([intercompanyOrderId, sourcePurchaseOrderItemId], map: "IntercompanyOrderItem_intercompanyOrderId_sourcePurchaseOrderIt")
   @@index([intercompanyOrderId])
 }
 

@@ -59,12 +59,32 @@ This intentionally fails if:
 - migration history is inconsistent;
 - the migrated database differs from `schema.prisma`.
 
-## Staging
+## Staging — populated Neon database migration baseline
 
-Staging uses Neon/PostgreSQL. Apply committed migrations before or together with a staging application rollout:
+**CAUTION (2026-10-19, Issue #70):** Existing Staging data is populated but there is **no** `public._prisma_migrations` table. The base schema and three additive migrations were created/applied outside Prisma's migration ledger. Do **not** run `npm run db:migrate:staging` yet: it may try to recreate existing tables and fail.
+
+Before any automatic migration in Staging:
+
+1. Verify the intended Neon Staging project and branch (`dry-feather-14704968` / `br-sparkling-boat-ao9nrctp`). Never substitute the Neon Production branch.
+2. Run the safe **read-only** preflight; it intentionally exits with code 2 until a valid migration ledger exists:
 
 ```bash
 cp .env.staging.example .env.staging
+# Set the correct Neon Staging DATABASE_URL and APP_ENV=staging in the local ignored file.
+npm run db:migrate:preflight:staging
+```
+
+3. Compare the database's actual tables, constraints and indexes against the **initial** migration and the later trading connections / intercompany orders / CSV import migrations.
+4. Create another Neon branch cloned from Staging, rehearse Prisma's `migrate resolve --applied` **on that disposable rehearsal branch only**, in committed migration order. Inspect `prisma migrate status` and schema drift. Resolve only migrations that were actually applied.
+5. Take/verify a current backup or branch snapshot. Require explicit approval for the carefully reviewed ledger-only writes on Staging. Do not drop, recreate or reseed existing tables.
+6. Re-run the preflight and `prisma migrate status` on Staging. `READY_PENDING_MIGRATIONS` means only that the applied ledger is a valid ordered prefix; it does **not** certify that the existing physical schema matches it. Verify the actual schema/constraints/indexes on an isolated clone against the baseline and every already-applied migration, explicitly approve pending SQL, and only then use `npm run db:migrate:staging`. `READY` means every committed migration is applied; it also does not replace schema-drift validation.
+
+The preflight script opens a **read-only PostgreSQL transaction** and never creates or alters a migration ledger. It requires `APP_ENV=staging` and validates **the server-reported Neon project (`dry-feather-14704968`), branch (`br-sparkling-boat-ao9nrctp`) and database (`neondb`)** before inspecting migration history. It refuses Production, clones and any mismatched connection even if `APP_ENV=staging` is set. This is a read-only gate, not authorization to run write migrations.
+
+### Standard staging migrations (ONLY after baselining)
+
+```bash
+npm run db:migrate:preflight:staging
 npm run db:migrate:staging
 ```
 
@@ -113,3 +133,82 @@ For every production schema change:
 7. Run post-deploy smoke tests.
 
 For destructive or long-running migrations, use a dedicated migration plan and maintenance window rather than relying only on the standard application deployment workflow.
+
+
+### Clone-only rehearsal runner (2026-10-23)
+
+A fresh Staging clone was verified on Neon project `dry-feather-14704968`,
+branch `br-solitary-tooth-aoom13fn` (`stordex-baseline-clean-rehearsal-20261023`).
+Read-only structural catalog comparison with the initial migration and the three
+2026-10-16 migrations matched 21 tables, 11 enums, 59 indexes, 62 constraints
+and 266 columns. The catalog check accounts for PostgreSQL's 63-byte index
+identifier truncation. The inventory migration is NOT physically applied and
+`_prisma_migrations` is absent. This object-name parity is a prerequisite,
+not a complete type/default/semantic drift verification.
+
+The new `scripts/rehearse-neon-baseline.mjs` defaults to READ ONLY.
+It checks the **database-server-reported** `neon.project_id` and
+`neon.branch_id` before any mutation, and refuses Staging or Production.
+It accepts only an unpooled **direct** Neon connection for `neondb`.
+Run locally or on a trusted runner using the clone's direct DATABASE_URL;
+do not commit credentials, copy the real Staging DATABASE_URL, or point it at
+the Neon default/Production branch.
+
+```bash
+# Use a private shell environment containing the clone's direct URL.
+APP_ENV=staging-rehearsal DATABASE_URL='<NEON_CLONE_DIRECT_URL>' \
+  node scripts/rehearse-neon-baseline.mjs --check
+
+# Execute official `prisma migrate resolve --applied` for the four migrations
+# only after check output identifies the intended disposable branch.
+APP_ENV=staging-rehearsal DATABASE_URL='<NEON_CLONE_DIRECT_URL>' \
+  STORDEX_BASELINE_CONFIRM=apply-on-br-solitary-tooth-aoom13fn \
+  node scripts/rehearse-neon-baseline.mjs --execute
+```
+
+Only these four existing migrations are marked applied (in exact order):
+`20260828093000_initial`, `20261016070000_trading_connections`,
+`20261016093000_intercompany_orders`, and
+`20261016110000_csv_import_jobs`.
+The runner verifies the resulting four finished ledger records, unchanged
+application catalog and unchanged tenant count. The future
+`20261019090000_inventory_policy_purchase_mode` migration MUST remain pending.
+Then run `npx prisma migrate status`, separately compare full types, defaults,
+constraints and drift, and rehearse the reviewed inventory migration on this
+isolated branch. A successful rehearsal does NOT authorize writes to Staging;
+perform a current Staging backup and obtain owner approval first.
+
+
+### Pre-change Staging backup, branch limit and secure local archive
+
+On 2026-10-23, Neon rejected create_snapshot for the Staging branch
+(HTTP 400: not allowed to snapshot non-root branch). The project already
+has the maximum number of branches. Do not delete old snapshots/branches
+just to free a slot without explicit owner approval.
+
+Use the guarded scripts/backup-neon-staging.mjs on a trusted WSL machine.
+It is read-only by default, checks the server-reported Neon project/branch
+ID before backup, requires a direct non-pooled connection, and does not
+alter Staging. The PostgreSQL 16+ CLI writes a private custom-format
+archive outside the repository, validates its table-of-contents with
+pg_restore --list, and writes SHA-256 and an evidence manifest.
+
+Never share or commit a DATABASE_URL or database dump. Put the *Staging*
+direct URL in NEON_STAGING_DIRECT_URL (not the rehearsal clone URL).
+
+```bash
+APP_ENV=staging DATABASE_URL="$NEON_STAGING_DIRECT_URL" \
+  node scripts/backup-neon-staging.mjs --check
+
+APP_ENV=staging DATABASE_URL="$NEON_STAGING_DIRECT_URL" \
+  STORDEX_STAGING_BACKUP_CONFIRM=backup-only-on-br-sparkling-boat-ao9nrctp \
+  node scripts/backup-neon-staging.mjs --execute
+```
+
+The default archive directory is ~/stordex-staging-backups. Contents include
+sensitive Staging data. pg_restore --list checks archive structure only:
+run a full test restore into a separate disposable PostgreSQL database
+and validate the records before accepting the backup as restorable.
+Do not perform recovery tests against Staging itself. Do not apply
+Prisma migrations to Staging until the backup is secured, clone rehearsal
+is complete, and the owner has approved live schema and ledger changes.

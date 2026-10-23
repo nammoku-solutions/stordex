@@ -110,16 +110,26 @@ describe("two-tenant company acceptance and cancellation races", () => {
         expect(companyResult.sellerOrderId).toBeTruthy();
       }
 
-      // Buyer cancellation cannot occur unseen between checking ORDERED and sending.
+      // Buyer cancellation and send are serialized, not mutually exclusive:
+      // cancellation may win first (no link), or send may win and be
+      // successfully cancelled afterward (an audited CANCELLED link remains).
       const po3=await makePO("send-cancel");
       const race2=await Promise.allSettled([cancel(po3.id),send(po3.id)]);
-      expect(race2.filter(x=>x.status==="fulfilled")).toHaveLength(1);
+      expect(race2.some(x=>x.status==="fulfilled")).toBe(true);
       const po3After=await prisma.purchaseOrder.findUniqueOrThrow({where:{id:po3.id}});
       const company3=await prisma.intercompanyOrder.findUnique({where:{purchaseOrderId:po3.id}});
       if (po3After.status==="CANCELLED") {
-        expect(company3).toBeNull();
+        expect(race2[0].status).toBe("fulfilled");
+        if (company3) {
+          expect(race2[1].status).toBe("fulfilled");
+          expect(company3).toMatchObject({status:"CANCELLED",sellerOrderId:null});
+        } else {
+          expect(race2[1].status).toBe("rejected");
+        }
       } else {
         expect(po3After.status).toBe("ORDERED");
+        expect(race2[0].status).toBe("rejected");
+        expect(race2[1].status).toBe("fulfilled");
         expect(company3?.status).toBe("SENT");
       }
 
