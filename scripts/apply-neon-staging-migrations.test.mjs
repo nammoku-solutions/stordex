@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { verifyBackupHash, verifyExistingData, classifyStagingMigrationState } from "./apply-neon-staging-migrations.mjs";
+import { verifyBackupHash, verifyExistingData, classifyStagingMigrationState, safeFailureDetails } from "./apply-neon-staging-migrations.mjs";
 import { APPLIED_BASELINE, INVENTORY_MIGRATION } from "./rehearse-neon-inventory-migration.mjs";
 
 describe("guarded Staging database migration", () => {
@@ -30,5 +30,30 @@ describe("guarded Staging database migration", () => {
     expect(()=>verifyExistingData(data)).not.toThrow();
     expect(()=>verifyExistingData({...data,stock:"1654"})).toThrow();
     expect(()=>verifyExistingData({...data,po_fingerprint:"changed"})).toThrow();
+  });
+});
+
+
+describe("Staging failure diagnostics (no secret exposure)", () => {
+  it("retains nested network errors when AggregateError.message is empty", () => {
+    const inner = Object.assign(new Error("connect ETIMEDOUT 10.0.0.1:5432"), { code: "ETIMEDOUT" });
+    const outer = new AggregateError([inner], "");
+    const detail = safeFailureDetails(outer, "staging_preflight_connect_and_validate");
+    expect(detail.phase).toBe("staging_preflight_connect_and_validate");
+    expect(detail.message).toBe("(empty error message)");
+    expect(detail.nested[0].code).toBe("ETIMEDOUT");
+  });
+  it("redacts passwords, full database URLs and PostgreSQL URI fragments", () => {
+    const url = "postgresql://neondb_owner:secret123@ep-abc.neon.tech/neondb?sslmode=require";
+    const error = Object.assign(
+      new Error("Failed connecting " + url + " password secret123"),
+      {code:"ECONNREFUSED"},
+    );
+    const detail = JSON.stringify(safeFailureDetails(error, "staging_preflight_connect_and_validate", {
+      DATABASE_URL: url,
+    }));
+    expect(detail).toContain("ECONNREFUSED");
+    expect(detail).not.toContain("secret123");
+    expect(detail).not.toContain("postgresql://");
   });
 });
