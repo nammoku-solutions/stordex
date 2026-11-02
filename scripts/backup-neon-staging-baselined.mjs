@@ -12,7 +12,7 @@ import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
-import { STAGING_IDENTITY, readChecksums, inspect } from "./apply-neon-staging-migrations.mjs";
+import { STAGING_IDENTITY, readChecksums, inspect, safeFailureDetails } from "./apply-neon-staging-migrations.mjs";
 import { APPLIED_BASELINE } from "./rehearse-neon-inventory-migration.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -62,10 +62,18 @@ export function assertBaselinedBackupToc(toc) {
   }
 }
 
+/** Report useful libpq diagnostic details, but redact all Neon URL/password fragments. */
+export function safeCommandFailure(program, result, environment = process.env) {
+  const diagnostic = result.error?.message || result.stderr || "(no stderr)";
+  const safe = safeFailureDetails({ message: diagnostic }, "postgres_client", environment);
+  const code = Number.isInteger(result.status) ? String(result.status) : "no-exit-status";
+  return new Error(program + " failed (exit " + code + "): " + safe.message);
+}
+
 function run(program, args, env) {
   const result = spawnSync(program, args, { env, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
   if (result.error || result.status !== 0) {
-    throw new Error(program + " failed. Check PostgreSQL client installation and private connection.");
+    throw safeCommandFailure(program, result);
   }
   return result.stdout;
 }
@@ -102,6 +110,9 @@ async function main() {
     PGUSER: decodeURIComponent(url.username),
     PGPASSWORD: decodeURIComponent(url.password),
     PGSSLMODE: "verify-full",
+    // PostgreSQL 16 libpq otherwise looks for ~/.postgresql/root.crt.
+    // Trust the OS CA bundle and verify the expected Neon host name.
+    PGSSLROOTCERT: "system",
     PGCHANNELBINDING: url.searchParams.get("channel_binding") || "require",
   };
   delete env.PGSERVICE;

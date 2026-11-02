@@ -241,3 +241,11 @@ new filename, bytes and SHA-256, and rerun CI and read-only `--check` before
 requesting separate explicit owner approval for `--inventory`. Do not run
 `--inventory` or use the generic `npm run db:migrate:staging` meanwhile.
 Production remains unchanged and prohibited pending final Astra review.
+
+**PostgreSQL 16 TLS client note:** The post-baseline backup uses `PGSSLMODE=verify-full`
+and `PGSSLROOTCERT=system` to check the direct Neon hostname against the
+system-trusted CA roots. Without `PGSSLROOTCERT=system`, libpq 16 can fail with
+`root certificate file ~/.postgresql/root.crt does not exist`. On failure,
+the backup now reports a password-redacted PostgreSQL client error; do not
+share unredacted command output or credentials. Re-run the guarded read-only
+`--check` before retrying backup `--execute`. Neither operation writes to Neon.

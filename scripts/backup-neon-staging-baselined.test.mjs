@@ -4,6 +4,7 @@ import {
   parseClientVersion,
   assertBaselinedBackupState,
   assertBaselinedBackupToc,
+  safeCommandFailure,
 } from "./backup-neon-staging-baselined.mjs";
 import { APPLIED_BASELINE, INVENTORY_MIGRATION } from "./rehearse-neon-inventory-migration.mjs";
 
@@ -39,5 +40,28 @@ describe("post-baseline private Staging backup safety", () => {
     expect(() => assertBaselinedBackupToc(toc.replace("TABLE DATA public _prisma_migrations", "COMMENT public _prisma_migrations"))).toThrow();
     expect(() => assertBaselinedBackupToc(toc.replace("TABLE public Tenant", "COMMENT public Tenant"))).toThrow();
     expect(() => assertBaselinedBackupToc(toc.replace("TABLE DATA public Item", "COMMENT public Item"))).toThrow();
+  });
+});
+
+describe("PostgreSQL client diagnostics without credential disclosure", () => {
+  it("redacts a full URL, password, and includes the actionable libpq error", () => {
+    const url = "postgresql://neon_owner:do_not_log_123@ep-example.neon.tech/neondb?sslmode=verify-full";
+    const error = safeCommandFailure("pg_dump", {
+      status: 1,
+      stderr: "connection failed: root certificate file \"/home/jun/.postgresql/root.crt\" does not exist; " + url + " password do_not_log_123",
+    }, { DATABASE_URL: url });
+    expect(error.message).toContain("pg_dump failed (exit 1)");
+    expect(error.message).toContain("root certificate file");
+    expect(error.message).not.toContain("do_not_log_123");
+    expect(error.message).not.toContain("postgresql://");
+  });
+  it("handles a failed spawn with no stderr or exit status", () => {
+    const error = safeCommandFailure("pg_dump", {
+      status: null,
+      error: new Error("ENOENT: executable not found"),
+      stderr: "",
+    }, {DATABASE_URL: ""});
+    expect(error.message).toContain("no-exit-status");
+    expect(error.message).toContain("ENOENT");
   });
 });
