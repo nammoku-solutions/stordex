@@ -166,7 +166,7 @@ function callPrisma(commandArgs, databaseUrl) {
   }
 }
 
-async function readChecksums() {
+export async function readChecksums() {
   const dirs = (await import("node:fs/promises")).readdir;
   const committed = (await dirs(join(root, "prisma", "migrations"), { withFileTypes: true }))
     .filter(d => d.isDirectory()).map(d => d.name).sort();
@@ -181,7 +181,7 @@ async function readChecksums() {
   return { hashes, baselineCatalog };
 }
 
-async function inspect(databaseUrl, hashes, baselineCatalog) {
+export async function inspect(databaseUrl, hashes, baselineCatalog) {
   const client = new pg.Client({ connectionString: databaseUrl });
   await client.connect();
   try {

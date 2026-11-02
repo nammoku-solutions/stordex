@@ -197,3 +197,47 @@ Verify `migrate status`, full schema diff, fingerprints and UAT.
 The exact mutating shell commands are intentionally not provided as a casual
 copy/paste step: the operator must review the script and record specific
 owner approval for each Staging-writing phase first.
+
+
+### Post-baseline private Staging recovery archive (2026-11-02)
+
+The owner completed the *separately authorized* four-migration Prisma baseline
+repair on actual Staging `br-sparkling-boat-ao9nrctp`. Independent Neon inspection
+confirmed exactly four successful ledger rows, no fifth inventory migration,
+unchanged 2 tenants / 8 items / stock 1655 / 5 POs / 5 lines / 14 movements,
+and matching Item and PO-line fingerprints. The original Nov 2 pre-baseline
+backup **must be retained** and does **not** contain these newly registered
+Prisma ledger rows.
+
+Use the feature-branch `scripts/backup-neon-staging-baselined.mjs` to
+capture a *new* private copy of the exact post-baseline, pre-inventory state.
+This script is **read-only on Neon**, with `--check` as the default mode;
+it rejects Production/clones/pooled URLs, checks the server-reported branch,
+the exact four ledger checksums, physical schema and existing data fingerprints,
+and refuses the fifth inventory migration. It verifies TOC table-and-data
+entries for application data and `_prisma_migrations`, then rechecks live
+Staging for concurrent changes. Use a private WSL directory outside the repo.
+
+```bash
+APP_ENV=staging DATABASE_URL="$NEON_STAGING_DIRECT_URL" \
+  node scripts/backup-neon-staging-baselined.mjs --check
+
+APP_ENV=staging DATABASE_URL="$NEON_STAGING_DIRECT_URL" \
+  STORDEX_STAGING_BASELINED_BACKUP_CONFIRM=backup-baselined-only-on-br-sparkling-boat-ao9nrctp \
+  node scripts/backup-neon-staging-baselined.mjs --execute
+```
+
+After `BACKUP_ARCHIVE_VERIFIED`, independently verify SHA-256 and **restore
+the actual archive into a disposable isolated PostgreSQL 16 database**. Verify
+exactly four `_prisma_migrations` ledger records, migration checksums and
+existing data counts/fingerprints. The archive is sensitive: never upload or
+commit it, and retain prior backups. A validated TOC alone is NOT proof of
+recoverability.
+
+**IMPORTANT:** Existing `scripts/apply-neon-staging-migrations.mjs` still pins
+the old pre-baseline archive. Once the new post-baseline archive's independent
+restore PASS is recorded, update the guarded migration script with the exact
+new filename, bytes and SHA-256, and rerun CI and read-only `--check` before
+requesting separate explicit owner approval for `--inventory`. Do not run
+`--inventory` or use the generic `npm run db:migrate:staging` meanwhile.
+Production remains unchanged and prohibited pending final Astra review.
