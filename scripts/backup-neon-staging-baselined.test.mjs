@@ -5,6 +5,7 @@ import {
   assertBaselinedBackupState,
   assertBaselinedBackupToc,
   safeCommandFailure,
+  safeBackupFailure,
 } from "./backup-neon-staging-baselined.mjs";
 import { APPLIED_BASELINE, INVENTORY_MIGRATION } from "./rehearse-neon-inventory-migration.mjs";
 
@@ -63,5 +64,25 @@ describe("PostgreSQL client diagnostics without credential disclosure", () => {
     }, {DATABASE_URL: ""});
     expect(error.message).toContain("no-exit-status");
     expect(error.message).toContain("ENOENT");
+  });
+});
+
+describe("post-baseline backup failure diagnostics", () => {
+  it("reports nested IPv4 and IPv6 failures for an empty AggregateError.message", () => {
+    const timeout = Object.assign(new Error("connect ETIMEDOUT 18.138.49.39:5432"), {code: "ETIMEDOUT"});
+    const noRoute = Object.assign(new Error("connect ENETUNREACH fe80::1:5432"), {code: "ENETUNREACH"});
+    const result = safeBackupFailure(new AggregateError([timeout, noRoute], ""), "staging_preflight_connect_and_validate");
+    expect(result.phase).toBe("staging_preflight_connect_and_validate");
+    expect(result.name).toBe("AggregateError");
+    expect(result.message).toBe("(empty error message)");
+    expect(result.nested.map(x => x.code)).toEqual(["ETIMEDOUT", "ENETUNREACH"]);
+  });
+  it("preserves DNS EAI_AGAIN while redacting database URL secrets", () => {
+    const url="postgresql://owner:secret_451@ep-example.neon.tech/neondb?sslmode=require";
+    const err=Object.assign(new Error("getaddrinfo EAI_AGAIN ep-example.neon.tech; "+url),{code:"EAI_AGAIN"});
+    const detail=JSON.stringify(safeBackupFailure(err,"staging_preflight_connect_and_validate",{DATABASE_URL:url}));
+    expect(detail).toContain("EAI_AGAIN");
+    expect(detail).not.toContain("secret_451");
+    expect(detail).not.toContain("postgresql://");
   });
 });
