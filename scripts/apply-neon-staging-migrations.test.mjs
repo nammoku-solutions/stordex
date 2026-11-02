@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { verifyBackupHash, verifyExistingData, classifyStagingMigrationState, safeFailureDetails } from "./apply-neon-staging-migrations.mjs";
+import { verifyBackupHash, verifyExistingData, classifyStagingMigrationState, safeFailureDetails, expectedStagingApprovalToken } from "./apply-neon-staging-migrations.mjs";
 import { APPLIED_BASELINE, INVENTORY_MIGRATION } from "./rehearse-neon-inventory-migration.mjs";
 
 describe("guarded Staging database migration", () => {
@@ -56,5 +56,19 @@ describe("Staging failure diagnostics (no secret exposure)", () => {
     expect(detail).toContain("ECONNREFUSED");
     expect(detail).not.toContain("secret123");
     expect(detail).not.toContain("postgresql://");
+  });
+});
+
+describe("Staging write authorization token regression", () => {
+  it("correctly strips the CLI flag prefix for baseline only", () => {
+    expect(expectedStagingApprovalToken("--baseline")).toBe("baseline-on-br-sparkling-boat-ao9nrctp");
+    expect(expectedStagingApprovalToken("--baseline")).not.toBe("--baseline-on-br-sparkling-boat-ao9nrctp");
+  });
+  it("keeps inventory approval entirely separate and refuses check/unknown modes", () => {
+    expect(expectedStagingApprovalToken("--inventory")).toBe("inventory-on-br-sparkling-boat-ao9nrctp");
+    expect(expectedStagingApprovalToken("--inventory")).not.toBe(expectedStagingApprovalToken("--baseline"));
+    expect(() => expectedStagingApprovalToken("--check")).toThrow();
+    expect(() => expectedStagingApprovalToken("baseline")).toThrow();
+    expect(() => expectedStagingApprovalToken("--baseline-on-br-sparkling-boat-ao9nrctp")).toThrow();
   });
 });

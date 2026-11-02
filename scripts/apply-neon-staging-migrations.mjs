@@ -108,6 +108,17 @@ const EXPECTED = Object.freeze({
   po_fingerprint: "8889fd4812acf85c9bc52dc1120a5ec6",
 });
 
+/**
+ * The CLI flag contains leading "--", but the authorization string must not.
+ * Baseline and inventory each require their own distinct, exact token.
+ */
+export function expectedStagingApprovalToken(mode) {
+  if (mode !== "--baseline" && mode !== "--inventory") {
+    throw new Error("Only explicitly approved write modes are supported");
+  }
+  return mode.slice(2) + "-on-" + STAGING_IDENTITY.branch;
+}
+
 export function verifyBackupHash(actual, expected = BACKUP_SHA) {
   if (!/^[0-9a-f]{64}$/.test(actual) || actual !== expected) {
     throw new Error("Staging backup SHA-256 mismatch. STOP and investigate.");
@@ -293,7 +304,8 @@ async function main() {
   if (mode === "--inventory" && before.state !== "BASELINED") {
     throw new Error("Inventory deployment requires exactly four complete baselined migrations");
   }
-  if (process.env.STORDEX_STAGING_WRITE_APPROVAL !== mode + "-on-" + STAGING_IDENTITY.branch) {
+  currentPhase = "checking_scoped_write_approval";
+  if (process.env.STORDEX_STAGING_WRITE_APPROVAL !== expectedStagingApprovalToken(mode)) {
     throw new Error("Explicit scoped Staging write approval variable required");
   }
   currentPhase = "approved_prisma_migration";
