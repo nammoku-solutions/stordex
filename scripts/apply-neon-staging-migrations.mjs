@@ -15,6 +15,35 @@ import { APPLIED_BASELINE, INVENTORY_MIGRATION } from "./rehearse-neon-inventory
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
+/** Diagnostic output is safe to paste into an issue: redact URLs/passwords. */
+export function safeFailureDetails(error, phase, environment = process.env) {
+  const redact = value => {
+    let result = String(value || "");
+    const secretUrl = environment.DATABASE_URL || "";
+    if (secretUrl) {
+      result = result.split(secretUrl).join("[DATABASE_URL]");
+      try {
+        const password = new URL(secretUrl).password;
+        if (password) {
+          for (const form of [password, decodeURIComponent(password)]) {
+            if (form) result = result.split(form).join("[REDACTED]");
+          }
+        }
+      } catch { /* Validation reports bad URLs separately. */ }
+    }
+    return result.replace(/postgres(?:ql)?:\/\/[^\s"']+/gi, "[DATABASE_URL]").slice(0, 400);
+  };
+  const describe = value => ({
+    name: String(value?.name || "UnknownError"),
+    code: value?.code ? String(value.code) : null,
+    message: redact(value?.message) || "(empty error message)",
+  });
+  const nested = Array.isArray(error?.errors) ? error.errors.slice(0, 5).map(describe) : [];
+  return { phase, ...describe(error), ...(nested.length ? { nested } : {}) };
+}
+let currentPhase = "startup";
+
+
 export const STAGING_IDENTITY = Object.freeze({
   project: "dry-feather-14704968",
   branch: "br-sparkling-boat-ao9nrctp",
@@ -245,8 +274,11 @@ async function main() {
       url.pathname !== "/neondb") {
     throw new Error("Use direct Staging Neon neondb URL, never pooled, clone, or local");
   }
+  currentPhase = "loading_committed_migrations";
   const { hashes, baselineCatalog } = await readChecksums();
+  currentPhase = "verifying_backup_archive";
   await assertVerifiedBackup(process.env.STORDEX_STAGING_BACKUP_ARCHIVE);
+  currentPhase = "staging_preflight_connect_and_validate";
   const before = await inspect(process.env.DATABASE_URL, hashes, baselineCatalog);
   console.log(JSON.stringify({ mode, target: STAGING_IDENTITY, state: before.state,
     data: before.data, migrations: before.migrations, backupSha256: BACKUP_SHA }, null, 2));
@@ -260,6 +292,7 @@ async function main() {
   if (process.env.STORDEX_STAGING_WRITE_APPROVAL !== mode + "-on-" + STAGING_IDENTITY.branch) {
     throw new Error("Explicit scoped Staging write approval variable required");
   }
+  currentPhase = "approved_prisma_migration";
   if (mode === "--baseline") {
     for (const name of APPLIED_BASELINE) {
       callPrisma(["migrate", "resolve", "--applied", name], process.env.DATABASE_URL);
@@ -267,6 +300,7 @@ async function main() {
   } else {
     callPrisma(["migrate", "deploy"], process.env.DATABASE_URL);
   }
+  currentPhase = "staging_post_migration_validation";
   const after = await inspect(process.env.DATABASE_URL, hashes, baselineCatalog);
   const intended = mode === "--baseline" ? "BASELINED" : "MIGRATED";
   if (after.state !== intended ||
@@ -277,5 +311,8 @@ async function main() {
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
-  main().catch(e => { console.error("Staging migration stopped:", e.message); process.exitCode = 2; });
+  main().catch(e => {
+    console.error("Staging migration stopped:", JSON.stringify(safeFailureDetails(e, currentPhase), null, 2));
+    process.exitCode = 2;
+  });
 }
