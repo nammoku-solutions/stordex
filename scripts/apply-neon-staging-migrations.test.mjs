@@ -20,8 +20,9 @@ describe("guarded Staging database migration", () => {
     expect(()=>classifyStagingMigrationState({ledger:rows.map((x,i)=>i===2?{...x,checksum:"b".repeat(64)}:x),hasLedger:true,schema:inventorySchema,checksums})).toThrow();
   });
   it("requires the exact restore-tested archive digest",()=>{
-    expect(()=>verifyBackupHash("a8ef4098f48b0384cd52d208c4959c6f0578744b179df15e904c169681076db9")).not.toThrow();
+    expect(()=>verifyBackupHash("25e423f4d206cdd6c92a37821d1328393324f9e09fd2de3f2283666bbb5ab782")).not.toThrow();
     expect(()=>verifyBackupHash("b".repeat(64))).toThrow();
+    expect(()=>verifyBackupHash("a8ef4098f48b0384cd52d208c4959c6f0578744b179df15e904c169681076db9")).toThrow();
   });
   it("checks restored data counts and both fingerprints",()=>{
     const data={tenants:2,items:8,stock:"1655",purchase_orders:5,purchase_lines:5,movements:14,

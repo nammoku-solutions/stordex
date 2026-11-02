@@ -99,7 +99,8 @@ export function compareCatalog(expected, actual) {
 }
 
 const expectedChain = [...APPLIED_BASELINE, INVENTORY_MIGRATION];
-const BACKUP_SHA = "a8ef4098f48b0384cd52d208c4959c6f0578744b179df15e904c169681076db9";
+const BACKUP_SHA = "25e423f4d206cdd6c92a37821d1328393324f9e09fd2de3f2283666bbb5ab782";
+const BACKUP_BASENAME = "stordex-staging-2026-11-02T03-40-46-770Z-d904d805.dump";
 const EXPECTED = Object.freeze({
   tenants: 2, items: 8, stock: "1655", purchase_orders: 5,
   purchase_lines: 5, movements: 14,
@@ -250,6 +251,9 @@ async function inspect(databaseUrl, hashes, baselineCatalog) {
 async function assertVerifiedBackup(archive) {
   if (!archive || !resolve(archive).startsWith(resolve(process.env.HOME || "/") + "/")) {
     throw new Error("Set STORDEX_STAGING_BACKUP_ARCHIVE to the private locally restored .dump");
+  }
+  if (archive.split(/[\\/]/).at(-1) !== BACKUP_BASENAME) {
+    throw new Error("Backup file name does not match restore-tested November 2 Staging archive");
   }
   if (!archive.endsWith(".dump")) throw new Error("Expected PostgreSQL custom-format backup");
   const file = await stat(archive);

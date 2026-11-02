@@ -175,10 +175,10 @@ rejects pooled/cloned/Production URLs, unknown migrations or hashes, partial
 ledger, unexpected catalog drift, changed item/PO record fingerprints,
 unapproved history/schema transitions or mismatched prior archive SHA-256.
 
-The only accepted pre-change archive for this specific rehearsal is
-`stordex-staging-2026-10-23T07-45-23-904Z-cc8596b6.dump`,
+The only accepted pre-change archive for this specific rehearsal (fully restored into a separate Docker PostgreSQL 16 instance on November 2, with 2 tenants, 8 items, 1655 total stock, 5 purchase orders, 5 PO lines, 14 movements, and matching item/PO fingerprints) is
+`stordex-staging-2026-11-02T03-40-46-770Z-d904d805.dump`,
 67,396 bytes, SHA-256
-`a8ef4098f48b0384cd52d208c4959c6f0578744b179df15e904c169681076db9`.
+`25e423f4d206cdd6c92a37821d1328393324f9e09fd2de3f2283666bbb5ab782`.
 A more recent or different backup requires updating the reviewed guard
 with new evidence and retesting; do **not** bypass checks.
 
