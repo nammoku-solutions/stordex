@@ -175,24 +175,27 @@ rejects pooled/cloned/Production URLs, unknown migrations or hashes, partial
 ledger, unexpected catalog drift, changed item/PO record fingerprints,
 unapproved history/schema transitions or mismatched prior archive SHA-256.
 
-The only accepted pre-change archive for this specific rehearsal (fully restored into a separate Docker PostgreSQL 16 instance on November 2, with 2 tenants, 8 items, 1655 total stock, 5 purchase orders, 5 PO lines, 14 movements, and matching item/PO fingerprints) is
-`stordex-staging-2026-11-02T03-40-46-770Z-d904d805.dump`,
-67,396 bytes, SHA-256
-`25e423f4d206cdd6c92a37821d1328393324f9e09fd2de3f2283666bbb5ab782`.
-A more recent or different backup requires updating the reviewed guard
-with new evidence and retesting; do **not** bypass checks.
+The historical *pre-baseline* recovery archive (restored and verified on
+November 2 before the **completed** four-row ledger repair) was
+`stordex-staging-2026-11-02T03-40-46-770Z-d904d805.dump`, 67,396 bytes,
+SHA-256 `25e423f4d206cdd6c92a37821d1328393324f9e09fd2de3f2283666bbb5ab782`.
+Keep it as historical recovery evidence, but **do not use this ledger-free
+archive for the next inventory migration**. The guarded script now pins the
+separate post-baseline backup described below.
 
 Before any live Staging mutation, owner must explicitly approve the exact
 target, maintenance period and this staged runbook; assess active writes and
 verify a realistic recovery method. Never paste credentials or archive into
 chat, issue comments or GitHub Actions logs.
 
-After approval, in a private trusted WSL session using Direct Staging URL
-and the private archive file path in
-`STORDEX_STAGING_BACKUP_ARCHIVE`, run `--check` before `--baseline`.
-After baselining, inspect `prisma migrate status` to ensure exactly the fifth
-migration is pending, then independently authorize and run `--inventory`.
-Verify `migrate status`, full schema diff, fingerprints and UAT.
+The **four-row Staging baseline operation is already complete**, and must not
+be rerun. Before the next separately approved `--inventory` operation, the
+operator must use the new privately restored post-baseline archive in
+`STORDEX_STAGING_BACKUP_ARCHIVE`; run the guarded read-only `--check`
+and separately inspect `prisma migrate status` to confirm that only the
+fifth migration is pending. After explicit owner approval, run the guarded
+inventory stage and verify Prisma status, full schema diff, unchanged
+fingerprints and UAT. Never run generic Staging deploy commands as a shortcut.
 
 The exact mutating shell commands are intentionally not provided as a casual
 copy/paste step: the operator must review the script and record specific
@@ -234,13 +237,31 @@ existing data counts/fingerprints. The archive is sensitive: never upload or
 commit it, and retain prior backups. A validated TOC alone is NOT proof of
 recoverability.
 
-**IMPORTANT:** Existing `scripts/apply-neon-staging-migrations.mjs` still pins
-the old pre-baseline archive. Once the new post-baseline archive's independent
-restore PASS is recorded, update the guarded migration script with the exact
-new filename, bytes and SHA-256, and rerun CI and read-only `--check` before
-requesting separate explicit owner approval for `--inventory`. Do not run
-`--inventory` or use the generic `npm run db:migrate:staging` meanwhile.
-Production remains unchanged and prohibited pending final Astra review.
+**Post-baseline archive restored and verified (2026-11-02):**
+- Private archive: `stordex-staging-baselined-2026-11-02T11-52-58-977Z-28c36970.dump`
+- Length: **69,078 bytes**
+- SHA-256: `e768bf09ad96312af7d69d698ac384799422105466c6e87ebfa9d0df1d4591bd`
+- Source: actual Staging project `dry-feather-14704968`, branch
+  `br-sparkling-boat-ao9nrctp`, database `neondb`.
+- Isolated restoration: PostgreSQL 16 Docker container with `--network none`,
+  restored into empty `stordex_restore` using `pg_restore --single-transaction
+  --exit-on-error --no-owner --no-privileges`; command returned no error.
+- Recovered exactly 2 tenants, 8 items, stock 1655, 5 POs, 5 purchase lines,
+  14 movements, matching Item/PO-line fingerprints; four completed
+  `_prisma_migrations` rows with all four independently verified checksums;
+  no fifth history row or inventory columns.
+- The owner verified the archive's exact SHA-256 and size locally, and an
+  independent read-only Neon check matched the snapshot data.
+
+The guarded `scripts/apply-neon-staging-migrations.mjs` now pins **only**
+this post-baseline archive's full filename, length and SHA-256. Its existing
+data and ledger checks are unchanged. After CI is green, owner must pull the
+reviewed commit and run `--check` using the private archive. Any errors
+must stop the rollout. **The fifth inventory migration is NOT authorized
+by this backup or the historical baseline approval.** Obtain separate
+explicit owner approval and confirm no concurrent Staging writes before
+any `--inventory` invocation. Production remains unchanged and blocked
+until all features/UAT and Codex Astra Review PASS.
 
 **PostgreSQL 16 TLS client note:** The post-baseline backup uses `PGSSLMODE=verify-full`
 and `PGSSLROOTCERT=system` to check the direct Neon hostname against the

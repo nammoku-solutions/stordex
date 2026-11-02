@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { verifyBackupHash, verifyExistingData, classifyStagingMigrationState, safeFailureDetails, expectedStagingApprovalToken } from "./apply-neon-staging-migrations.mjs";
+import { verifyBackupHash, verifyBackupArchiveMetadata, verifyExistingData, classifyStagingMigrationState, safeFailureDetails, expectedStagingApprovalToken } from "./apply-neon-staging-migrations.mjs";
 import { APPLIED_BASELINE, INVENTORY_MIGRATION } from "./rehearse-neon-inventory-migration.mjs";
 
 describe("guarded Staging database migration", () => {
@@ -20,9 +20,18 @@ describe("guarded Staging database migration", () => {
     expect(()=>classifyStagingMigrationState({ledger:rows.map((x,i)=>i===2?{...x,checksum:"b".repeat(64)}:x),hasLedger:true,schema:inventorySchema,checksums})).toThrow();
   });
   it("requires the exact restore-tested archive digest",()=>{
-    expect(()=>verifyBackupHash("25e423f4d206cdd6c92a37821d1328393324f9e09fd2de3f2283666bbb5ab782")).not.toThrow();
+    expect(()=>verifyBackupHash("e768bf09ad96312af7d69d698ac384799422105466c6e87ebfa9d0df1d4591bd")).not.toThrow();
+    expect(()=>verifyBackupHash("25e423f4d206cdd6c92a37821d1328393324f9e09fd2de3f2283666bbb5ab782")).toThrow();
     expect(()=>verifyBackupHash("b".repeat(64))).toThrow();
     expect(()=>verifyBackupHash("a8ef4098f48b0384cd52d208c4959c6f0578744b179df15e904c169681076db9")).toThrow();
+  });
+  it("requires the exact new restored archive basename and byte size",()=>{
+    const file={isFile:()=>true,size:69078};
+    expect(()=>verifyBackupArchiveMetadata("stordex-staging-baselined-2026-11-02T11-52-58-977Z-28c36970.dump",file)).not.toThrow();
+    expect(()=>verifyBackupArchiveMetadata("stordex-staging-2026-11-02T03-40-46-770Z-d904d805.dump",file)).toThrow();
+    expect(()=>verifyBackupArchiveMetadata("stordex-staging-baselined-2026-11-02T11-52-58-977Z-28c36970.dump",{...file,size:67396})).toThrow();
+    expect(()=>verifyBackupArchiveMetadata("stordex-staging-baselined-2026-11-02T11-52-58-977Z-28c36970.dump",{isFile:()=>false,size:69078})).toThrow();
+    expect(()=>verifyBackupArchiveMetadata("stordex-staging-baselined-2026-11-02T11-52-58-977Z-28c36970.dump.tmp",file)).toThrow();
   });
   it("checks restored data counts and both fingerprints",()=>{
     const data={tenants:2,items:8,stock:"1655",purchase_orders:5,purchase_lines:5,movements:14,

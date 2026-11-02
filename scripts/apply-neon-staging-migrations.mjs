@@ -99,8 +99,8 @@ export function compareCatalog(expected, actual) {
 }
 
 const expectedChain = [...APPLIED_BASELINE, INVENTORY_MIGRATION];
-const BACKUP_SHA = "25e423f4d206cdd6c92a37821d1328393324f9e09fd2de3f2283666bbb5ab782";
-const BACKUP_BASENAME = "stordex-staging-2026-11-02T03-40-46-770Z-d904d805.dump";
+const BACKUP_SHA = "e768bf09ad96312af7d69d698ac384799422105466c6e87ebfa9d0df1d4591bd";
+const BACKUP_BASENAME = "stordex-staging-baselined-2026-11-02T11-52-58-977Z-28c36970.dump";
 const EXPECTED = Object.freeze({
   tenants: 2, items: 8, stock: "1655", purchase_orders: 5,
   purchase_lines: 5, movements: 14,
@@ -259,16 +259,21 @@ export async function inspect(databaseUrl, hashes, baselineCatalog) {
   }
 }
 
+/** Pin the exact privately restored post-baseline archive (not the earlier ledger-free dump). */
+export function verifyBackupArchiveMetadata(archive, file) {
+  if (archive.split(/[\\/]/).at(-1) !== BACKUP_BASENAME) {
+    throw new Error("Backup file name does not match independently restore-tested post-baseline Staging archive");
+  }
+  if (!archive.endsWith(".dump")) throw new Error("Expected PostgreSQL custom-format backup");
+  if (!file.isFile() || file.size !== 69078) throw new Error("Archive size mismatch");
+}
+
 async function assertVerifiedBackup(archive) {
   if (!archive || !resolve(archive).startsWith(resolve(process.env.HOME || "/") + "/")) {
     throw new Error("Set STORDEX_STAGING_BACKUP_ARCHIVE to the private locally restored .dump");
   }
-  if (archive.split(/[\\/]/).at(-1) !== BACKUP_BASENAME) {
-    throw new Error("Backup file name does not match restore-tested November 2 Staging archive");
-  }
-  if (!archive.endsWith(".dump")) throw new Error("Expected PostgreSQL custom-format backup");
   const file = await stat(archive);
-  if (!file.isFile() || file.size !== 67396) throw new Error("Archive size mismatch");
+  verifyBackupArchiveMetadata(archive, file);
   if ((file.mode & 0o077) !== 0) throw new Error("Backup must not be group/world readable");
   const sha = createHash("sha256");
   for await (const chunk of createReadStream(archive)) sha.update(chunk);
