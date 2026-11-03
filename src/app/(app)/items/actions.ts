@@ -6,6 +6,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireTenant } from "@/lib/session";
 import { assertTenantSupplier } from "@/lib/tenant-resources";
+import { safelyRemoveItem } from "@/lib/item-removal";
 
 const Schema = z.object({
   code: z.string().min(1).max(40),
@@ -81,6 +82,19 @@ export async function updateItem(id: string, formData: FormData) {
 
 export async function deleteItem(id: string) {
   const { tenantId } = await requireTenant();
-  await prisma.item.deleteMany({ where: { id, tenantId } });
+  const outcome = await safelyRemoveItem(tenantId, id);
   revalidatePath("/items");
+  revalidatePath("/inventory");
+  redirect(`/items?removal=${outcome}`);
+}
+
+export async function reactivateItem(id: string) {
+  const { tenantId } = await requireTenant();
+  const restored = await prisma.item.updateMany({
+    where: { id, tenantId, active: false },
+    data: { active: true },
+  });
+  revalidatePath("/items");
+  revalidatePath("/inventory");
+  redirect(`/items?inactive=1&removal=${restored.count === 1 ? "reactivated" : "not-found"}`);
 }
