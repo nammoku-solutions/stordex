@@ -95,6 +95,15 @@ describe("purchase-order export preflight with disposable PostgreSQL", () => {
       expect(after).toEqual(before);
       expect(before).toEqual({ orders: 1, lines: 1, movements: 1, stock: 21 });
     } finally {
+      // PurchaseOrderItem -> Item is RESTRICT: delete children before masters.
+      // Keep cleanup inside disposable CI; never execute on a shared DB.
+      await prisma.purchaseOrderItem.deleteMany({
+        where: { purchaseOrder: { tenantId: tenant.id } },
+      });
+      await prisma.purchaseOrder.deleteMany({ where: { tenantId: tenant.id } });
+      await prisma.inventoryMovement.deleteMany({ where: { tenantId: tenant.id } });
+      await prisma.item.deleteMany({ where: { tenantId: tenant.id } });
+      await prisma.supplier.deleteMany({ where: { tenantId: tenant.id } });
       await prisma.tenant.delete({ where: { id: tenant.id } });
     }
   });
