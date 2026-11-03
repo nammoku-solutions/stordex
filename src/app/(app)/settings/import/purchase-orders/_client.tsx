@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 
 type Issue = { row: number; field: string; message: string };
 type Report = {
@@ -46,11 +47,14 @@ export function PurchaseOrderPreflightClient() {
     <div className="space-y-5">
       <div className="card p-5 space-y-4">
         <div className="text-sm text-slate-700">
-          <strong>操作方法：</strong>「CSV エクスポート」から「発注と過去履歴」をダウンロードし、
+          <strong>操作方法：</strong>「CSV エクスポート」から「仕入発注と過去履歴」をダウンロードし、
           そのCSVをここで選択して「検証する」を押してください。
           <strong>この画面は読み取り・検証専用です。</strong>
           仕入発注、入荷数、在庫は追加・更新されません。
         </div>
+        <Link href="/settings/export" className="btn-secondary inline-flex">
+          仕入発注CSVをダウンロードする
+        </Link>
         <div>
           <label htmlFor="purchase-order-csv" className="label">仕入発注CSVファイル（2MB以内・UTF-8）</label>
           <input id="purchase-order-csv" type="file" accept=".csv,text/csv" className="input"
