@@ -8,10 +8,6 @@
 import { prisma } from "@/lib/db";
 import { preflightPurchaseOrderExport, type PurchaseOrderImportSnapshot } from "./purchase-order-preflight";
 
-type Tx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
-// A Prisma transaction client type is inferred from the concrete callback
-// rather than admitting a generic, unscoped database object.
-
 export type PORestoreResult = {
   sourceDocuments: number;
   sourceLines: number;
