@@ -112,17 +112,24 @@ export async function archiveCutoverInDisposableCi(input: {
         sourceTenantFingerprint: manifest.tenantFingerprint,
         itemsCsvSha256: manifest.source.itemsCsvSha256,
         movementsCsvSha256: manifest.source.movementsCsvSha256,
-        items: { create: manifest.items.map(item => ({
+      },
+    });
+    // Separate scalar createMany avoids Prisma's checked nested relation
+    // ambiguity while the single Serializable transaction stays atomic.
+    if (manifest.items.length) {
+      await tx.migrationArchiveItem.createMany({
+        data: manifest.items.map(item => ({
           tenantId: input.targetTenantId,
+          batchId: batch.id,
           itemCode: item.code,
           cutoverStock: item.cutoverStock,
           historyKind: item.history,
           historicalOpening: item.inferredHistoricalOpening,
           lastHistoricalBalance: item.lastHistoricalBalance,
           movementCount: item.movementCount,
-        })) },
-      },
-    });
+        })),
+      });
+    }
     return {
       batchId: batch.id,
       archivedItems: manifest.items.length,
