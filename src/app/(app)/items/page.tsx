@@ -170,7 +170,7 @@ export default async function ItemsPage({
                         action={deleteItem}
                         confirm={`商品「${it.name}」を削除しますか？ 過去履歴がある場合は取扱停止になります。進行中の取引がある場合は削除できません。`}
                       />
-                    )
+                    )}
                   </td>
                 </tr>
               );
