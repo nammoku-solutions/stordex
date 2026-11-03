@@ -4,15 +4,14 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { requireTenant } from "@/lib/session";
-import { decodeCsvBuffer, parseCsv } from "@/lib/csv/parse";
-import { preflightInventoryLedgerExports } from "@/lib/csv/inventory-ledger-preflight";
+import { createInventoryCutoverManifest } from "@/lib/csv/inventory-cutover-manifest";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const MAX_BYTES_PER_FILE = 2 * 1024 * 1024;
 
 export async function POST(request: NextRequest) {
-  const { role } = await requireTenant();
+  const { tenantId, role } = await requireTenant();
   if (role !== "OWNER" && role !== "ADMIN") {
     return NextResponse.json({ ok: false, error: "管理者権限が必要です" }, { status: 403 });
   }
@@ -34,22 +33,23 @@ export async function POST(request: NextRequest) {
         ok: false, error: "各CSVファイルは2MB以内にしてください",
       }, { status: 413 });
     }
-    const read = async (file: File) => {
-      const decoded = decodeCsvBuffer(new Uint8Array(await file.arrayBuffer()), "utf-8");
-      return parseCsv(decoded.text);
-    };
-    const result = preflightInventoryLedgerExports({
-      items: await read(items),
-      movements: await read(movements),
+    // Validate and fingerprint the EXACT uploaded bytes in one operation;
+    // never validate one parsed source while hashing another.
+    const { audit, manifest } = createInventoryCutoverManifest({
+      tenantId,
+      itemsCsv: new Uint8Array(await items.arrayBuffer()),
+      movementsCsv: new Uint8Array(await movements.arrayBuffer()),
     });
-    // Do not echo source rows, product names or sensitive history fields.
-    const { summaries: _sourceItems, ...report } = result;
+    // The owner/admin may download the explicit cutover stock snapshot.
+    // No source CSV rows or person names are returned, and no DB is mutated.
+    const { summaries: _sourceItems, ...report } = audit;
     return NextResponse.json({
       ...report,
-      message: result.ok
+      manifest,
+      message: audit.ok
         ? "在庫CSVの整合性検証が完了しました。データは変更していません"
         : "在庫CSVに不整合があります。データは変更していません",
-    }, { headers: { "Cache-Control": "no-store" } });
+    }, { headers: { "Cache-Control": "private, no-store" } });
   } catch {
     return NextResponse.json({
       ok: false, error: "CSV形式の検証に失敗しました。データは変更していません",

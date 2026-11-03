@@ -4,9 +4,33 @@ import { useState } from "react";
 import Link from "next/link";
 
 type Issue = { file: "items" | "movements"; row: number; field: string; message: string };
+type CutoverManifest = {
+  format: "stordex-inventory-cutover-v1";
+  manifestId: string;
+  generatedAt: string;
+  tenantFingerprint: string;
+  source: { itemsCsvSha256: string; movementsCsvSha256: string };
+  checks: {
+    itemCount: number; movementCount: number; reconciledItems: number;
+    unverifiedItems: number; currentStockTotal: number;
+    inferredHistoricalOpeningTotal: number;
+  };
+  cutover: {
+    status: "NOT_CONFIRMED"; atomicSnapshotVerified: false;
+    businessWritesPausedVerified: false; requiresManualCutoverApproval: true;
+  };
+  items: {
+    code: string; cutoverStock: number;
+    history: "RECONCILED_LEDGER" | "CUTOVER_ONLY_NO_HISTORY";
+    movementCount: number; inferredHistoricalOpening: number | null;
+    lastHistoricalBalance: number | null;
+  }[];
+};
+
 type Result = {
   ok: boolean;
   message: string;
+  manifest: CutoverManifest | null;
   itemCount: number;
   movementCount: number;
   reconciledItems: number;
@@ -23,6 +47,20 @@ export function InventoryLedgerPreflightClient() {
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  function downloadManifest(manifest: CutoverManifest) {
+    const blob = new Blob([JSON.stringify(manifest, null, 2) + "\n"], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "stordex-cutover-" + manifest.manifestId.slice(0, 12) + ".json";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
 
   async function runCheck() {
     setResult(null);
@@ -106,6 +144,27 @@ export function InventoryLedgerPreflightClient() {
             <p className="text-sm text-amber-800">
               履歴のない商品があります。完全移行には、それらの商品の開始在庫の確認が必要です。
             </p>}
+          {result.ok && result.manifest && (
+            <section className="space-y-3 border-t border-slate-200 pt-4">
+              <h2 className="font-semibold">移行時在庫の検証記録（カットオーバー候補）</h2>
+              <p className="text-sm text-slate-700">
+                CSVのSHA-256、商品ごとの移行時残高、履歴の有無をJSONで保存できます。
+                同じCSVを再度検証した場合は同じ記録IDになります。
+              </p>
+              <p className="text-sm font-semibold text-amber-800">
+                これは開始在庫の履歴を証明するものではありません。
+                取得ファイルは同一時点のDBスナップショットと保証されておらず、
+                在庫確定・移行開始・復元承認はまだ行われていません。
+              </p>
+              <div className="font-mono text-xs text-slate-600 break-all">
+                検証記録ID：{result.manifest.manifestId}
+              </div>
+              <button type="button" className="btn-secondary"
+                onClick={() => result.manifest && downloadManifest(result.manifest)}>
+                検証記録（JSON）をダウンロード
+              </button>
+            </section>
+          )}
           {result.errors.length > 0 &&
             <section className="space-y-1">
               <h2 className="font-semibold text-red-700">不整合（最大50件表示）</h2>
