@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireTenant } from "@/lib/session";
 import { toCsv, exportDate, exportTimestamp, type CsvCell } from "@/lib/csv-export";
+import { PURCHASE_ORDER_EXPORT_HEADERS } from "@/lib/csv/purchase-order-preflight";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -118,11 +119,7 @@ async function loadDataset(tenantId: string, target: string): Promise<Dataset | 
         ]));
       checkLines(rows);
       return {
-        headers: ["poNumber", "supplierCode", "supplierName",
-          "orderDate", "pickupDate", "status", "note", "taxRate",
-          "subtotal", "tax", "total", "itemCode", "itemName", "unit",
-          "quantity", "unitPrice", "amount", "received", "packSize", "packCount", "packUnit",
-          "createdAt", "updatedAt"],
+        headers: [...PURCHASE_ORDER_EXPORT_HEADERS],
         rows,
       };
     }
