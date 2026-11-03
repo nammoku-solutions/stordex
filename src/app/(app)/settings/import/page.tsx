@@ -38,6 +38,17 @@ export default async function ImportPage() {
           </Link>
         }
       />
+      <div className="card mb-5 p-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="font-semibold">仕入発注CSVの事前検証（データ変更なし）</h2>
+          <p className="text-sm text-slate-600">
+            「CSVエクスポート」→「仕入発注と過去履歴」からダウンロードしたCSVを検証します。仕入発注の復元機能はまだありません。
+          </p>
+        </div>
+        <Link href="/settings/import/purchase-orders" className="btn-secondary">
+          仕入発注CSVを検証する
+        </Link>
+      </div>
       <ImportClient
         fieldsByTarget={fieldsByTarget}
         presetsByTarget={presetsByTarget}
