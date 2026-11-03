@@ -113,27 +113,15 @@ Vercel Project には最低限次を設定します。
 
 `.github/workflows/deploy-staging.yml` は `develop` push で Vercel Preview deployment を実行します。
 
-### Staging DB setup
+### Staging DB operations (populated Neon Staging)
 
-```bash
-cp .env.staging.example .env.staging
-npm run db:migrate:staging
-npm run db:seed:staging
-```
+**現在のStagingを新規DBとして初期化しないこと。** 2026-11-03時点でNeon project `dry-feather-14704968`、branch `br-sparkling-boat-ao9nrctp`、database `neondb`には5件のPrisma migrationが適用済みで、UATデータが存在します。
 
-`prisma db push` は disposable local DB のみで使用します。Staging を含む shared environment は committed migration を `prisma migrate deploy` で反映します。
+以下は既存Stagingで**実行しない**でください：`npm run db:migrate:staging`、`npm run db:seed:staging`、`prisma db push`、`./scripts/start-staging.sh --schema`、`--seed`、既に成功済みの`--baseline`/`--inventory`。これらは既存データや履歴を変え得ます。
 
-### Helper script
+次の新規migration時は、レビュー済みPR・テストDBでのリハーサル・**新規取得した**Stagingバックアップと隔離復元テスト・Neon project/branch/dbの照合・オーナーの明示的な書込み承認・事後独立検証が必須です。以前の在庫移行専用`--check`は固定データ指紋を検証するため、UAT後の一般ヘルスチェックとして流用しません。
 
-```bash
-./scripts/start-staging.sh --schema
-./scripts/start-staging.sh --seed
-./scripts/start-staging.sh --studio
-./scripts/start-staging.sh --deploy
-./scripts/start-staging.sh --status
-```
-
-スクリプト内容と現在の branch 運用が一致することを確認してから実行してください。
+Stagingの正式URLは`https://staging.stordex.jp`です。2026-11-03時点ではPR #89のUAT済みVercel Preview（commit `0a052891`）へAliasを手動で割り当てています。新しいPreviewの作成だけではStaging Aliasが自動的に移るとは限りません。Alias更新時にproject/commit/環境を必ず確認し、Productionのdomainに触れないでください。
 
 ## 4. Production (AWS)
 
@@ -164,7 +152,7 @@ NextAuthUrl
 
 ### Deployment
 
-`main` push で `.github/workflows/deploy-prod.yml` が対象になります。
+`.github/workflows/deploy-prod.yml` は **手動 `workflow_dispatch` 専用**です。`confirm_production=DEPLOY`、GitHub `production` Environment、Codex Astra Review PASS、オーナー承認が必須で、`main` pushだけでProduction deployは行いません。
 
 Production workflow は:
 
@@ -177,7 +165,7 @@ Production workflow は:
 
 を行います。
 
-現行 AWS 認証は GitHub Secrets の access key を利用しています。実 IAM 構成を確認してから GitHub OIDC + least-privilege IAM Role へ移行してください。
+Repository側のProduction workflowは長期access keyではなく **GitHub Actions OIDC** を使用します。実AWS側のOIDC provider/最小権限roleの設定・検証はIssue #4の残課題です。
 
 ### Production DB schema changes
 

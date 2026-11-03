@@ -1,6 +1,6 @@
 # Stordex Inventory Policy & Counted Receipt
 
-> 2026-10-19. Feature in development on a PR branch, **not on Staging or Production**.
+> Initial design 2026-10-19; implemented on Staging and owner UAT PASS on 2026-11-03. Production unchanged. PR #89 still open. Returns, partial receipts, inventory reservation and credit notes are separate work.
 > Final production release requires entire-code Codex Astra Review PASS (Issue #87; RELEASE_GATE.md).
 
 ## Product behavior
@@ -18,5 +18,5 @@
 ## Security and correctness gates
 
 - Tenant boundaries on master SKU creation/updates and PO lines; buyer PO row lock serializes receipt and cancel; conditional state transition prevents duplicate movements; discrepancy reason and bounds validated server-side; no untrusted pack sizing accepted from client.
-- All new Prisma schema additions are additive and default legacy items to STOCKED/UNIT. **Never apply to populated Neon Staging before migration-ledger repair in Issue #70 has been rehearsed on a clone.**
+- The additive inventory migration was independently rehearsed, restored from a backup and applied to Staging with the repaired history (5 completed migrations). **Never rerun the successful `--baseline` or `--inventory` scripts, nor generic Staging schema/seed commands.** Future changes need fresh recovery evidence and owner approval.
 - Plan UAT: (A) STOCKED threshold crossing; (B) ON_DEMAND leftovers after a ten-unit pack received and nine-unit confirmed sale; (C) order 9 / actually received 10; (D) short delivery with reason; (E) different pack sizes and immutable PO snapshots; (F) repeated receive clicks; (G) cross-tenant and B2B restrictions.

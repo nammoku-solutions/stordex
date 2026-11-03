@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireTenant } from "@/lib/session";
 import { toCsv, exportDate, exportTimestamp, type CsvCell } from "@/lib/csv-export";
+import { PURCHASE_ORDER_EXPORT_HEADERS } from "@/lib/csv/purchase-order-preflight";
+import { ITEM_MIGRATION_EXPORT_HEADERS, MOVEMENT_MIGRATION_EXPORT_HEADERS } from "@/lib/csv/inventory-ledger-preflight";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -60,10 +62,7 @@ async function loadDataset(tenantId: string, target: string): Promise<Dataset | 
       });
       checkCount(records);
       return {
-        headers: ["code", "name", "nameKana", "nameEn", "unit", "spec", "origin",
-          "caseQty", "orderUnit", "stockPolicy", "purchaseMode", "isImported", "deliveryCycle", "barcode",
-          "stock", "reorderPoint", "reorderPeak", "costPrice", "salesPrice",
-          "supplierCode", "category", "note", "active", "createdAt", "updatedAt"],
+        headers: [...ITEM_MIGRATION_EXPORT_HEADERS],
         rows: records.map(r => [r.code, r.name, r.nameKana, r.nameEn, r.unit,
           r.spec, r.origin, r.caseQty, r.orderUnit, r.stockPolicy, r.purchaseMode, r.isImported, r.deliveryCycle,
           r.barcode, r.stock, r.reorderPoint, r.reorderPeak, r.costPrice, r.salesPrice,
@@ -118,11 +117,7 @@ async function loadDataset(tenantId: string, target: string): Promise<Dataset | 
         ]));
       checkLines(rows);
       return {
-        headers: ["poNumber", "supplierCode", "supplierName",
-          "orderDate", "pickupDate", "status", "note", "taxRate",
-          "subtotal", "tax", "total", "itemCode", "itemName", "unit",
-          "quantity", "unitPrice", "amount", "received", "packSize", "packCount", "packUnit",
-          "createdAt", "updatedAt"],
+        headers: [...PURCHASE_ORDER_EXPORT_HEADERS],
         rows,
       };
     }
@@ -136,9 +131,7 @@ async function loadDataset(tenantId: string, target: string): Promise<Dataset | 
       });
       checkCount(records);
       return {
-        headers: ["movementId", "createdAt", "itemCode", "itemName", "type",
-          "quantity", "balance", "warehouseCode", "lotNumber", "expiryDate",
-          "location", "reference", "note"],
+        headers: [...MOVEMENT_MIGRATION_EXPORT_HEADERS],
         rows: records.map(r => [
           r.id, exportTimestamp(r.createdAt), r.item.code, r.item.name, r.type,
           r.quantity, r.balance, r.warehouse?.code, r.lotNumber,
