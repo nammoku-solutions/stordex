@@ -56,6 +56,8 @@ CREATE TABLE "MigrationArchiveMovement" (
 
 CREATE UNIQUE INDEX "MigrationArchiveBatch_tenantId_manifestId_key"
   ON "MigrationArchiveBatch"("tenantId", "manifestId");
+CREATE UNIQUE INDEX "MigrationArchiveBatch_id_tenantId_key"
+  ON "MigrationArchiveBatch"("id", "tenantId");
 CREATE INDEX "MigrationArchiveBatch_tenantId_createdAt_idx"
   ON "MigrationArchiveBatch"("tenantId", "createdAt");
 CREATE UNIQUE INDEX "MigrationArchiveItem_batchId_itemCode_key"
@@ -75,16 +77,16 @@ ALTER TABLE "MigrationArchiveBatch" ADD CONSTRAINT "MigrationArchiveBatch_tenant
   FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "MigrationArchiveItem" ADD CONSTRAINT "MigrationArchiveItem_tenantId_fkey"
   FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-ALTER TABLE "MigrationArchiveItem" ADD CONSTRAINT "MigrationArchiveItem_batchId_fkey"
-  FOREIGN KEY ("batchId") REFERENCES "MigrationArchiveBatch"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "MigrationArchiveItem" ADD CONSTRAINT "MigrationArchiveItem_batchId_tenantId_fkey"
+  FOREIGN KEY ("batchId", "tenantId") REFERENCES "MigrationArchiveBatch"("id", "tenantId") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "MigrationArchivePurchaseOrder" ADD CONSTRAINT "MigrationArchivePurchaseOrder_tenantId_fkey"
   FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-ALTER TABLE "MigrationArchivePurchaseOrder" ADD CONSTRAINT "MigrationArchivePurchaseOrder_batchId_fkey"
-  FOREIGN KEY ("batchId") REFERENCES "MigrationArchiveBatch"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "MigrationArchivePurchaseOrder" ADD CONSTRAINT "MigrationArchivePurchaseOrder_batchId_tenantId_fkey"
+  FOREIGN KEY ("batchId", "tenantId") REFERENCES "MigrationArchiveBatch"("id", "tenantId") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "MigrationArchiveMovement" ADD CONSTRAINT "MigrationArchiveMovement_tenantId_fkey"
   FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-ALTER TABLE "MigrationArchiveMovement" ADD CONSTRAINT "MigrationArchiveMovement_batchId_fkey"
-  FOREIGN KEY ("batchId") REFERENCES "MigrationArchiveBatch"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "MigrationArchiveMovement" ADD CONSTRAINT "MigrationArchiveMovement_batchId_tenantId_fkey"
+  FOREIGN KEY ("batchId", "tenantId") REFERENCES "MigrationArchiveBatch"("id", "tenantId") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- Protect the audit payload at the DB level, including against a future
 -- accidental Prisma update/delete. Retention/erasure policy must be reviewed
