@@ -51,7 +51,7 @@ export async function createOrder(formData: FormData) {
   await assertTenantCustomer(tenantId, data.customerId);
 
   const items = await prisma.item.findMany({
-    where: { tenantId, id: { in: data.lines.map((l) => l.itemId) } },
+    where: { tenantId, active: true, id: { in: data.lines.map((l) => l.itemId) } },
   });
   const itemMap = new Map(items.map((i) => [i.id, i]));
 
@@ -74,6 +74,13 @@ export async function createOrder(formData: FormData) {
   const total = subtotal + tax;
 
   const order = await prisma.$transaction(async (tx) => {
+    const activeItemIds = [...new Set(lineRecords.map(line => line.itemId))];
+    const stillActive = await tx.item.count({
+      where: { tenantId, active: true, id: { in: activeItemIds } },
+    });
+    if (stillActive !== activeItemIds.length) {
+      throw new Error("取扱停止の商品は新しい受注へ追加できません");
+    }
     const orderNumber = await nextDocumentNumber(tx, tenantId, "SO");
     const created = await tx.order.create({
       data: {
@@ -96,7 +103,7 @@ export async function createOrder(formData: FormData) {
       for (const line of lineRecords) {
         // Claim available stock atomically. Never create a negative balance.
         const changed = await tx.item.updateMany({
-          where: { id: line.itemId, tenantId, stock: { gte: line.quantity } },
+          where: { id: line.itemId, tenantId, active: true, stock: { gte: line.quantity } },
           data: { stock: { decrement: line.quantity } },
         });
         if (changed.count !== 1) {
