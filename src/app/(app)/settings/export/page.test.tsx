@@ -16,6 +16,8 @@ describe("CSV export -> purchase-order preflight navigation", () => {
     expect(html).toContain('href="/api/export/purchase-orders"');
     expect(html).toContain('href="/settings/import/purchase-orders"');
     expect(html).toContain("このCSVを検証する");
+    expect(html).toContain('href="/settings/import/movements"');
+    expect(html).toContain("在庫・履歴の整合性を確認");
   });
 
   it("does not expose download or preflight CTAs to STAFF", async () => {
@@ -24,5 +26,6 @@ describe("CSV export -> purchase-order preflight navigation", () => {
     expect(html).toContain("管理者");
     expect(html).not.toContain('href="/api/export/purchase-orders"');
     expect(html).not.toContain('href="/settings/import/purchase-orders"');
+    expect(html).not.toContain('href="/settings/import/movements"');
   });
 });
