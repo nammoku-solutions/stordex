@@ -59,10 +59,10 @@ describe("read-only purchase-order CSV export preflight", () => {
   });
 
   it("accepts two lines in one PO and never double-counts its monetary header", () => {
-    const a = mkRow({ quantity: 10, amount: 1000, received: 10 });
+    const a = mkRow({ quantity: 10, amount: 1000, received: 10, packCount: 1 });
     const b = mkRow({
       itemCode: "PEN", itemName: "ペン", quantity: 10,
-      amount: 1000, received: 10,
+      amount: 1000, received: 10, packCount: 1,
     });
     const r = importExport([a,b]);
     expect(r.ok).toBe(true);
@@ -72,8 +72,8 @@ describe("read-only purchase-order CSV export preflight", () => {
   });
 
   it("rejects a changed supplier or status within the same document atomically", () => {
-    const r = importExport([mkRow({ quantity:10, amount:1000, received:10 }),
-      mkRow({ itemCode:"PEN", quantity:10, amount:1000, received:10, supplierCode:"S-OTHER" })]);
+    const r = importExport([mkRow({ quantity:10, amount:1000, received:10, packCount:1 }),
+      mkRow({ itemCode:"PEN", quantity:10, amount:1000, received:10, packCount:1, supplierCode:"S-OTHER" })]);
     expect(r.ok).toBe(false);
     expect(r.errors.some(e => e.field==="poNumber")).toBe(true);
     expect(r.documents).toEqual([]);
