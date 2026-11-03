@@ -19,9 +19,24 @@ export type PORestoreResult = {
 };
 
 function ensureDisposableCiDatabase() {
-  const url = process.env.DATABASE_URL ?? "";
-  if (process.env.APP_ENV !== "ci" ||
-      !/^postgresql:\/\/stordex:stordex@localhost:5432\/stordex(?:\?|$)/.test(url)) {
+  let allowed = false;
+  try {
+    const url = new URL(process.env.DATABASE_URL ?? "");
+    // Exact URI allowlist: never permit host/hostaddr/service or any other
+    // connection-string option to redirect this harness to a shared DB.
+    allowed = process.env.APP_ENV === "ci" &&
+      url.protocol === "postgresql:" &&
+      url.username === "stordex" && url.password === "stordex" &&
+      url.hostname === "localhost" && url.port === "5432" &&
+      url.pathname === "/stordex" &&
+      [...url.searchParams.keys()].every(k => k === "schema") &&
+      (!url.searchParams.has("schema") ||
+        (url.searchParams.getAll("schema").length === 1 &&
+         url.searchParams.get("schema") === "public"));
+  } catch {
+    allowed = false;
+  }
+  if (!allowed) {
     throw new Error("CSV historical PO restoration is disabled outside disposable CI PostgreSQL");
   }
 }
