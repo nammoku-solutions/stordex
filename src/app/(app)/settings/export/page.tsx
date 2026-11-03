@@ -39,6 +39,11 @@ export default async function ExportPage() {
                     このCSVを検証する
                   </Link>
                 )}
+                {(target === "items" || target === "movements") && (
+                  <Link href="/settings/import/movements" className="btn-secondary">
+                    在庫・履歴の整合性を確認
+                  </Link>
+                )}
               </div>
             </div>
           ))}
