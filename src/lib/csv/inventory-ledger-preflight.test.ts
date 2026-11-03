@@ -134,9 +134,9 @@ describe("inventory ledger and current-stock CSV reconciliation", () => {
 
   it("rejects a source exceeding 10,000 movement rows", () => {
     const many=preflightInventoryLedgerExports({
-      items:[[...ITEM_MIGRATION_EXPORT_HEADERS],item()],
+      items:[[...ITEM_MIGRATION_EXPORT_HEADERS],item().map(String)],
       movements:[[...MOVEMENT_MIGRATION_EXPORT_HEADERS],
-        ...Array.from({length:10001},()=>ledger())],
+        ...Array.from({length:10001},()=>ledger().map(String))],
     });
     expect(many.ok).toBe(false);
     expect(many.errors.some(x=>x.field==="rows")).toBe(true);
