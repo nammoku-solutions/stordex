@@ -100,6 +100,21 @@ describe("archive cutover data in independent immutable tables",()=>{
     })).rejects.toThrow("一致しません");
     expect(await prisma.migrationArchiveBatch.count({where:{tenantId:tenant.id}})).toBe(1);
 
+    // The DB rejects linking a target-tenant archive row to another
+    // tenant's batch, even through unchecked scalar foreign keys.
+    await expect(prisma.migrationArchiveItem.create({
+      data:{
+        tenantId:other.id,batchId:batch.id,itemCode:"CROSS-TENANT",
+        cutoverStock:1,historyKind:"CUTOVER_ONLY_NO_HISTORY",
+        movementCount:0,
+      },
+    })).rejects.toThrow();
+    // Even the parent batch's source identity/tenant cannot be rewritten.
+    await expect(prisma.migrationArchiveBatch.update({
+      where:{id:batch.id},data:{tenantId:other.id},
+    })).rejects.toThrow();
+    expect(await prisma.migrationArchiveBatch.count({where:{tenantId:tenant.id}})).toBe(1);
+
     // Even a direct ORM attempt cannot rewrite an archived stock snapshot.
     await expect(prisma.migrationArchiveItem.update({
       where:{id:batch.items[0].id},data:{cutoverStock:12345},
