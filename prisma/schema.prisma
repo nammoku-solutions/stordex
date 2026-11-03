@@ -74,6 +74,16 @@ enum IntercompanyOrderStatus {
   CANCELLED
 }
 
+enum MigrationArchiveState {
+  PREPARED
+  SEALED
+}
+
+enum MigrationArchiveHistoryKind {
+  RECONCILED_LEDGER
+  CUTOVER_ONLY_NO_HISTORY
+}
+
 enum ImportTarget {
   CUSTOMER
   SUPPLIER
@@ -114,6 +124,10 @@ model Tenant {
   businessUnits  BusinessUnit[]
   warehouses     Warehouse[]
   importJobs     ImportJob[]
+  migrationArchiveBatches   MigrationArchiveBatch[]
+  migrationArchiveItems     MigrationArchiveItem[]
+  migrationArchiveOrders    MigrationArchivePurchaseOrder[]
+  migrationArchiveMovements MigrationArchiveMovement[]
   tradingConnectionsA TradingConnection[] @relation("TradingTenantA")
   tradingConnectionsB TradingConnection[] @relation("TradingTenantB")
   outboundCompanyOrders IntercompanyOrder[] @relation("IntercompanyBuyer")
@@ -626,4 +640,76 @@ model ImportJob {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, createdAt])
+}
+
+
+// Non-operational historical archive: intentionally NO relation to PurchaseOrder
+// or InventoryMovement, so operational receive/ship actions cannot replay data.
+// Archive snapshot rows must never mutate or delete after insertion.
+model MigrationArchiveBatch {
+  id                      String                @id @default(cuid())
+  tenantId                String
+  manifestId              String
+  sourceTenantFingerprint String
+  itemsCsvSha256          String
+  movementsCsvSha256      String
+  state                   MigrationArchiveState @default(PREPARED)
+  createdAt               DateTime              @default(now())
+  sealedAt                DateTime?
+
+  tenant    Tenant                          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  items     MigrationArchiveItem[]
+  orders    MigrationArchivePurchaseOrder[]
+  movements MigrationArchiveMovement[]
+
+  @@unique([tenantId, manifestId])
+  @@index([tenantId, createdAt])
+}
+
+model MigrationArchiveItem {
+  id                        String                      @id @default(cuid())
+  tenantId                  String
+  batchId                   String
+  itemCode                  String
+  cutoverStock              Int
+  historyKind               MigrationArchiveHistoryKind
+  historicalOpening         Int?
+  lastHistoricalBalance     Int?
+  movementCount             Int
+
+  tenant Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  batch  MigrationArchiveBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+
+  @@unique([batchId, itemCode])
+  @@index([tenantId, batchId])
+}
+
+model MigrationArchivePurchaseOrder {
+  id             String   @id @default(cuid())
+  tenantId       String
+  batchId        String
+  sourcePoNumber String
+  sourceSha256   String
+  snapshot       Json
+
+  tenant Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  batch  MigrationArchiveBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+
+  @@unique([batchId, sourcePoNumber])
+  @@index([tenantId, batchId])
+}
+
+model MigrationArchiveMovement {
+  id               String   @id @default(cuid())
+  tenantId         String
+  batchId          String
+  sourceMovementId String
+  sourceSha256     String
+  snapshot         Json
+
+  tenant Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  batch  MigrationArchiveBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+
+  @@unique([batchId, sourceMovementId])
+  @@index([tenantId, batchId])
 }
