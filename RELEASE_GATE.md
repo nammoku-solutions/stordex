@@ -12,9 +12,10 @@
 
 ## Status
 
-- **Codex Astra Review:** NOT STARTED — intentionally deferred until ALL planned features are complete.
+- **Remaining release scope:** see [`docs/FEATURE_COMPLETION_AUDIT_2026-11-03.md`](docs/FEATURE_COMPLETION_AUDIT_2026-11-03.md). CSV complete migration (#62) and post-shipment returns/credit notes (#82) require implementation or an explicit release-scope deferral before full review.
+- **Codex Astra Review:** NOT STARTED — intentionally deferred until ALL agreed release features are complete.
 - **Production deployment:** BLOCKED.
-- **Staging:** used for safe iterative builds, manual and automated verification; Staging tests do not constitute PASS.
+- **Staging:** full UAT and post-deployment smoke of currently implemented functions PASS per owner on 2026-11-03, at `https://staging.stordex.jp` (commit `0a052891`). This does **not** substitute for full-code Astra Review PASS or certify yet-unimplemented features.
 - The GitHub open Issue #87 is the release checklist and must not be closed until the review is complete.
 
 No deploy, migration, seeding or data destructive operation against Production is authorized by this document.
