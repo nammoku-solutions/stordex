@@ -7,10 +7,11 @@ import { dateJP, yen, num } from "@/lib/format";
 import { INVOICE_STATUS_LABEL, INVOICE_STATUS_BADGE } from "../_status";
 import { InvoiceStatusActions } from "./InvoiceStatusActions";
 
-export default async function InvoiceDetailPage({ params }: { params: { id: string } }) {
+export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const { tenantId } = await requireTenant();
   const inv = await prisma.invoice.findFirst({
-    where: { id: params.id, tenantId },
+    where: { id: id, tenantId },
     include: {
       customer: true,
       businessUnit: true,

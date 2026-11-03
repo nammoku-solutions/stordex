@@ -8,11 +8,12 @@ import { updateCustomer } from "../actions";
 export default async function EditCustomerPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
+  const { id } = await params;
   const { tenantId } = await requireTenant();
   const customer = await prisma.customer.findFirst({
-    where: { id: params.id, tenantId },
+    where: { id: id, tenantId },
   });
   if (!customer) notFound();
 

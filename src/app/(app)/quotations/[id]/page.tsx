@@ -10,10 +10,11 @@ import {
 } from "../_status";
 import { QuotationStatusActions } from "./QuotationStatusActions";
 
-export default async function QuotationDetailPage({ params }: { params: { id: string } }) {
+export default async function QuotationDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const { tenantId } = await requireTenant();
   const q = await prisma.quotation.findFirst({
-    where: { id: params.id, tenantId },
+    where: { id: id, tenantId },
     include: { customer: true, items: true },
   });
   if (!q) notFound();

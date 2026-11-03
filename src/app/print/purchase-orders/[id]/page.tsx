@@ -6,10 +6,11 @@ import { yen, num, dateJP } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
-export default async function POPrintPage({ params }: { params: { id: string } }) {
+export default async function POPrintPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const { tenantId, session } = await requireTenant();
   const po = await prisma.purchaseOrder.findFirst({
-    where: { id: params.id, tenantId },
+    where: { id: id, tenantId },
     include: { supplier: true, items: { include: { item: true } } },
   });
   if (!po) notFound();

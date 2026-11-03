@@ -7,10 +7,11 @@ import { yen, num, dateJP } from "@/lib/format";
 export const dynamic = "force-dynamic";
 
 // 納品書（旧: printDocument2）
-export default async function OrderPrintPage({ params }: { params: { id: string } }) {
+export default async function OrderPrintPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const { tenantId, session } = await requireTenant();
   const order = await prisma.order.findFirst({
-    where: { id: params.id, tenantId },
+    where: { id: id, tenantId },
     include: { customer: true, items: true, tenant: true },
   });
   if (!order) notFound();

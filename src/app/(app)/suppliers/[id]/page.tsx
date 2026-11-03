@@ -5,10 +5,11 @@ import { PageHeader } from "@/components/PageHeader";
 import { SupplierForm } from "../SupplierForm";
 import { updateSupplier } from "../actions";
 
-export default async function EditSupplierPage({ params }: { params: { id: string } }) {
+export default async function EditSupplierPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const { tenantId } = await requireTenant();
   const supplier = await prisma.supplier.findFirst({
-    where: { id: params.id, tenantId },
+    where: { id: id, tenantId },
   });
   if (!supplier) notFound();
   const action = updateSupplier.bind(null, supplier.id);

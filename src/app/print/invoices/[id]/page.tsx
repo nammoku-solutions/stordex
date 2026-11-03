@@ -6,10 +6,11 @@ import { yen, num, dateJP } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
-export default async function InvoicePrintPage({ params }: { params: { id: string } }) {
+export default async function InvoicePrintPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const { tenantId, session } = await requireTenant();
   const inv = await prisma.invoice.findFirst({
-    where: { id: params.id, tenantId },
+    where: { id: id, tenantId },
     include: {
       customer: true,
       businessUnit: true,

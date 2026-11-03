@@ -7,10 +7,11 @@ import { num, dateJP } from "@/lib/format";
 export const dynamic = "force-dynamic";
 
 // ピッキングリスト（旧: printDocument1） — 数量と商品コードのみ、価格は出さない
-export default async function PickingListPrintPage({ params }: { params: { id: string } }) {
+export default async function PickingListPrintPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const { tenantId } = await requireTenant();
   const order = await prisma.order.findFirst({
-    where: { id: params.id, tenantId },
+    where: { id: id, tenantId },
     include: {
       customer: true,
       items: { include: { item: true } },

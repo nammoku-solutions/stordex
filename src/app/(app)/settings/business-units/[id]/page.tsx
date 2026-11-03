@@ -6,9 +6,10 @@ import { BusinessUnitForm } from "../BusinessUnitForm";
 import { updateBusinessUnit, deleteBusinessUnit } from "../actions";
 import { DeleteButton } from "./DeleteButton";
 
-export default async function EditBusinessUnitPage({ params }: { params: { id: string } }) {
+export default async function EditBusinessUnitPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const { tenantId } = await requireTenant();
-  const unit = await prisma.businessUnit.findFirst({ where: { id: params.id, tenantId } });
+  const unit = await prisma.businessUnit.findFirst({ where: { id: id, tenantId } });
   if (!unit) notFound();
   const update = updateBusinessUnit.bind(null, unit.id);
   return (
