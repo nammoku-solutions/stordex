@@ -20,20 +20,23 @@ const movement = {
   warehouseCode: "", lotNumber: "", expiryDate: "",
   location: "", reference: "PO-1", note: "",
 };
+// Preserve numeric cell types exactly as the real exporter does. In particular,
+ // a negative ADJUSTMENT is exported as a number; serializing it as text would
+ // intentionally trigger CSV formula-injection protection and change the value.
 const item = (changes: Record<string, Field> = {}) =>
-  ITEM_MIGRATION_EXPORT_HEADERS.map(k => String(
+  ITEM_MIGRATION_EXPORT_HEADERS.map(k =>
     (changes[k] ?? (stockItem as Record<string, Field>)[k]) ?? "",
-  ));
+  );
 const ledger = (changes: Record<string, Field> = {}) =>
-  MOVEMENT_MIGRATION_EXPORT_HEADERS.map(k => String(
+  MOVEMENT_MIGRATION_EXPORT_HEADERS.map(k =>
     (changes[k] ?? (movement as Record<string, Field>)[k]) ?? "",
-  ));
+  );
 
-function fromExport(rows: string[][], headers: readonly string[]) {
+function fromExport(rows: Field[][], headers: readonly string[]) {
   const csv = toCsv([...headers], rows);
   return parseCsv(decodeCsvBuffer(new TextEncoder().encode(csv)).text);
 }
-function check(itemRows: string[][], movementRows: string[][]) {
+function check(itemRows: Field[][], movementRows: Field[][]) {
   return preflightInventoryLedgerExports({
     items: fromExport(itemRows, ITEM_MIGRATION_EXPORT_HEADERS),
     movements: fromExport(movementRows, MOVEMENT_MIGRATION_EXPORT_HEADERS),
