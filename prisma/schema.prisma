@@ -663,6 +663,8 @@ model MigrationArchiveBatch {
   movements MigrationArchiveMovement[]
 
   @@unique([tenantId, manifestId])
+  // Composite archive FKs bind the batch to its exact owning tenant.
+  @@unique([id, tenantId])
   @@index([tenantId, createdAt])
 }
 
@@ -678,7 +680,7 @@ model MigrationArchiveItem {
   movementCount             Int
 
   tenant Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  batch  MigrationArchiveBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  batch  MigrationArchiveBatch @relation(fields: [batchId, tenantId], references: [id, tenantId], onDelete: Restrict)
 
   @@unique([batchId, itemCode])
   @@index([tenantId, batchId])
@@ -693,7 +695,7 @@ model MigrationArchivePurchaseOrder {
   snapshot       Json
 
   tenant Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  batch  MigrationArchiveBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  batch  MigrationArchiveBatch @relation(fields: [batchId, tenantId], references: [id, tenantId], onDelete: Restrict)
 
   @@unique([batchId, sourcePoNumber])
   @@index([tenantId, batchId])
@@ -708,7 +710,7 @@ model MigrationArchiveMovement {
   snapshot         Json
 
   tenant Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  batch  MigrationArchiveBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  batch  MigrationArchiveBatch @relation(fields: [batchId, tenantId], references: [id, tenantId], onDelete: Restrict)
 
   @@unique([batchId, sourceMovementId])
   @@index([tenantId, batchId])
