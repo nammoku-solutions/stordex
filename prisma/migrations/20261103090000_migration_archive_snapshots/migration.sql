@@ -88,6 +88,39 @@ ALTER TABLE "MigrationArchiveMovement" ADD CONSTRAINT "MigrationArchiveMovement_
 ALTER TABLE "MigrationArchiveMovement" ADD CONSTRAINT "MigrationArchiveMovement_batchId_tenantId_fkey"
   FOREIGN KEY ("batchId", "tenantId") REFERENCES "MigrationArchiveBatch"("id", "tenantId") ON DELETE RESTRICT ON UPDATE CASCADE;
 
+-- Batch source identity is immutable. Only an explicitly timestamped
+-- one-way PREPARED -> SEALED state transition is allowed.
+CREATE FUNCTION stordex_guard_migration_archive_batch()
+RETURNS trigger LANGUAGE plpgsql AS $
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'Historical migration archive batches cannot be deleted';
+  END IF;
+  IF NEW."id" IS DISTINCT FROM OLD."id"
+     OR NEW."tenantId" IS DISTINCT FROM OLD."tenantId"
+     OR NEW."manifestId" IS DISTINCT FROM OLD."manifestId"
+     OR NEW."sourceTenantFingerprint" IS DISTINCT FROM OLD."sourceTenantFingerprint"
+     OR NEW."itemsCsvSha256" IS DISTINCT FROM OLD."itemsCsvSha256"
+     OR NEW."movementsCsvSha256" IS DISTINCT FROM OLD."movementsCsvSha256"
+     OR NEW."createdAt" IS DISTINCT FROM OLD."createdAt" THEN
+    RAISE EXCEPTION 'Historical migration archive batch identity is immutable';
+  END IF;
+  IF OLD."state" = 'PREPARED' AND NEW."state" = 'SEALED'
+     AND OLD."sealedAt" IS NULL AND NEW."sealedAt" IS NOT NULL THEN
+    RETURN NEW;
+  END IF;
+  IF NEW."state" = OLD."state"
+     AND NEW."sealedAt" IS NOT DISTINCT FROM OLD."sealedAt" THEN
+    RETURN NEW;
+  END IF;
+  RAISE EXCEPTION 'Invalid migration archive state transition';
+END;
+$;
+
+CREATE TRIGGER "MigrationArchiveBatch_state_guard"
+  BEFORE UPDATE OR DELETE ON "MigrationArchiveBatch"
+  FOR EACH ROW EXECUTE FUNCTION stordex_guard_migration_archive_batch();
+
 -- Protect the audit payload at the DB level, including against a future
 -- accidental Prisma update/delete. Retention/erasure policy must be reviewed
 -- before this feature is enabled on any customer environment.
