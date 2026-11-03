@@ -67,13 +67,11 @@ full dependency audit もレポートします。dev-only advisory は exploitab
 
 GitHub Actions、Vercel、SST/AWS の credential を repository に直接保存しないでください。
 
-現行 AWS production workflow は GitHub Secrets の access key を利用しています。実 AWS 側の IAM 準備後、GitHub OIDC + least-privilege role へ移行するのが推奨です。
+現行Production workflowは手動 `workflow_dispatch` + **GitHub Actions OIDC** で、長期AWS access keyは使用しません。実AWSのprovider/最小権限role/Environment保護設定・本人確認はIssue #4に残っています。
 
 ## Database changes
 
-現行 repository には migration history がありません。production schema が存在する場合、新しい `prisma/migrations` を作ってそのまま適用しないでください。
-
-production DB の schema / data / backup を確認した上で baseline を作成してください。
+Repositoryにはコミット済みPrisma migration履歴があります。Neon Stagingには2026-11-03時点で5件正常適用済みです。**既存Stagingで初期baseline・inventory migrationを再適用したり、seed/resetを実行しないこと。** 今後はテストDBでのリハーサル、最新バックアップの隔離復元、Neon対象照合、オーナーの明示承認を必須とします。Production Auroraの初回構築とbackup/PITR検証はIssue #5の残課題です。
 
 ## Review checklist
 
