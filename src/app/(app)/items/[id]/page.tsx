@@ -5,10 +5,11 @@ import { PageHeader } from "@/components/PageHeader";
 import { ItemForm } from "../ItemForm";
 import { updateItem } from "../actions";
 
-export default async function EditItemPage({ params }: { params: { id: string } }) {
+export default async function EditItemPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const { tenantId } = await requireTenant();
   const [item, suppliers] = await Promise.all([
-    prisma.item.findFirst({ where: { id: params.id, tenantId } }),
+    prisma.item.findFirst({ where: { id, tenantId } }),
     prisma.supplier.findMany({
       where: { tenantId, active: true },
       select: { id: true, name: true, code: true },
