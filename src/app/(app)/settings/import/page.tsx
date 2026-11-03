@@ -40,9 +40,9 @@ export default async function ImportPage() {
       />
       <div className="card mb-5 p-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="font-semibold">仕入発注CSVを復元する前の事前検証</h2>
+          <h2 className="font-semibold">仕入発注CSVの事前検証（データ変更なし）</h2>
           <p className="text-sm text-slate-600">
-            発注履歴CSVの構造・入数・金額をデータ変更なしで検証できます。仕入発注の復元機能はまだありません。
+            「CSVエクスポート」→「仕入発注と過去履歴」からダウンロードしたCSVを検証します。仕入発注の復元機能はまだありません。
           </p>
         </div>
         <Link href="/settings/import/purchase-orders" className="btn-secondary">
