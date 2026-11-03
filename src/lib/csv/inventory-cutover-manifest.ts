@@ -127,3 +127,28 @@ export function createInventoryCutoverManifest(input: {
     },
   };
 }
+
+/**
+ * Verify that a proposed cutover manifest still matches the exact source bytes,
+ * recorded source tenant, derived item snapshots, and declared provenance.
+ * This does NOT authorize restoration or attest that writes were paused.
+ */
+export function verifyInventoryCutoverManifest(input: {
+  sourceTenantId: string;
+  itemsCsv: Uint8Array;
+  movementsCsv: Uint8Array;
+  manifest: InventoryCutoverManifest;
+}): boolean {
+  const date = new Date(input.manifest.generatedAt);
+  if (!Number.isFinite(date.valueOf()) ||
+      date.toISOString() !== input.manifest.generatedAt) return false;
+
+  const candidate = createInventoryCutoverManifest({
+    tenantId: input.sourceTenantId,
+    itemsCsv: input.itemsCsv,
+    movementsCsv: input.movementsCsv,
+    generatedAt: date,
+  }).manifest;
+  return !!candidate &&
+    JSON.stringify(candidate) === JSON.stringify(input.manifest);
+}
