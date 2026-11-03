@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { toCsv } from "@/lib/csv-export";
 import { ITEM_MIGRATION_EXPORT_HEADERS, MOVEMENT_MIGRATION_EXPORT_HEADERS } from "./inventory-ledger-preflight";
-import { createInventoryCutoverManifest } from "./inventory-cutover-manifest";
+import { createInventoryCutoverManifest, verifyInventoryCutoverManifest } from "./inventory-cutover-manifest";
 
 type CsvCell = string | number | boolean | null;
 const item = {code:"STOCK-A", name:"検証商品", stock:15};
@@ -78,6 +78,29 @@ describe("cutover evidence manifest (no DB and not a signed cutover)",()=>{
     expect(failed.audit.ok).toBe(false);
     expect(failed.manifest).toBeNull();
     expect(failed.audit.errors.some(e=>e.field==="stock")).toBe(true);
+  });
+  it("rejects a forged snapshot, changed CSV, or wrong source tenant on future restore checks",()=>{
+    const source=input();
+    const manifest=createInventoryCutoverManifest(source).manifest!;
+    expect(verifyInventoryCutoverManifest({
+      sourceTenantId:"tenant-a",itemsCsv:source.itemsCsv,
+      movementsCsv:source.movementsCsv,manifest,
+    })).toBe(true);
+    const edited=JSON.parse(JSON.stringify(manifest)) as typeof manifest;
+    edited.items[0].cutoverStock=900;
+    expect(verifyInventoryCutoverManifest({
+      sourceTenantId:"tenant-a",itemsCsv:source.itemsCsv,
+      movementsCsv:source.movementsCsv,manifest:edited,
+    })).toBe(false);
+    expect(verifyInventoryCutoverManifest({
+      sourceTenantId:"tenant-b",itemsCsv:source.itemsCsv,
+      movementsCsv:source.movementsCsv,manifest,
+    })).toBe(false);
+    expect(verifyInventoryCutoverManifest({
+      sourceTenantId:"tenant-a",
+      itemsCsv:new Uint8Array([...source.itemsCsv,32]),
+      movementsCsv:source.movementsCsv,manifest,
+    })).toBe(false);
   });
   it("rejects blank tenant identity",()=>{
     expect(()=>createInventoryCutoverManifest(input({tenant:" "}))).toThrow("Tenant");
