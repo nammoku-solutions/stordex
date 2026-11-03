@@ -91,7 +91,7 @@ ALTER TABLE "MigrationArchiveMovement" ADD CONSTRAINT "MigrationArchiveMovement_
 -- Batch source identity is immutable. Only an explicitly timestamped
 -- one-way PREPARED -> SEALED state transition is allowed.
 CREATE FUNCTION stordex_guard_migration_archive_batch()
-RETURNS trigger LANGUAGE plpgsql AS $
+RETURNS trigger LANGUAGE plpgsql AS $archive_guard$
 BEGIN
   IF TG_OP = 'DELETE' THEN
     RAISE EXCEPTION 'Historical migration archive batches cannot be deleted';
@@ -115,7 +115,7 @@ BEGIN
   END IF;
   RAISE EXCEPTION 'Invalid migration archive state transition';
 END;
-$;
+$archive_guard$;
 
 CREATE TRIGGER "MigrationArchiveBatch_state_guard"
   BEFORE UPDATE OR DELETE ON "MigrationArchiveBatch"
