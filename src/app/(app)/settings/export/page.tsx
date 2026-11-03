@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { requireTenant } from "@/lib/session";
 
@@ -6,7 +7,7 @@ const EXPORTS = [
   ["suppliers", "仕入先マスタ", "取引先情報・連絡先・仕入先コード"],
   ["items", "商品・現在庫", "商品コード・価格・現在庫・発注点・仕入先"],
   ["orders", "受注と過去履歴", "受注ヘッダと明細（1明細につき1行）"],
-  ["purchase-orders", "発注と過去履歴", "発注ヘッダと明細・入荷済数量"],
+  ["purchase-orders", "仕入発注と過去履歴", "仕入先への発注書・明細・入荷済数量・パック情報（受注とは別）"],
   ["movements", "入出庫履歴", "履歴日時・入出庫増減・記録後の残在庫"],
 ] as const;
 
@@ -29,9 +30,16 @@ export default async function ExportPage() {
                 <h2 className="font-medium">{title}</h2>
                 <p className="text-sm text-slate-500">{details}</p>
               </div>
-              <a className="btn-primary" href={`/api/export/${target}`}>
-                CSV ダウンロード
-              </a>
+              <div className="flex flex-wrap items-center gap-2">
+                <a className="btn-primary" href={`/api/export/${target}`}>
+                  CSV ダウンロード
+                </a>
+                {target === "purchase-orders" && (
+                  <Link href="/settings/import/purchase-orders" className="btn-secondary">
+                    このCSVを検証する
+                  </Link>
+                )}
+              </div>
             </div>
           ))}
         </div>
