@@ -66,6 +66,7 @@ describe("agreed pre-shipment B2B cancellation and inventory reconciliation", ()
           const company = await prisma.intercompanyOrder.findUniqueOrThrow({
             where: { purchaseOrderId: po.id }, include: { items: true },
           });
+          expect(company.items.every(line => line.sellerOrderItemId === null)).toBe(true);
           const fd = new FormData();
           fd.set("inboundId", company.id);
           fd.set("customerId", customer.id);
@@ -73,6 +74,21 @@ describe("agreed pre-shipment B2B cancellation and inventory reconciliation", ()
           const sellerOrderId = await acceptCompanyPurchaseOrder({
             tenantId: seller.id, formData: fd,
           });
+          const mappedLines = await prisma.intercompanyOrderItem.findMany({
+            where: { intercompanyOrderId: company.id },
+            select: { sellerOrderItemId: true, id: true },
+          });
+          expect(mappedLines).toHaveLength(company.items.length);
+          for (const sourceLine of mappedLines) {
+            expect(sourceLine.sellerOrderItemId).toBeTruthy();
+            const sellerLine = await prisma.orderItem.findUniqueOrThrow({
+              where: { id: sourceLine.sellerOrderItemId! },
+              include: { order: { select: { tenantId: true } } },
+            });
+            expect(sellerLine.orderId).toBe(sellerOrderId);
+            expect(sellerLine.order.tenantId).toBe(seller.id);
+            expect(sellerLine.itemId).toBe(sellerItem.id);
+          }
           return { po, company, sellerOrderId };
         }
         const statusOf = (id: string) => prisma.intercompanyOrder.findUniqueOrThrow({
@@ -84,6 +100,16 @@ describe("agreed pre-shipment B2B cancellation and inventory reconciliation", ()
 
         // DRAFT seller cancel cannot mutate stock. Buyer cancel is blocked first.
         const draft = await linkedPO();
+        const mapped = await prisma.intercompanyOrderItem.findFirstOrThrow({
+          where: { intercompanyOrderId: draft.company.id },
+        });
+        await expect(prisma.intercompanyOrderItem.update({
+          where: { id: mapped.id },
+          data: { sellerOrderItemId: null },
+        })).rejects.toThrow();
+        expect((await prisma.intercompanyOrderItem.findUniqueOrThrow({
+          where: { id: mapped.id },
+        })).sellerOrderItemId).toBe(mapped.sellerOrderItemId);
         await expect(purchasing(draft.po.id, "CANCELLED")).rejects.toThrow(/先方/);
         await sales(draft.sellerOrderId, "CANCELLED");
         expect((await stockOf(sellerItem.id)).stock).toBe(20);
