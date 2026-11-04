@@ -161,6 +161,11 @@ describe("archive cutover data in independent immutable tables",()=>{
     })).rejects.toThrow();
     expect(await prisma.migrationArchiveBatch.count({where:{tenantId:tenant.id}})).toBe(1);
 
+    await expect(prisma.migrationArchiveBatch.update({
+      where:{id:batch.id},
+      data:{purchaseOrdersCsvSha256:"f".repeat(64)},
+    })).rejects.toThrow();
+
     // The movement archive is immutable and also tenant-isolated in the DB.
     await expect(prisma.migrationArchiveMovement.update({
       where:{id:savedMovement.id},data:{snapshot:{movementId:"tampered"}},
