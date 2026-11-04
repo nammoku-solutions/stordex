@@ -1,60 +1,44 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { z } from "zod";
-import { prisma } from "@/lib/db";
 import { requireTenant } from "@/lib/session";
+import { applyManualInventoryMovement } from "@/lib/manual-inventory-movement";
+import {
+  ManualInventoryError,
+  parseManualInventoryInput,
+} from "@/lib/manual-inventory-input";
 
-const Schema = z.object({
-  itemId: z.string().min(1),
-  type: z.enum(["INBOUND", "OUTBOUND", "ADJUSTMENT"]),
-  quantity: z.coerce.number().int().min(1),
-  reference: z.string().max(80).optional().nullable(),
-  note: z.string().max(500).optional().nullable(),
-});
+export type RecordMovementResult =
+  | { ok: true }
+  | { ok: false; message: string };
 
-export async function recordMovement(formData: FormData) {
+export async function recordMovement(formData: FormData): Promise<RecordMovementResult> {
   const { tenantId, userId } = await requireTenant();
-  const obj = Object.fromEntries(formData.entries()) as Record<string, string>;
-  const data = Schema.parse({
-    itemId: obj.itemId,
-    type: obj.type,
-    quantity: obj.quantity,
-    reference: obj.reference || null,
-    note: obj.note || null,
-  });
-
-  await prisma.$transaction(async (tx) => {
-    const item = await tx.item.findFirst({
-      where: { id: data.itemId, tenantId },
+  try {
+    const data = parseManualInventoryInput({
+      itemId: formData.get("itemId"),
+      type: formData.get("type"),
+      quantity: formData.get("quantity"),
+      reference: formData.get("reference") ?? "",
+      note: formData.get("note") ?? "",
     });
-    if (!item) throw new Error("商品が見つかりません");
-
-    let newStock: number;
-    if (data.type === "INBOUND") newStock = item.stock + data.quantity;
-    else if (data.type === "OUTBOUND") newStock = item.stock - data.quantity;
-    else newStock = data.quantity; // ADJUSTMENT: set absolute count
-
-    await tx.item.update({
-      where: { id: item.id },
-      data: { stock: newStock },
-    });
-
-    await tx.inventoryMovement.create({
-      data: {
-        tenantId,
-        itemId: item.id,
-        type: data.type,
-        quantity: data.type === "ADJUSTMENT" ? data.quantity - item.stock : data.quantity,
-        balance: newStock,
-        reference: data.reference,
-        note: data.note,
-        createdBy: userId,
-      },
-    });
-  });
+    await applyManualInventoryMovement({ ...data, tenantId, userId });
+  } catch (error: unknown) {
+    if (error instanceof ManualInventoryError) {
+      return { ok: false, message: error.message };
+    }
+    // A serialization conflict is a safe retry, not a reason to leak a
+    // minified React Server Components exception into the form.
+    if (typeof error === "object" && error !== null && "code" in error &&
+        (error.code === "P2034" || error.code === "P2028")) {
+      return { ok: false, message: "在庫が同時に更新されました。画面を再読み込みしてから再試行してください" };
+    }
+    console.error("Manual inventory update failed", error);
+    return { ok: false, message: "入出庫を記録できませんでした。画面を更新して再試行してください" };
+  }
 
   revalidatePath("/inventory");
   revalidatePath("/items");
   revalidatePath("/dashboard");
+  return { ok: true };
 }
