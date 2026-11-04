@@ -2,7 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requireTenant } from "@/lib/session";
 import { PageHeader } from "@/components/PageHeader";
-import { dateTimeJP, num, MOVEMENT_TYPE_LABEL } from "@/lib/format";
+import { dateTimeJP, num, MOVEMENT_TYPE_LABEL, formatMovementQuantity } from "@/lib/format";
 import { MovementForm } from "./MovementForm";
 import { belowMinimumStock, onDemandRemaining } from "@/lib/inventory-policy";
 
@@ -148,8 +148,7 @@ export default async function InventoryPage() {
                       {m.item.name}
                     </td>
                     <td className="text-right">
-                      {m.type === "OUTBOUND" ? "-" : "+"}
-                      {num(Math.abs(m.quantity))}
+                      {formatMovementQuantity(m.type, m.quantity)}
                     </td>
                     <td className="text-right">{num(m.balance)}</td>
                     <td className="text-xs text-slate-500">{m.reference || "—"}</td>
