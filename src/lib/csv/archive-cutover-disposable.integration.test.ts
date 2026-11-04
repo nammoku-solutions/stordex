@@ -62,7 +62,7 @@ describe("archive cutover data in independent immutable tables",()=>{
     expect(manifest).not.toBeNull();
     const result=await archiveCutoverInDisposableCi({...input,manifest:manifest!});
     expect(result).toMatchObject({
-      created:true,archivedItems:2,status:"PREPARED",
+      created:true,archivedItems:2,archivedMovements:1,status:"PREPARED",
       operationalItemWrites:0,operationalMovementWrites:0,operationalOrderWrites:0,
     });
     const batch=await prisma.migrationArchiveBatch.findUniqueOrThrow({
@@ -80,12 +80,20 @@ describe("archive cutover data in independent immutable tables",()=>{
       itemCode:"NO-HIST-SKU",cutoverStock:9,historyKind:"CUTOVER_ONLY_NO_HISTORY",
       historicalOpening:null,lastHistoricalBalance:null,movementCount:0,
     });
+    const savedMovement=await prisma.migrationArchiveMovement.findFirstOrThrow({
+      where:{tenantId:tenant.id,batchId:batch.id,sourceMovementId:"SOURCE-M-1"},
+    });
+    expect(savedMovement.sourceSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(savedMovement.snapshot).toMatchObject({
+      movementId:"SOURCE-M-1",itemCode:"HIST-SKU",
+      type:"INBOUND",quantity:"5",balance:"15",
+    });
     const repeated=await archiveCutoverInDisposableCi({...input,manifest:manifest!});
-    expect(repeated).toMatchObject({created:false,batchId:result.batchId,archivedItems:2});
+    expect(repeated).toMatchObject({created:false,batchId:result.batchId,archivedItems:2,archivedMovements:1});
     expect(await prisma.migrationArchiveItem.count({where:{tenantId:tenant.id}})).toBe(2);
     expect(await prisma.migrationArchiveBatch.count({where:{tenantId:other.id}})).toBe(0);
     expect(await prisma.migrationArchivePurchaseOrder.count({where:{tenantId:tenant.id}})).toBe(0);
-    expect(await prisma.migrationArchiveMovement.count({where:{tenantId:tenant.id}})).toBe(0);
+    expect(await prisma.migrationArchiveMovement.count({where:{tenantId:tenant.id}})).toBe(1);
     expect(await prisma.purchaseOrder.count({where:{tenantId:tenant.id}})).toBe(0);
     expect(await prisma.inventoryMovement.count({where:{tenantId:tenant.id}})).toBe(0);
     expect((await prisma.item.findUniqueOrThrow({where:{id:item.id}})).stock).toBe(15);
@@ -114,6 +122,21 @@ describe("archive cutover data in independent immutable tables",()=>{
       where:{id:batch.id},data:{tenantId:other.id},
     })).rejects.toThrow();
     expect(await prisma.migrationArchiveBatch.count({where:{tenantId:tenant.id}})).toBe(1);
+
+    // The movement archive is immutable and also tenant-isolated in the DB.
+    await expect(prisma.migrationArchiveMovement.update({
+      where:{id:savedMovement.id},data:{snapshot:{movementId:"tampered"}},
+    })).rejects.toThrow();
+    await expect(prisma.migrationArchiveMovement.delete({
+      where:{id:savedMovement.id},
+    })).rejects.toThrow();
+    await expect(prisma.migrationArchiveMovement.create({
+      data:{
+        tenantId:other.id,batchId:batch.id,sourceMovementId:"OTHER-M-1",
+        sourceSha256:"f".repeat(64),snapshot:{movementId:"OTHER-M-1"},
+      },
+    })).rejects.toThrow();
+    expect(await prisma.migrationArchiveMovement.count({where:{tenantId:tenant.id}})).toBe(1);
 
     // Even a direct ORM attempt cannot rewrite an archived stock snapshot.
     await expect(prisma.migrationArchiveItem.update({
