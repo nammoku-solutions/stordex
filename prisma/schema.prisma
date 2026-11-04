@@ -74,6 +74,29 @@ enum IntercompanyOrderStatus {
   CANCELLED
 }
 
+// Post-shipment returns are separate from pre-shipment cancellation.
+// There are no return state writers until the full controlled workflow ships.
+enum B2BReturnStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  PARTIALLY_APPROVED
+  APPROVED
+  REJECTED
+  WITHDRAWN
+  DISPATCHED
+  PARTIALLY_INSPECTED
+  INSPECTED
+  CREDIT_PENDING
+  CLOSED
+}
+
+enum B2BReturnReason {
+  DAMAGED
+  WRONG_ITEM
+  UNWANTED
+  OTHER
+}
+
 enum ImportTarget {
   CUSTOMER
   SUPPLIER
@@ -118,6 +141,8 @@ model Tenant {
   tradingConnectionsB TradingConnection[] @relation("TradingTenantB")
   outboundCompanyOrders IntercompanyOrder[] @relation("IntercompanyBuyer")
   inboundCompanyOrders  IntercompanyOrder[] @relation("IntercompanySeller")
+  b2bReturnsAsBuyer     B2BReturnRequest[] @relation("B2BReturnBuyer")
+  b2bReturnsAsSeller    B2BReturnRequest[] @relation("B2BReturnSeller")
 }
 
 // テナント新規作成用の招待トークン（Nammoku Solutions が入金確認後に発行）
@@ -586,6 +611,7 @@ model IntercompanyOrder {
   purchaseOrder PurchaseOrder     @relation("IntercompanySourcePO", fields: [purchaseOrderId], references: [id], onDelete: Restrict)
   sellerOrder   Order?            @relation("IntercompanySellerOrder", fields: [sellerOrderId], references: [id], onDelete: Restrict)
   items         IntercompanyOrderItem[]
+  returnRequests B2BReturnRequest[]
 
   @@index([sellerTenantId, status, createdAt])
   @@index([buyerTenantId, createdAt])
@@ -606,9 +632,61 @@ model IntercompanyOrderItem {
 
   order IntercompanyOrder @relation(fields: [intercompanyOrderId], references: [id], onDelete: Cascade)
   sellerOrderItem OrderItem? @relation("B2BSellerSourceLine", fields: [sellerOrderItemId], references: [id], onDelete: Restrict)
+  returnItems B2BReturnItem[]
 
   @@unique([intercompanyOrderId, sourcePurchaseOrderItemId], map: "IntercompanyOrderItem_intercompanyOrderId_sourcePurchaseOrderIt")
+  // Composite FK stops a ReturnItem referring to another company's source line.
+  @@unique([id, intercompanyOrderId])
   @@index([intercompanyOrderId])
+}
+
+
+// RETURN DRAFT SCHEMA ONLY. Do not enable writes or apply in Staging until
+// backup/restore, explicit schema approval, and end-to-end return tests PASS.
+model B2BReturnRequest {
+  id                  String          @id @default(cuid())
+  intercompanyOrderId String
+  buyerTenantId       String
+  sellerTenantId      String
+  requestNumber       String
+  status              B2BReturnStatus @default(SUBMITTED)
+  requestedByUserId   String
+  reviewedByUserId    String?
+  reviewNote          String?
+  reviewedAt          DateTime?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  companyOrder IntercompanyOrder @relation(fields: [intercompanyOrderId], references: [id], onDelete: Restrict)
+  buyer        Tenant            @relation("B2BReturnBuyer", fields: [buyerTenantId], references: [id], onDelete: Restrict)
+  seller       Tenant            @relation("B2BReturnSeller", fields: [sellerTenantId], references: [id], onDelete: Restrict)
+  items        B2BReturnItem[]
+
+  @@unique([buyerTenantId, requestNumber])
+  @@unique([id, intercompanyOrderId])
+  @@index([sellerTenantId, status, createdAt])
+  @@index([buyerTenantId, status, createdAt])
+  @@index([intercompanyOrderId, createdAt])
+}
+
+model B2BReturnItem {
+  id                  String           @id @default(cuid())
+  returnRequestId     String
+  intercompanyOrderId String
+  sourceLineId        String
+  requestedQuantity   Int
+  approvedQuantity    Int              @default(0)
+  reason              B2BReturnReason
+  note                String?
+  decisionNote        String?
+  decidedByUserId     String?
+  decidedAt           DateTime?
+
+  returnRequest B2BReturnRequest   @relation(fields: [returnRequestId, intercompanyOrderId], references: [id, intercompanyOrderId], onDelete: Restrict)
+  sourceLine    IntercompanyOrderItem @relation(fields: [sourceLineId, intercompanyOrderId], references: [id, intercompanyOrderId], onDelete: Restrict)
+
+  @@unique([returnRequestId, sourceLineId])
+  @@index([intercompanyOrderId, sourceLineId])
 }
 
 // Tenant-local audit trail for CSV preview, dry run and commit results.
