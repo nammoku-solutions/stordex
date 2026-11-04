@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { NavLink } from "@/components/NavLink";
+import { NAV_ITEMS } from "@/lib/navigation";
 import { SignOutButton } from "@/components/SignOutButton";
 
 type UserInfo = {
@@ -41,22 +42,9 @@ function SidebarContent({
         className="flex-1 p-3 space-y-1 text-sm overflow-y-auto"
         onClick={onNavigate}
       >
-        <NavLink href="/dashboard" label="ダッシュボード" />
-        <NavLink href="/orders" label="受注管理" />
-        <NavLink href="/orders/inbox" label="企業間受注トレイ" />
-        <NavLink href="/quotations" label="見積書" />
-        <NavLink href="/purchase-orders" label="仕入先発注" />
-        <NavLink href="/network" label="企業間取引" />
-        <NavLink href="/invoices" label="請求書" />
-        <NavLink href="/customers" label="得意先" />
-        <NavLink href="/items" label="商品マスタ" />
-        <NavLink href="/inventory" label="在庫管理" />
-        <NavLink href="/suppliers" label="仕入先" />
-        <NavLink href="/reports/products" label="商品別売上" />
-        <NavLink href="/settings/business-units" label="事業所設定" />
-        <NavLink href="/settings/legacy-import" label="旧データ取り込み" />
-        <NavLink href="/settings/import" label="CSV 取り込み" />
-        <NavLink href="/settings/export" label="CSV エクスポート" />
+        {NAV_ITEMS.map(item => (
+          <NavLink key={item.href} href={item.href} label={item.label} />
+        ))}
       </nav>
       <div className="p-3 border-t border-slate-800 text-sm">
         <div className="px-2 py-1 text-slate-300 truncate">
