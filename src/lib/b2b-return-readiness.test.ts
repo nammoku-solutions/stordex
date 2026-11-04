@@ -59,6 +59,26 @@ describe("read-only post-shipment return planning", () => {
       ...basic, companyLines: [],
     }).status).toBe("REQUIRES_MANUAL_REVIEW");
   });
+  it("uses buyer/seller perspective for shipment and receipt messages", () => {
+    const waitingSellerShipment = {
+      ...basic, sellerOrderStatus: "CONFIRMED" as const,
+    };
+    expect(assessB2BReturnReadiness(waitingSellerShipment).message)
+      .toContain("先方の出荷");
+    expect(assessB2BReturnReadiness({
+      ...waitingSellerShipment, viewer: "SELLER",
+    }).message).toContain("自社の出荷");
+
+    const waitingBuyerReceipt = {
+      ...basic, buyerPOStatus: "ORDERED" as const,
+    };
+    expect(assessB2BReturnReadiness(waitingBuyerReceipt).message)
+      .toContain("自社の入荷");
+    expect(assessB2BReturnReadiness({
+      ...waitingBuyerReceipt, viewer: "SELLER",
+    }).message).toContain("発注元企業の入荷");
+  });
+
   it("does not invent returnable stock for zero receipt and supports seller completion", () => {
     const empty = assessB2BReturnReadiness({
       ...basic, buyerLines: basic.buyerLines.map(l => ({ ...l, received: 0 })),
