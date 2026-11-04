@@ -48,6 +48,9 @@ export type InventoryLedgerPreflight = {
   summaries: InventoryLedgerSummary[];
 };
 
+// Item.stock, InventoryMovement.quantity and .balance are PostgreSQL int4.
+const INT32_MAX = 2_147_483_647;
+const INT32_MIN = -2_147_483_648;
 const MAX_ROWS = 10000;
 const MAX_ISSUES = 50;
 const UTC_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
@@ -64,7 +67,8 @@ function strictInteger(value: string, signed = false): number | null {
   const pattern = signed ? /^(?:0|[1-9]\d*|-[1-9]\d*)$/ : /^(?:0|[1-9]\d*)$/;
   if (!pattern.test(value)) return null;
   const num = Number(value);
-  return Number.isSafeInteger(num) ? num : null;
+  return Number.isSafeInteger(num) && num <= INT32_MAX &&
+    num >= (signed ? INT32_MIN : 0) ? num : null;
 }
 
 function columns(
@@ -136,7 +140,7 @@ export function preflightInventoryLedgerExports(input: {
       continue;
     }
     if (stock === null || stock < 0) {
-      error("items", number, "stock", "現在庫は0以上の安全な整数で指定してください");
+      error("items", number, "stock", "現在庫は0〜2,147,483,647の整数で指定してください");
       continue;
     }
     if (!Number.isSafeInteger(stockTotal + stock)) {
@@ -206,7 +210,7 @@ export function preflightInventoryLedgerExports(input: {
     const delta = type === "OUTBOUND" ? -quantity : quantity;
     if (sku.lastBalance === null) {
       const opening = balance - delta;
-      if (!Number.isSafeInteger(opening) || opening < 0) {
+      if (!Number.isSafeInteger(opening) || opening < 0 || opening > INT32_MAX) {
         error("movements", number, "balance", "最初の移動から非負の開始在庫を推定できません");
       } else {
         sku.inferredOpening = opening;
