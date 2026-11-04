@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { dateJP, yen, num, ORDER_STATUS_LABEL, ORDER_STATUS_BADGE } from "@/lib/format";
 import { OrderStatusActions } from "./OrderStatusActions";
 import { PO_STATUS_LABEL } from "../../purchase-orders/_status";
+import { assessB2BReturnReadiness } from "@/lib/b2b-return-readiness";
 
 export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { tenantId, role } = await requireTenant();
@@ -15,11 +16,42 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     include: { customer: true, items: true, linkedCompanyOrder: {
         include: {
           buyer: { select: { name: true } },
-          purchaseOrder: { select: { poNumber: true, status: true } },
+          connection: { select: { status: true } },
+          items: { select: { sourcePurchaseOrderItemId: true, quantity: true, unit: true } },
+          purchaseOrder: {
+            select: {
+              poNumber: true, status: true,
+              items: { select: { id: true, itemName: true, quantity: true, received: true, unit: true } },
+            },
+          },
         },
       } },
   });
   if (!order) notFound();
+
+  const link = order.linkedCompanyOrder;
+  const returnReadiness = link &&
+    (order.status === "SHIPPED" || order.status === "COMPLETED" ||
+     link.purchaseOrder.status === "RECEIVED")
+    ? assessB2BReturnReadiness({
+      buyerPOStatus: link.purchaseOrder.status,
+      companyStatus: link.status,
+      sellerOrderStatus: order.status,
+      connectionStatus: link.connection.status,
+      buyerLines: link.purchaseOrder.items.map(line => ({
+        id: line.id,
+        itemName: line.itemName,
+        quantity: line.quantity,
+        received: line.received,
+        unit: line.unit,
+      })),
+      companyLines: link.items.map(line => ({
+        sourcePurchaseOrderItemId: line.sourcePurchaseOrderItemId,
+        quantity: line.quantity,
+        unit: line.unit,
+      })),
+    })
+    : null;
 
   return (
     <>
@@ -132,6 +164,26 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
           <p className="text-xs text-slate-500">
             これらは双方の伝票ステータスを参照した表示です。出荷や入荷を自動実行するものではありません。
           </p>
+          {returnReadiness && (
+            <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4 space-y-2"
+                 aria-label="返品の事前確認（売り手・閲覧のみ）">
+              <h3 className="font-semibold text-blue-900">返品の事前確認（売り手・閲覧のみ）</h3>
+              <p className="text-sm text-blue-900">{returnReadiness.message}</p>
+              {returnReadiness.receivedLines.length > 0 && (
+                <ul className="list-disc pl-5 text-sm text-blue-900">
+                  {returnReadiness.receivedLines.map(line => (
+                    <li key={line.id}>
+                      発注元の商品: {line.itemName}／入荷済 {num(line.received)} {line.unit}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="text-xs text-blue-800">
+                これは相手企業が記録した入荷数量です。売り手側の商品への自動対応付けや
+                返品申請・返金・在庫更新は行いません。正式な返品処理は開発中です。
+              </p>
+            </div>
+          )}
         </section>
       )}
       <OrderStatusActions orderId={order.id} status={order.status} linkedCompanyOrder={!!order.linkedCompanyOrder} canManageLinkedCancellation={role === "OWNER" || role === "ADMIN"} />
