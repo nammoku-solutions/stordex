@@ -70,7 +70,7 @@ function extractMovementSnapshots(csv: Uint8Array) {
       sourceSha256: sha256(canonical),
       snapshot,
     };
-  }).sort((a, b) => a.sourceMovementId.localeCompare(b.sourceMovementId));
+  });
 }
 
 export type ArchiveCutoverResult = {
@@ -138,11 +138,12 @@ export async function archiveCutoverInDisposableCi(input: {
           saved.historicalOpening === expected[i].inferredHistoricalOpening &&
           saved.lastHistoricalBalance === expected[i].lastHistoricalBalance &&
           saved.movementCount === expected[i].movementCount);
+      const sourceById = new Map(sourceMovements.map(movement =>
+        [movement.sourceMovementId, movement]));
       const sameMovements = existing.movements.length === sourceMovements.length &&
-        existing.movements.every((saved, index) => {
-          const source = sourceMovements[index];
-          return saved.tenantId === input.targetTenantId &&
-            saved.sourceMovementId === source.sourceMovementId &&
+        existing.movements.every(saved => {
+          const source = sourceById.get(saved.sourceMovementId);
+          return !!source && saved.tenantId === input.targetTenantId &&
             saved.sourceSha256 === source.sourceSha256 &&
             canonicalSnapshot(saved.snapshot) === canonicalSnapshot(source.snapshot);
         });
