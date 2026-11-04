@@ -13,6 +13,7 @@ CREATE TABLE "MigrationArchiveBatch" (
   "sourceTenantFingerprint" TEXT NOT NULL,
   "itemsCsvSha256" TEXT NOT NULL,
   "movementsCsvSha256" TEXT NOT NULL,
+  "purchaseOrdersCsvSha256" TEXT,
   "state" "MigrationArchiveState" NOT NULL DEFAULT 'PREPARED',
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "sealedAt" TIMESTAMP(3),
@@ -102,6 +103,7 @@ BEGIN
      OR NEW."sourceTenantFingerprint" IS DISTINCT FROM OLD."sourceTenantFingerprint"
      OR NEW."itemsCsvSha256" IS DISTINCT FROM OLD."itemsCsvSha256"
      OR NEW."movementsCsvSha256" IS DISTINCT FROM OLD."movementsCsvSha256"
+     OR NEW."purchaseOrdersCsvSha256" IS DISTINCT FROM OLD."purchaseOrdersCsvSha256"
      OR NEW."createdAt" IS DISTINCT FROM OLD."createdAt" THEN
     RAISE EXCEPTION 'Historical migration archive batch identity is immutable';
   END IF;
