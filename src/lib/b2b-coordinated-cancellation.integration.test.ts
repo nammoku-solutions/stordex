@@ -128,6 +128,24 @@ describe("agreed pre-shipment B2B cancellation and inventory reconciliation", ()
         // CONFIRMED seller has stock deducted; cancellation adds exactly one
         // compensating INBOUND movement, even when invoked repeatedly.
         const confirmed = await linkedPO();
+        // Provenance must never attach a seller line from a DIFFERENT order,
+        // even within the same seller tenant (id FK alone is insufficient).
+        const unrelatedSellerLine = await prisma.orderItem.create({
+          data: {
+            orderId: draft.sellerOrderId, itemId: sellerItem.id,
+            itemName: sellerItem.name, unit: "箱",
+            quantity: 1, unitPrice: 200, amount: 200,
+          },
+        });
+        await expect(prisma.intercompanyOrderItem.create({
+          data: {
+            intercompanyOrderId: confirmed.company.id,
+            sourcePurchaseOrderItemId: "forged-" + suffix,
+            sellerOrderItemId: unrelatedSellerLine.id,
+            buyerItemCode: "B-PAPER", itemName: "A4 paper",
+            unit: "箱", quantity: 1, unitPrice: 200, amount: 200,
+          },
+        })).rejects.toThrow();
         await sales(confirmed.sellerOrderId, "CONFIRMED");
         expect((await stockOf(sellerItem.id)).stock).toBe(18);
         await expect(purchasing(confirmed.po.id, "CANCELLED")).rejects.toThrow();
