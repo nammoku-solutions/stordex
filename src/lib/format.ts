@@ -55,3 +55,20 @@ export const MOVEMENT_TYPE_LABEL: Record<string, string> = {
   OUTBOUND: "出庫",
   ADJUSTMENT: "調整",
 };
+
+/**
+ * InventoryMovement stores OUTBOUND as a positive count and ADJUSTMENT as a
+ * signed difference. Do not label a negative physical count correction "+10".
+ */
+export function formatMovementQuantity(
+  type: "INBOUND" | "OUTBOUND" | "ADJUSTMENT",
+  quantity: number,
+): string {
+  const signed = type === "OUTBOUND"
+    ? -Math.abs(quantity)
+    : type === "INBOUND"
+      ? Math.abs(quantity)
+      : quantity;
+  const prefix = signed > 0 ? "+" : signed < 0 ? "-" : "";
+  return prefix + num(Math.abs(signed));
+}
