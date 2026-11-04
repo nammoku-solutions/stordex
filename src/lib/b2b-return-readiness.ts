@@ -34,6 +34,8 @@ export type ReturnReadiness = {
 };
 
 export function assessB2BReturnReadiness(input: {
+  /** Messages must identify the viewer's company correctly on both sides. */
+  viewer?: "BUYER" | "SELLER";
   buyerPOStatus: BuyerPOStatus;
   companyStatus: CompanyOrderStatus;
   sellerOrderStatus: SellerOrderStatus | null;
@@ -52,10 +54,14 @@ export function assessB2BReturnReadiness(input: {
   }
   if (!input.sellerOrderStatus ||
       !["SHIPPED", "COMPLETED"].includes(input.sellerOrderStatus)) {
-    return blocked("先方の出荷が完了していません。出荷前の取消とは別の手続きです。");
+    return blocked(input.viewer === "SELLER"
+      ? "自社の出荷が完了していません。出荷前の取消とは別の手続きです。"
+      : "先方の出荷が完了していません。出荷前の取消とは別の手続きです。");
   }
   if (input.buyerPOStatus !== "RECEIVED") {
-    return blocked("自社の入荷が確定されていません。まず実際の入荷数を確認してください。");
+    return blocked(input.viewer === "SELLER"
+      ? "発注元企業の入荷が確定されていません。先方の入荷記録を確認してください。"
+      : "自社の入荷が確定されていません。まず実際の入荷数を確認してください。");
   }
   if (input.connectionStatus !== "ACTIVE") {
     return uncertain("企業間接続が有効ではありません。先方との契約・連携状態を確認してください。");
