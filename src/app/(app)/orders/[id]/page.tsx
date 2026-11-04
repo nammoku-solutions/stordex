@@ -34,6 +34,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     (order.status === "SHIPPED" || order.status === "COMPLETED" ||
      link.purchaseOrder.status === "RECEIVED")
     ? assessB2BReturnReadiness({
+      viewer: "SELLER",
       buyerPOStatus: link.purchaseOrder.status,
       companyStatus: link.status,
       sellerOrderStatus: order.status,
