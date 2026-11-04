@@ -105,6 +105,34 @@ describe("inventory ledger and current-stock CSV reconciliation", () => {
     expect(check([item()], [ledger({expiryDate:"2026-02-30"})]).ok).toBe(false);
   });
 
+  it("rejects out-of-range PostgreSQL int4 values before creating a cutover manifest", () => {
+    const max = 2_147_483_647;
+    const min = -2_147_483_648;
+    const within = check([item({ stock: max })], []);
+    expect(within.ok).toBe(true);
+    expect(check([item({ stock: max + 1 })], []).errors
+      .some(error => error.field === "stock")).toBe(true);
+
+    const excessBalance = check([item()], [ledger({ balance: max + 1 })]);
+    expect(excessBalance.errors.some(error => error.field === "balance")).toBe(true);
+
+    const excessQuantity = check([item()], [ledger({ quantity: max + 1 })]);
+    expect(excessQuantity.errors.some(error => error.field === "quantity")).toBe(true);
+
+    const tooNegativeAdjustment = check([item()], [ledger({
+      type: "ADJUSTMENT", quantity: min - 1,
+    })]);
+    expect(tooNegativeAdjustment.errors.some(error => error.field === "quantity")).toBe(true);
+
+    // A historical opening value cannot exceed the database column range,
+    // even if the final balance and individual movement quantity fit int4.
+    const openingOverflow = check([item({ stock: max })], [ledger({
+      type: "OUTBOUND", quantity: 1, balance: max,
+    })]);
+    expect(openingOverflow.ok).toBe(false);
+    expect(openingOverflow.errors.some(error => error.field === "balance")).toBe(true);
+  });
+
   it("rejects reversed global movement ordering", () => {
     const r=check([item()],[
       ledger({movementId:"m-002",createdAt:"2026-11-02T00:00:00.000Z"}),
