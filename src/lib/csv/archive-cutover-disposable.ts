@@ -11,6 +11,7 @@ import {
 } from "./inventory-cutover-manifest";
 import { MOVEMENT_MIGRATION_EXPORT_HEADERS } from "./inventory-ledger-preflight";
 import { decodeCsvBuffer, parseCsv } from "./parse";
+import { canonicalArchiveJson, preparePurchaseOrderArchive } from "./purchase-order-archive";
 
 function requireDisposableCi(): void {
   let ok = false;
@@ -77,6 +78,8 @@ export type ArchiveCutoverResult = {
   batchId: string;
   archivedItems: number;
   archivedMovements: number;
+  archivedPurchaseOrders: number;
+  purchaseOrderWarnings: number;
   created: boolean;
   operationalItemWrites: 0;
   operationalMovementWrites: 0;
@@ -89,6 +92,8 @@ export async function archiveCutoverInDisposableCi(input: {
   sourceTenantId: string;
   itemsCsv: Uint8Array;
   movementsCsv: Uint8Array;
+  /** Optional source PO CSV must be supplied on FIRST archive creation; never append later. */
+  purchaseOrdersCsv?: Uint8Array;
   manifest: InventoryCutoverManifest;
 }): Promise<ArchiveCutoverResult> {
   requireDisposableCi();
@@ -102,6 +107,12 @@ export async function archiveCutoverInDisposableCi(input: {
   }
   const { manifest } = input;
   const sourceMovements = extractMovementSnapshots(input.movementsCsv);
+  const sourcePurchaseOrders = input.purchaseOrdersCsv
+    ? preparePurchaseOrderArchive({
+      csv: input.purchaseOrdersCsv,
+      itemCodes: manifest.items.map(item => item.code),
+    })
+    : { sourceCsvSha256: null, documents: [], warnings: 0 };
   // Keep the rehearsal bounded; a production migration will use a separately
   // reviewed, paginated import with an explicit source-freeze audit.
   if (manifest.items.length > 1000 || sourceMovements.length > 1000) {
@@ -125,6 +136,7 @@ export async function archiveCutoverInDisposableCi(input: {
       include: {
         items: { orderBy: { itemCode: "asc" } },
         movements: { orderBy: { sourceMovementId: "asc" } },
+        orders: { orderBy: { sourcePoNumber: "asc" } },
       },
     });
     if (existing) {
@@ -147,17 +159,29 @@ export async function archiveCutoverInDisposableCi(input: {
             saved.sourceSha256 === source.sourceSha256 &&
             canonicalSnapshot(saved.snapshot) === canonicalSnapshot(source.snapshot);
         });
+      const poByNumber = new Map(sourcePurchaseOrders.documents.map(doc =>
+        [doc.sourcePoNumber, doc]));
+      const samePurchaseOrders = existing.orders.length === sourcePurchaseOrders.documents.length &&
+        existing.orders.every(saved => {
+          const source = poByNumber.get(saved.sourcePoNumber);
+          return !!source && saved.tenantId === input.targetTenantId &&
+            saved.sourceSha256 === source.sourceSha256 &&
+            canonicalArchiveJson(saved.snapshot) === canonicalArchiveJson(source.snapshot);
+        });
       if (existing.state !== "PREPARED" ||
           existing.sourceTenantFingerprint !== manifest.tenantFingerprint ||
           existing.itemsCsvSha256 !== manifest.source.itemsCsvSha256 ||
           existing.movementsCsvSha256 !== manifest.source.movementsCsvSha256 ||
-          !sameItems || !sameMovements) {
+          existing.purchaseOrdersCsvSha256 !== sourcePurchaseOrders.sourceCsvSha256 ||
+          !sameItems || !sameMovements || !samePurchaseOrders) {
         throw new Error("同じ検証記録IDのアーカイブに内容不一致があります");
       }
       return {
         batchId: existing.id,
         archivedItems: expected.length,
         archivedMovements: sourceMovements.length,
+        archivedPurchaseOrders: sourcePurchaseOrders.documents.length,
+        purchaseOrderWarnings: sourcePurchaseOrders.warnings,
         created: false,
         operationalItemWrites: 0 as const,
         operationalMovementWrites: 0 as const,
@@ -173,6 +197,7 @@ export async function archiveCutoverInDisposableCi(input: {
         sourceTenantFingerprint: manifest.tenantFingerprint,
         itemsCsvSha256: manifest.source.itemsCsvSha256,
         movementsCsvSha256: manifest.source.movementsCsvSha256,
+        purchaseOrdersCsvSha256: sourcePurchaseOrders.sourceCsvSha256,
       },
     });
     if (manifest.items.length) {
@@ -200,10 +225,24 @@ export async function archiveCutoverInDisposableCi(input: {
         })),
       });
     }
+    if (sourcePurchaseOrders.documents.length) {
+      await tx.migrationArchivePurchaseOrder.createMany({
+        data: sourcePurchaseOrders.documents.map(order => ({
+          tenantId: input.targetTenantId,
+          batchId: batch.id,
+          sourcePoNumber: order.sourcePoNumber,
+          sourceSha256: order.sourceSha256,
+          // JSONB storage may reorder keys; comparison uses canonicalArchiveJson.
+          snapshot: JSON.parse(JSON.stringify(order.snapshot)),
+        })),
+      });
+    }
     return {
       batchId: batch.id,
       archivedItems: manifest.items.length,
       archivedMovements: sourceMovements.length,
+      archivedPurchaseOrders: sourcePurchaseOrders.documents.length,
+      purchaseOrderWarnings: sourcePurchaseOrders.warnings,
       created: true,
       operationalItemWrites: 0 as const,
       operationalMovementWrites: 0 as const,

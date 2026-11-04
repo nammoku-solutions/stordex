@@ -5,6 +5,7 @@ import {
   ITEM_MIGRATION_EXPORT_HEADERS,
   MOVEMENT_MIGRATION_EXPORT_HEADERS,
 } from "./inventory-ledger-preflight";
+import { PURCHASE_ORDER_EXPORT_HEADERS } from "./purchase-order-preflight";
 
 const url = process.env.DATABASE_URL ?? "";
 const isolated = process.env.APP_ENV === "ci" &&
@@ -19,6 +20,16 @@ const sourceItems = [
   {code:"HIST-SKU",name:"移行元在庫商品",stock:15},
   {code:"NO-HIST-SKU",name:"履歴なし商品",stock:9},
 ];
+const sourcePurchaseOrders = [{
+  poNumber: "SOURCE-PO-1", supplierCode: "S-1", supplierName: "Source Supplier",
+  orderDate: "2026-11-03", pickupDate: "", status: "RECEIVED", note: "",
+  taxRate: 10, subtotal: 500, tax: 50, total: 550,
+  itemCode: "HIST-SKU", itemName: "移行元在庫商品", unit: "個",
+  quantity: 5, unitPrice: 100, amount: 500, received: 5,
+  packSize: "", packCount: "", packUnit: "",
+  createdAt: "2026-11-03T00:00:00.000Z",
+  updatedAt: "2026-11-03T00:01:00.000Z",
+}];
 const sourceMoves = [{
   movementId:"SOURCE-M-1",createdAt:"2026-11-03T00:00:00.000Z",
   itemCode:"HIST-SKU",itemName:"移行元在庫商品",
@@ -53,6 +64,7 @@ describe("archive cutover data in independent immutable tables",()=>{
       sourceTenantId:"source-tenant-ci",
       itemsCsv:csvBytes(ITEM_MIGRATION_EXPORT_HEADERS,sourceItems),
       movementsCsv:csvBytes(MOVEMENT_MIGRATION_EXPORT_HEADERS,sourceMoves),
+      purchaseOrdersCsv:csvBytes(PURCHASE_ORDER_EXPORT_HEADERS,sourcePurchaseOrders),
     };
     const {manifest}=createInventoryCutoverManifest({
       tenantId:input.sourceTenantId,itemsCsv:input.itemsCsv,
@@ -62,7 +74,8 @@ describe("archive cutover data in independent immutable tables",()=>{
     expect(manifest).not.toBeNull();
     const result=await archiveCutoverInDisposableCi({...input,manifest:manifest!});
     expect(result).toMatchObject({
-      created:true,archivedItems:2,archivedMovements:1,status:"PREPARED",
+      created:true,archivedItems:2,archivedMovements:1,
+      archivedPurchaseOrders:1,purchaseOrderWarnings:0,status:"PREPARED",
       operationalItemWrites:0,operationalMovementWrites:0,operationalOrderWrites:0,
     });
     const batch=await prisma.migrationArchiveBatch.findUniqueOrThrow({
@@ -71,6 +84,7 @@ describe("archive cutover data in independent immutable tables",()=>{
       }},
       include:{items:{orderBy:{itemCode:"asc"}}},
     });
+    expect(batch.purchaseOrdersCsvSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(batch.items).toHaveLength(2);
     expect(batch.items[0]).toMatchObject({
       itemCode:"HIST-SKU",cutoverStock:15,historyKind:"RECONCILED_LEDGER",
@@ -88,11 +102,19 @@ describe("archive cutover data in independent immutable tables",()=>{
       movementId:"SOURCE-M-1",itemCode:"HIST-SKU",
       type:"INBOUND",quantity:"5",balance:"15",
     });
+    const savedPO=await prisma.migrationArchivePurchaseOrder.findFirstOrThrow({
+      where:{tenantId:tenant.id,batchId:batch.id,sourcePoNumber:"SOURCE-PO-1"},
+    });
+    expect(savedPO.sourceSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(savedPO.snapshot).toMatchObject({
+      poNumber:"SOURCE-PO-1",supplierCode:"S-1",status:"RECEIVED",
+      lines:[{itemCode:"HIST-SKU",quantity:5,received:5}],
+    });
     const repeated=await archiveCutoverInDisposableCi({...input,manifest:manifest!});
-    expect(repeated).toMatchObject({created:false,batchId:result.batchId,archivedItems:2,archivedMovements:1});
+    expect(repeated).toMatchObject({created:false,batchId:result.batchId,archivedItems:2,archivedMovements:1,archivedPurchaseOrders:1});
     expect(await prisma.migrationArchiveItem.count({where:{tenantId:tenant.id}})).toBe(2);
     expect(await prisma.migrationArchiveBatch.count({where:{tenantId:other.id}})).toBe(0);
-    expect(await prisma.migrationArchivePurchaseOrder.count({where:{tenantId:tenant.id}})).toBe(0);
+    expect(await prisma.migrationArchivePurchaseOrder.count({where:{tenantId:tenant.id}})).toBe(1);
     expect(await prisma.migrationArchiveMovement.count({where:{tenantId:tenant.id}})).toBe(1);
     expect(await prisma.purchaseOrder.count({where:{tenantId:tenant.id}})).toBe(0);
     expect(await prisma.inventoryMovement.count({where:{tenantId:tenant.id}})).toBe(0);
@@ -107,6 +129,22 @@ describe("archive cutover data in independent immutable tables",()=>{
       ...input,sourceTenantId:"different-source",manifest:manifest!,
     })).rejects.toThrow("一致しません");
     expect(await prisma.migrationArchiveBatch.count({where:{tenantId:tenant.id}})).toBe(1);
+    const changedPurchaseCsv=csvBytes(PURCHASE_ORDER_EXPORT_HEADERS,[
+      {...sourcePurchaseOrders[0],note:"changed but still valid"},
+    ]);
+    await expect(archiveCutoverInDisposableCi({
+      ...input,purchaseOrdersCsv:changedPurchaseCsv,manifest:manifest!,
+    })).rejects.toThrow("内容不一致");
+    // Adding PO source bytes after batch creation or silently dropping them
+    // would break provenance, even if the inventory manifest is unchanged.
+    await expect(archiveCutoverInDisposableCi({
+      ...input,purchaseOrdersCsv:undefined,manifest:manifest!,
+    })).rejects.toThrow("内容不一致");
+    await expect(archiveCutoverInDisposableCi({
+      ...input,purchaseOrdersCsv:csvBytes(PURCHASE_ORDER_EXPORT_HEADERS,[
+        {...sourcePurchaseOrders[0],itemCode:"MISSING-SKU"},
+      ]),manifest:manifest!,
+    })).rejects.toThrow("商品マスタに存在しない");
 
     // The DB rejects linking a target-tenant archive row to another
     // tenant's batch, even through unchecked scalar foreign keys.
@@ -123,6 +161,11 @@ describe("archive cutover data in independent immutable tables",()=>{
     })).rejects.toThrow();
     expect(await prisma.migrationArchiveBatch.count({where:{tenantId:tenant.id}})).toBe(1);
 
+    await expect(prisma.migrationArchiveBatch.update({
+      where:{id:batch.id},
+      data:{purchaseOrdersCsvSha256:"f".repeat(64)},
+    })).rejects.toThrow();
+
     // The movement archive is immutable and also tenant-isolated in the DB.
     await expect(prisma.migrationArchiveMovement.update({
       where:{id:savedMovement.id},data:{snapshot:{movementId:"tampered"}},
@@ -137,6 +180,22 @@ describe("archive cutover data in independent immutable tables",()=>{
       },
     })).rejects.toThrow();
     expect(await prisma.migrationArchiveMovement.count({where:{tenantId:tenant.id}})).toBe(1);
+
+    // A historical PO stays immutable; the composite foreign key rejects
+    // attaching a different tenant's PO to this batch.
+    await expect(prisma.migrationArchivePurchaseOrder.update({
+      where:{id:savedPO.id},data:{snapshot:{poNumber:"changed"}},
+    })).rejects.toThrow();
+    await expect(prisma.migrationArchivePurchaseOrder.delete({
+      where:{id:savedPO.id},
+    })).rejects.toThrow();
+    await expect(prisma.migrationArchivePurchaseOrder.create({
+      data:{
+        tenantId:other.id,batchId:batch.id,sourcePoNumber:"OTHER-PO",
+        sourceSha256:"f".repeat(64),snapshot:{poNumber:"OTHER-PO"},
+      },
+    })).rejects.toThrow();
+    expect(await prisma.migrationArchivePurchaseOrder.count({where:{tenantId:tenant.id}})).toBe(1);
 
     // Even a direct ORM attempt cannot rewrite an archived stock snapshot.
     await expect(prisma.migrationArchiveItem.update({
