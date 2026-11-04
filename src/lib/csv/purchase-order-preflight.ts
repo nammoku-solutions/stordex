@@ -57,6 +57,8 @@ export type PurchaseOrderPreflightResult = {
   documents: PurchaseOrderImportSnapshot[];
 };
 
+// Prisma purchase-order monetary, quantity and pack fields map to PostgreSQL int4.
+const POSTGRES_INT4_MAX = 2_147_483_647;
 const MAX_LINES = 10000;
 const MAX_ISSUES = 50;
 const STATUSES = new Set(["DRAFT", "ORDERED", "RECEIVED", "CANCELLED"]);
@@ -142,8 +144,8 @@ export function preflightPurchaseOrderExport(rows: string[][]): PurchaseOrderPre
     const integer = (field: typeof expected[number], min: number): number => {
       const value = get(field);
       if (!/^(0|[1-9]\d*)$/.test(value) || !Number.isSafeInteger(Number(value)) ||
-          Number(value) < min) {
-        error(number, field, min ? min + "以上の整数を指定してください" : "0以上の整数を指定してください");
+          Number(value) < min || Number(value) > POSTGRES_INT4_MAX) {
+        error(number, field, min + "〜2,147,483,647の整数で指定してください");
         return Number.NaN;
       }
       return Number(value);
@@ -179,8 +181,9 @@ export function preflightPurchaseOrderExport(rows: string[][]): PurchaseOrderPre
     if (Number.isSafeInteger(quantity * unitPrice) && amount !== quantity * unitPrice) {
       error(number, "amount", "明細金額が数量×単価と一致しません");
     }
-    if (!Number.isSafeInteger(quantity * unitPrice)) {
-      error(number, "amount", "計算金額が安全な整数範囲を超えています");
+    if (!Number.isSafeInteger(quantity * unitPrice) ||
+        quantity * unitPrice > POSTGRES_INT4_MAX) {
+      error(number, "amount", "明細金額がデータベースの整数上限を超えています");
     }
 
     const packValues = [get("packSize"), get("packCount"), get("packUnit")];
