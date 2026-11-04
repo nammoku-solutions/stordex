@@ -6,6 +6,7 @@ import { yen, num } from "@/lib/format";
 import { deleteItem, reactivateItem } from "./actions";
 import { DeleteForm } from "@/components/DeleteForm";
 import { belowMinimumStock } from "@/lib/inventory-policy";
+import { getItemRemovalNotice } from "@/lib/item-removal-notice";
 
 export const dynamic = "force-dynamic";
 
@@ -19,17 +20,7 @@ export default async function ItemsPage({
   const q = params.q?.trim() ?? "";
   const low = params.low === "1";
   const includeInactive = params.inactive === "1";
-  const messages: Record<string, string> = {
-    removed: "商品を削除しました。受注・在庫などの履歴はありませんでした。",
-    retired: "過去の取引・入出庫履歴を保持したまま、商品の取扱を停止しました。必要なら「取扱停止商品を表示」から再開できます。",
-    "already-retired": "この商品はすでに取扱停止になっています。",
-    "stock-remains": "現在庫が残っているため削除できません。在庫管理から数量を確認してください。在庫調整は履歴として記録されます。",
-    "open-transactions": "未完了の受注・仕入発注・見積があるため削除できません。取引を完了または取消してから操作してください。",
-    "concurrent-change": "削除中に在庫または取引が更新されました。画面を再読み込みして状況を確認してください。",
-    "not-found": "商品が見つかりません。すでに削除済みの可能性があります。",
-    reactivated: "商品の取扱を再開しました。",
-  };
-  const removalNotice = params.removal ? messages[params.removal] : null;
+  const removalNotice = getItemRemovalNotice(params.removal);
 
   const items = await prisma.item.findMany({
     where: {
@@ -66,8 +57,44 @@ export default async function ItemsPage({
       />
 
       {removalNotice && (
-        <div role="status" className="card mb-4 p-4 text-sm text-slate-800" aria-live="polite">
-          {removalNotice}
+        <div
+          role={removalNotice.tone === "error" ? "alert" : "status"}
+          aria-live={removalNotice.tone === "error" ? "assertive" : "polite"}
+          className={`mb-5 rounded-lg border p-4 shadow-sm ${
+            removalNotice.tone === "error"
+              ? "border-red-300 bg-red-50 text-red-900"
+              : removalNotice.tone === "success"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                : "border-amber-200 bg-amber-50 text-amber-900"
+          }`}
+        >
+          <div className="flex items-start gap-3">
+            <span
+              aria-hidden="true"
+              className={`mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-sm font-bold ${
+                removalNotice.tone === "error" ? "border-red-700" : "border-current"
+              }`}
+            >
+              {removalNotice.tone === "error" ? "!" : "✓"}
+            </span>
+            <div className="min-w-0">
+              <p className="font-semibold">{removalNotice.title}</p>
+              <p className="mt-1 text-sm leading-relaxed">{removalNotice.message}</p>
+              {removalNotice.links && (
+                <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2">
+                  {removalNotice.links.map(link => (
+                    <Link
+                      key={link.href}
+                      href={link.href}
+                      className="text-sm font-semibold underline underline-offset-2 hover:no-underline"
+                    >
+                      {link.label}
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
