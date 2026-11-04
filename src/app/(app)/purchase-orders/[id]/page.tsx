@@ -8,6 +8,7 @@ import { PO_STATUS_BADGE, PO_STATUS_LABEL } from "../_status";
 import { POStatusActions } from "./POStatusActions";
 import { sendPurchaseOrderToPartner } from "../send-actions";
 import { PendingSubmitButton } from "@/components/PendingSubmitButton";
+import { assessB2BReturnReadiness } from "@/lib/b2b-return-readiness";
 
 export default async function POPage({ params }: { params: Promise<{ id: string }> }) {
   const { tenantId, role } = await requireTenant();
@@ -19,6 +20,8 @@ export default async function POPage({ params }: { params: Promise<{ id: string 
       items: { include: { item: true } },
       linkedCompanyOrder: {
         include: {
+          items: true,
+          connection: { select: { status: true } },
           seller: { select: { name: true, slug: true } },
           sellerOrder: { select: { orderNumber: true, status: true } },
         },
@@ -38,6 +41,23 @@ export default async function POPage({ params }: { params: Promise<{ id: string 
   const partners = connections
     .map(link => link.tenantAId === tenantId ? link.tenantB : link.tenantA)
     .filter(partner => partner.status === "ACTIVE");
+
+  const returnReadiness = po.linkedCompanyOrder
+    ? assessB2BReturnReadiness({
+      buyerPOStatus: po.status,
+      companyStatus: po.linkedCompanyOrder.status,
+      sellerOrderStatus: po.linkedCompanyOrder.sellerOrder?.status ?? null,
+      connectionStatus: po.linkedCompanyOrder.connection.status,
+      buyerLines: po.items.map(line => ({
+        id: line.id, itemName: line.itemName, unit: line.unit,
+        quantity: line.quantity, received: line.received,
+      })),
+      companyLines: po.linkedCompanyOrder.items.map(line => ({
+        sourcePurchaseOrderItemId: line.sourcePurchaseOrderItemId,
+        quantity: line.quantity, unit: line.unit,
+      })),
+    })
+    : null;
 
   return (
     <>
@@ -137,6 +157,28 @@ export default async function POPage({ params }: { params: Promise<{ id: string 
           <p className="text-xs text-slate-500">
             先方の受注状態を参照しています。自社の入荷処理が自動的に実行されるわけではありません。
           </p>
+          {returnReadiness &&
+            (po.status === "RECEIVED" ||
+             po.linkedCompanyOrder.sellerOrder?.status === "SHIPPED" ||
+             po.linkedCompanyOrder.sellerOrder?.status === "COMPLETED") && (
+              <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4 space-y-2"
+                   aria-label="返品の事前確認（閲覧のみ）">
+                <h3 className="font-semibold text-blue-900">返品の事前確認（閲覧のみ）</h3>
+                <p className="text-sm text-blue-900">{returnReadiness.message}</p>
+                {returnReadiness.receivedLines.length > 0 && (
+                  <ul className="list-disc pl-5 text-sm text-blue-900">
+                    {returnReadiness.receivedLines.map(line => (
+                      <li key={line.id}>{line.itemName}: 入荷済 {num(line.received)} {line.unit}</li>
+                    ))}
+                  </ul>
+                )}
+                <p className="text-xs text-blue-800">
+                  正式な返品申請・返送・検品・クレジットノートは開発中です。
+                  この表示では在庫や請求内容を変更しません。
+                </p>
+              </div>
+            )}
+
         </div>
       )}
       {canSend && (
