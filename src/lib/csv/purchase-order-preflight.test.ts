@@ -90,6 +90,36 @@ describe("read-only purchase-order CSV export preflight", () => {
     }
   });
 
+  it("rejects PostgreSQL int4 overflow in quantities, money and pack fields", () => {
+    const max = 2_147_483_647;
+    const overflow = max + 1;
+    // Every listed field is a persisted PostgreSQL integer, not a JS double.
+    for (const field of ["quantity", "received", "unitPrice", "amount",
+      "subtotal", "tax", "total", "packSize", "packCount"] as const) {
+      const r = importExport([mkRow({ [field]: overflow })]);
+      expect(r.ok).toBe(false);
+      expect(r.errors.some(e => e.field === field)).toBe(true);
+      expect(r.documents).toEqual([]);
+    }
+
+    // Valid database boundary with zero tax and one source unit.
+    const boundary = importExport([mkRow({
+      quantity: 1, received: 1, unitPrice: max, amount: max,
+      subtotal: max, tax: 0, total: max, taxRate: 0,
+      packSize: "", packCount: "", packUnit: "",
+    })]);
+    expect(boundary.ok).toBe(true);
+
+    // Even if each input integer fits int4, their product cannot be stored.
+    const productOverflow = importExport([mkRow({
+      quantity: 2, received: 2, unitPrice: max, amount: max,
+      subtotal: max, tax: 0, total: max, taxRate: 0,
+      packSize: "", packCount: "", packUnit: "",
+    })]);
+    expect(productOverflow.ok).toBe(false);
+    expect(productOverflow.errors.some(e => e.field === "amount")).toBe(true);
+  });
+
   it("rejects invalid pack arithmetic and incomplete pack snapshots", () => {
     for (const override of [
       { packCount: 3 }, { packUnit: "" }, { packSize: 1 }, { packCount: "" },
