@@ -653,6 +653,7 @@ model MigrationArchiveBatch {
   sourceTenantFingerprint String
   itemsCsvSha256          String
   movementsCsvSha256      String
+  purchaseOrdersCsvSha256 String?
   state                   MigrationArchiveState @default(PREPARED)
   createdAt               DateTime              @default(now())
   sealedAt                DateTime?
