@@ -80,7 +80,7 @@ describe("B2B return seller review (pure, not an authorization)", () => {
     })).toThrow("500文字");
   });
 
-  it("prevents total integer overflow across many individually valid lines", () => {
+  it("retains exact large totals within the bounded 100-line review limit", () => {
     const many = Array.from({ length: 5 }, (_, i) => ({
       sourceLineId: "line-" + i,
       requestedQuantity: 2147483647,
