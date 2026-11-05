@@ -23,7 +23,9 @@ export class CreditDraftServiceError extends Error {
     this.name = "CreditDraftServiceError";
   }
 }
-const fail = (message: string): never => { throw new CreditDraftServiceError(message); };
+function fail(message: string): never {
+  throw new CreditDraftServiceError(message);
+}
 
 type Line = { returnItemId: string; creditedQuantity: number };
 function normalizedLines(lines: readonly Line[]): Line[] {
