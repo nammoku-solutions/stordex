@@ -155,6 +155,38 @@ describe("return dispatch/inspection posting services (isolated PG only)", () =>
         ...inspectArgs,userId:staff.id,eventId:randomUUID(),
       })).rejects.toThrow("管理者権限");
 
+      // Two distinct concurrent dispatches compete for ONE approved unit.
+      // At most one can be committed; a serialization error may require the
+      // client to retry but must never create a second movement.
+      const raceRequest = await prisma.b2BReturnRequest.create({data:{
+        intercompanyOrderId:co.id,buyerTenantId:buyer.id,sellerTenantId:seller.id,
+        requestNumber:"RET-RACE-"+token,requestedByUserId:buyerUser.id,
+        status:"APPROVED",
+      }});
+      const raceLine = await prisma.b2BReturnItem.create({data:{
+        returnRequestId:raceRequest.id,intercompanyOrderId:co.id,
+        sourceLineId:co.items[0].id,reason:"DAMAGED",
+        requestedQuantity:1,approvedQuantity:1,
+      }});
+      const results = await Promise.allSettled([
+        postBuyerReturnDispatch({
+          tenantId:buyer.id,userId:buyerUser.id,returnItemId:raceLine.id,
+          eventId:randomUUID(),quantity:1,
+        }),
+        postBuyerReturnDispatch({
+          tenantId:buyer.id,userId:buyerUser.id,returnItemId:raceLine.id,
+          eventId:randomUUID(),quantity:1,
+        }),
+      ]);
+      expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
+      expect(results.filter(result => result.status === "rejected")).toHaveLength(1);
+      expect(await prisma.b2BReturnStockEvent.count({
+        where:{returnItemId:raceLine.id,phase:"DISPATCH"},
+      })).toBe(1);
+      expect((await prisma.item.findUniqueOrThrow({
+        where:{id:buyerItem.id},
+      })).stock).toBe(1);
+
       expect(await prisma.inventoryMovement.count({
         where:{tenantId:seller.id},
       })).toBe(1);
