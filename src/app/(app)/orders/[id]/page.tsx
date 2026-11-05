@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requireTenant } from "@/lib/session";
+import { b2bReturnFormsEnabled } from "@/lib/b2b-return-feature";
 import { PageHeader } from "@/components/PageHeader";
 import { dateJP, yen, num, ORDER_STATUS_LABEL, ORDER_STATUS_BADGE } from "@/lib/format";
 import { OrderStatusActions } from "./OrderStatusActions";
@@ -132,6 +133,15 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
           <p className="text-xs text-slate-500">
             これらは双方の伝票ステータスを参照した表示です。出荷や入荷を自動実行するものではありません。
           </p>
+        </section>
+      )}
+      {b2bReturnFormsEnabled() && order.linkedCompanyOrder && (
+        <section className="card p-4 mb-5 space-y-2">
+          <h2 className="font-semibold">企業間返品の審査</h2>
+          <p className="text-sm text-slate-700">
+            買い手から届いた返品申請を確認できます。審査結果の確定だけでは在庫を変更しません。
+          </p>
+          <Link href="/returns" className="btn-secondary">返品申請一覧・審査へ</Link>
         </section>
       )}
       <OrderStatusActions orderId={order.id} status={order.status} linkedCompanyOrder={!!order.linkedCompanyOrder} canManageLinkedCancellation={role === "OWNER" || role === "ADMIN"} />
