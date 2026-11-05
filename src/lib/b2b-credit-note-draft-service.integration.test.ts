@@ -156,6 +156,59 @@ describe("B2B credit draft service on disposable PostgreSQL only", () => {
       expect(recorded.lines).toHaveLength(1);
       expect(recorded.lines[0].creditedQuantity).toBe(1);
 
+      // Independent REVIEW EVIDENCE only. The note stays DRAFT and this
+      // audit never issues a CreditNote or settles money.
+      const reviewer = await prisma.user.create({ data: {
+        tenantId: seller.id, email: "cs-independent-" + tag + "@example.test",
+        name: "Independent reviewer", role: "OWNER", passwordHash: "ci-only",
+      } });
+      const reviewEventId = randomUUID();
+      const reviewData = {
+        creditNoteId: first.creditNoteId,
+        sellerTenantId: seller.id,
+        eventId: reviewEventId,
+        action: "CHECKS_RECORDED" as const,
+        reviewerUserId: reviewer.id,
+        reviewNote: "Invoice and physical source checked; not issued",
+        sourceSnapshotHash: "f".repeat(64),
+      };
+      const audit = await prisma.b2BCreditReviewAudit.create({
+        data: reviewData,
+      });
+      expect(audit.action).toBe("CHECKS_RECORDED");
+      await expect(prisma.b2BCreditReviewAudit.create({
+        data: { ...reviewData, reviewerUserId: sellerAdmin.id,
+          eventId: randomUUID() },
+      })).rejects.toThrow("Independent active seller administrator");
+      await expect(prisma.b2BCreditReviewAudit.create({
+        data: { ...reviewData, reviewerUserId: staff.id,
+          eventId: randomUUID() },
+      })).rejects.toThrow("Independent active seller administrator");
+      await expect(prisma.b2BCreditReviewAudit.create({
+        data: { ...reviewData, reviewerUserId: buyerAdmin.id,
+          eventId: randomUUID() },
+      })).rejects.toThrow("Independent active seller administrator");
+      await expect(prisma.b2BCreditReviewAudit.create({
+        data: { ...reviewData, sellerTenantId: buyer.id,
+          eventId: randomUUID() },
+      })).rejects.toThrow("seller DRAFT");
+      await expect(prisma.b2BCreditReviewAudit.create({
+        data: { ...reviewData },
+      })).rejects.toThrow();
+      await expect(prisma.b2BCreditReviewAudit.create({
+        data: { ...reviewData, eventId: randomUUID(),
+          sourceSnapshotHash: "unverified" },
+      })).rejects.toThrow();
+      await expect(prisma.b2BCreditReviewAudit.update({
+        where: { id: audit.id }, data: { reviewNote: "overwrite" },
+      })).rejects.toThrow("append-only");
+      await expect(prisma.b2BCreditReviewAudit.delete({
+        where: { id: audit.id },
+      })).rejects.toThrow("append-only");
+      expect((await prisma.b2BCreditNote.findUniqueOrThrow({
+        where: { id: first.creditNoteId },
+      })).status).toBe("DRAFT");
+
       // Two independent clients race for the remaining ONE inspected unit.
       const [raceA, raceB] = await Promise.allSettled([
         createB2BCreditNoteDraft({ ...data, idempotencyKey: randomUUID() }),
