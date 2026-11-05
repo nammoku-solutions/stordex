@@ -32,7 +32,7 @@ export function assessB2BCreditNoteReadiness(input: {
   previouslyCreditedUnits: number;
   linkedInvoices: readonly LinkedInvoice[];
 }): {
-  status: "AWAITING_INSPECTION" | "NO_LINKED_INVOICE" | "MANUAL_RECONCILIATION_REQUIRED";
+  status: "AWAITING_INSPECTION" | "NO_UNCREDITED_UNITS" | "NO_LINKED_INVOICE" | "MANUAL_RECONCILIATION_REQUIRED";
   inspectedUncreditedUnits: number;
   invoiceIds: string[];
   taxBasis: "NOT_APPLICABLE" | "MIXED_OR_INVOICE_SPECIFIC";
@@ -61,7 +61,7 @@ export function assessB2BCreditNoteReadiness(input: {
   const paymentReviewRequired = input.linkedInvoices.some(x => x.status === "PAID");
   if (inspected === 0 || uncredited === 0) {
     return {
-      status: "AWAITING_INSPECTION",
+      status: inspected === 0 ? "AWAITING_INSPECTION" : "NO_UNCREDITED_UNITS",
       inspectedUncreditedUnits: uncredited,
       invoiceIds: ids,
       taxBasis: ids.length ? "MIXED_OR_INVOICE_SPECIFIC" : "NOT_APPLICABLE",
