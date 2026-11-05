@@ -12,7 +12,7 @@ import {
   validateB2BReturnInspection,
 } from "./b2b-return-quantity";
 
-type Phase = "DISPATCH" | "INSPECTION";
+export type Phase = "DISPATCH" | "INSPECTION";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ID = /^[A-Za-z0-9_-]{1,128}$/;
 
@@ -25,7 +25,7 @@ export class ReturnEventPlanError extends Error {
 function checkId(value: string, label: string): void {
   if (!ID.test(value)) throw new ReturnEventPlanError(label + "が不正です");
 }
-function eventScope(input: {
+export function fingerprintReturnEvent(input: {
   eventId: string; tenantId: string; returnLineId: string; phase: Phase;
   itemId: string; quantities: number[];
 }): { eventId: string; payloadHash: string } {
@@ -61,7 +61,7 @@ export function planBuyerReturnDispatch(input: {
 }) {
   checkId(input.buyerItemId, "買い手商品ID");
   const change = validateB2BReturnDispatch(input);
-  const key = eventScope({
+  const key = fingerprintReturnEvent({
     ...input, itemId: input.buyerItemId, phase: "DISPATCH",
     quantities: [input.dispatch],
   });
@@ -94,7 +94,7 @@ export function planSellerReturnInspection(input: {
   const inspection = validateB2BReturnInspection(input);
   const newStock = input.currentSellerStock + inspection.sellerRestock;
   stockAmount("検品後在庫", newStock);
-  const key = eventScope({
+  const key = fingerprintReturnEvent({
     ...input, itemId: input.sellerItemId, phase: "INSPECTION",
     quantities: [input.receivedNow, input.saleable, input.unsaleable],
   });
