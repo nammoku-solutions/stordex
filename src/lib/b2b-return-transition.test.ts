@@ -100,7 +100,7 @@ describe("B2B return status transition plan; no DB writes", () => {
     expect(() => check({
       currentStatus:"APPROVED", targetStatus:"DISPATCHED",
     })).toThrow("現行");
-    expect(() => check({
+    expect(check({
       currentStatus:"SUBMITTED", targetStatus:"REJECTED",
       actorSide:"SELLER", lines:[{...line,approved:0}],
     }).to).toBe("REJECTED");
