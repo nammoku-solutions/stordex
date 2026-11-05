@@ -202,17 +202,22 @@ export async function submitB2BReturnRequest(input: {
         sellerTenantId: company.sellerTenantId,
         requestNumber, requestedByUserId: input.userId,
         status: "SUBMITTED",
-        items: {
-          create: lines.map(line => ({
-            intercompanyOrderId: company.id,
-            sourceLineId: line.sourceLineId,
-            requestedQuantity: line.requestedQuantity,
-            reason: line.reason,
-            note: line.note,
-          })),
-        },
       },
       select: { id: true },
+    });
+    // Use unchecked scalar-FK createMany for composite source associations;
+    // Prisma's checked nested create cannot accept intercompanyOrderId
+    // alongside the relation input. Both writes remain in the same
+    // Serializable transaction, so any invalid line rolls back its parent.
+    await tx.b2BReturnItem.createMany({
+      data: lines.map(line => ({
+        returnRequestId: created.id,
+        intercompanyOrderId: company.id,
+        sourceLineId: line.sourceLineId,
+        requestedQuantity: line.requestedQuantity,
+        reason: line.reason,
+        note: line.note,
+      })),
     });
     return { requestId: created.id, created: true };
   }, { isolationLevel: "Serializable", timeout: 15000 });
