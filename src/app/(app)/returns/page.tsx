@@ -5,6 +5,7 @@ import { requireTenant } from "@/lib/session";
 import { PageHeader } from "@/components/PageHeader";
 import { dateJP } from "@/lib/format";
 import { b2bReturnFormsEnabled } from "@/lib/b2b-return-feature";
+import { B2B_RETURN_STATUS_LABEL } from "@/lib/b2b-return-labels";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +40,7 @@ export default async function B2BReturnIndexPage() {
                 </Link></td>
                 <td>{request.companyOrder.poNumber}</td>
                 <td>{request.buyerTenantId === tenantId ? "申請元（買い手）" : "審査側（売り手）"}</td>
-                <td>{request.status}</td>
+                <td>{B2B_RETURN_STATUS_LABEL[request.status]}</td>
                 <td>{dateJP(request.createdAt)}</td>
               </tr>
             ))}
