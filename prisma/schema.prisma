@@ -112,6 +112,12 @@ enum B2BCreditStatus {
   VOID
 }
 
+// Stores review evidence ONLY; this is never a formal approval or issuance.
+enum B2BCreditReviewAction {
+  CHECKS_RECORDED
+  NEEDS_REVISION
+}
+
 enum ImportTarget {
   CUSTOMER
   SUPPLIER
@@ -160,6 +166,7 @@ model Tenant {
   b2bReturnsAsSeller    B2BReturnRequest[] @relation("B2BReturnSeller")
   b2bReturnStockEvents  B2BReturnStockEvent[]
   issuedB2BCredits     B2BCreditNote[]
+  b2bCreditReviewAudits B2BCreditReviewAudit[]
 }
 
 // テナント新規作成用の招待トークン（Nammoku Solutions が入金確認後に発行）
@@ -233,6 +240,7 @@ model User {
   updatedAt    DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  b2bCreditReviewAudits B2BCreditReviewAudit[]
 
   @@unique([tenantId, email])
   @@index([email])
@@ -777,6 +785,7 @@ model B2BCreditNote {
   invoiceOrder    InvoiceOrder   @relation(fields: [originalInvoiceId, sellerOrderId], references: [invoiceId, orderId], onDelete: Restrict)
   returnRequest   B2BReturnRequest @relation(fields: [returnRequestId], references: [id], onDelete: Restrict)
   lines           B2BCreditNoteLine[]
+  reviews         B2BCreditReviewAudit[]
 
   @@unique([sellerTenantId, creditNoteNumber])
   @@unique([id, returnRequestId])
@@ -806,6 +815,31 @@ model B2BCreditNoteLine {
 
   @@unique([creditNoteId, returnItemId])
   @@index([returnItemId])
+}
+
+
+/**
+ * Append-only independent-review evidence. CHECKS_RECORDED is not ISSUED,
+ * APPROVED or APPLIED. DRAFT CreditNote may never transition status here.
+ */
+model B2BCreditReviewAudit {
+  id                 String                 @id @default(cuid())
+  creditNoteId       String
+  sellerTenantId     String
+  eventId            String
+  action             B2BCreditReviewAction
+  reviewerUserId     String
+  reviewNote         String
+  sourceSnapshotHash String
+  createdAt          DateTime               @default(now())
+
+  creditNote B2BCreditNote @relation(fields: [creditNoteId], references: [id], onDelete: Restrict)
+  seller     Tenant        @relation(fields: [sellerTenantId], references: [id], onDelete: Restrict)
+  reviewer   User          @relation(fields: [reviewerUserId], references: [id], onDelete: Restrict)
+
+  @@unique([sellerTenantId, eventId])
+  @@index([creditNoteId, createdAt])
+  @@index([sellerTenantId, createdAt])
 }
 
 // Tenant-local audit trail for CSV preview, dry run and commit results.
