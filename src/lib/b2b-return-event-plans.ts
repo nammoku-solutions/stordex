@@ -27,7 +27,7 @@ function checkId(value: string, label: string): void {
 }
 function eventScope(input: {
   eventId: string; tenantId: string; returnLineId: string; phase: Phase;
-  quantities: number[];
+  itemId: string; quantities: number[];
 }): { eventId: string; payloadHash: string } {
   if (!UUID.test(input.eventId)) {
     throw new ReturnEventPlanError("イベントIDはUUIDで指定してください");
@@ -36,7 +36,8 @@ function eventScope(input: {
   checkId(input.returnLineId, "返品明細ID");
   const source = JSON.stringify([
     "b2b-return-event-v1", input.tenantId, input.phase,
-    input.eventId.toLowerCase(), input.returnLineId, ...input.quantities,
+    input.eventId.toLowerCase(), input.returnLineId, input.itemId,
+    ...input.quantities,
   ]);
   return {
     eventId: input.eventId.toLowerCase(),
@@ -61,7 +62,7 @@ export function planBuyerReturnDispatch(input: {
   checkId(input.buyerItemId, "買い手商品ID");
   const change = validateB2BReturnDispatch(input);
   const key = eventScope({
-    ...input, phase: "DISPATCH",
+    ...input, itemId: input.buyerItemId, phase: "DISPATCH",
     quantities: [input.dispatch],
   });
   return {
@@ -94,7 +95,7 @@ export function planSellerReturnInspection(input: {
   const newStock = input.currentSellerStock + inspection.sellerRestock;
   stockAmount("検品後在庫", newStock);
   const key = eventScope({
-    ...input, phase: "INSPECTION",
+    ...input, itemId: input.sellerItemId, phase: "INSPECTION",
     quantities: [input.receivedNow, input.saleable, input.unsaleable],
   });
   return {
