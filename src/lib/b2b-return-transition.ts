@@ -68,10 +68,20 @@ export function assessB2BReturnStatusTransition(input: {
       "この段階の更新は対応する買い手・売り手企業だけが実行できます",
     );
   }
+  // During the approval transaction the per-line decision is already
+  // prepared, while the persisted request is still UNDER_REVIEW. Validate
+  // that proposed approved quantity using a provisional approved state.
+  const proposedApproval = input.targetStatus === "APPROVED" ||
+    input.targetStatus === "PARTIALLY_APPROVED";
   const progress = assessB2BReturnProgress({
-    status: input.currentStatus, lines: input.lines,
+    status: proposedApproval ? "APPROVED" : input.currentStatus,
+    lines: input.lines,
   });
   const n = progress.summary;
+  if ((input.currentStatus === "APPROVED" && n.approved !== n.requested) ||
+      (input.currentStatus === "PARTIALLY_APPROVED" && n.approved >= n.requested)) {
+    throw new B2BReturnTransitionError("現行の審査ステータスと承認数量が一致しません");
+  }
   if (input.targetStatus === "APPROVED" ||
       input.targetStatus === "PARTIALLY_APPROVED") {
     if (n.approved === 0 ||
