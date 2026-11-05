@@ -58,7 +58,7 @@ type Result = { stockEventId: string; created: boolean };
 async function withLockedSource<T>(
   side: Role, input: InputBase,
   action: (tx: Prisma.TransactionClient, context: {
-    returnItem: Awaited<ReturnType<typeof readReturnItem>> extends infer V ? NonNullable<V> : never;
+    returnItem: NonNullable<Awaited<ReturnType<typeof readReturnItem>>>;
     buyerItemId: string; sellerItemId: string;
   }) => Promise<T>,
 ): Promise<T> {
@@ -150,7 +150,7 @@ function assertSourceActive(returnItem: NonNullable<Awaited<ReturnType<typeof re
   const request = returnItem.returnRequest;
   const company = request.companyOrder;
   if (!POSTABLE.has(request.status) ||
-      request.items === undefined && returnItem.approvedQuantity <= 0 ||
+      returnItem.approvedQuantity <= 0 ||
       company.status !== "ACCEPTED" || company.connection.status !== "ACTIVE" ||
       company.purchaseOrder.status !== "RECEIVED" ||
       !company.sellerOrder ||
