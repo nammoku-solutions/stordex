@@ -5,6 +5,7 @@ import { requireTenant } from "@/lib/session";
 import { PageHeader } from "@/components/PageHeader";
 import { dateJP } from "@/lib/format";
 import { b2bReturnFormsEnabled } from "@/lib/b2b-return-feature";
+import { B2B_RETURN_STATUS_LABEL, B2B_RETURN_REASON_LABEL } from "@/lib/b2b-return-labels";
 import { ReturnReviewForm } from "../ReturnReviewForm";
 
 export const dynamic = "force-dynamic";
@@ -37,7 +38,7 @@ export default async function B2BReturnDetailPage({ params }: {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
         <div className="card p-4">
           <p className="text-xs text-slate-500">申請状況</p>
-          <p className="font-semibold">{request.status}</p>
+          <p className="font-semibold">{B2B_RETURN_STATUS_LABEL[request.status]}</p>
         </div>
         <div className="card p-4">
           <p className="text-xs text-slate-500">申請日</p>
@@ -60,7 +61,7 @@ export default async function B2BReturnDetailPage({ params }: {
                 <td>{line.sourceLine.itemName}</td>
                 <td className="text-right">{line.requestedQuantity} {line.sourceLine.unit}</td>
                 <td className="text-right">{line.decidedAt ? line.approvedQuantity : "未審査"}</td>
-                <td>{line.reason}{line.note && <span className="block text-xs">{line.note}</span>}</td>
+                <td>{B2B_RETURN_REASON_LABEL[line.reason]}{line.note && <span className="block text-xs">{line.note}</span>}</td>
               </tr>
             ))}
           </tbody>
