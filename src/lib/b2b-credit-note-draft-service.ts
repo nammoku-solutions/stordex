@@ -157,6 +157,9 @@ export async function createB2BCreditNoteDraft(input: {
         !["SHIPPED", "COMPLETED"].includes(request.companyOrder.sellerOrder.status)) {
       fail("請求金額調整の前に企業間連携・返品承認・出荷・入荷を確認してください");
     }
+    // Capture narrowed seller order ID before callbacks: TS does not keep
+    // property nullability narrowing across array predicates.
+    const sellerOrderId = request.companyOrder.sellerOrder.id;
     const invoice = await tx.invoice.findFirst({
       where: {
         id: input.originalInvoiceId, tenantId: input.sellerTenantId,
@@ -165,7 +168,7 @@ export async function createB2BCreditNoteDraft(input: {
       include: { orders: { select: { orderId: true } } },
     });
     if (!invoice ||
-        !invoice.orders.some(order => order.orderId === request.companyOrder.sellerOrder.id)) {
+        !invoice.orders.some(order => order.orderId === sellerOrderId)) {
       fail("元受注を含む発行済み請求書のみ調整対象にできます");
     }
     const requestLines = new Map(request.items.map(x => [x.id, x]));
@@ -194,7 +197,7 @@ export async function createB2BCreditNoteDraft(input: {
       data: {
         sellerTenantId: input.sellerTenantId,
         originalInvoiceId: invoice.id,
-        sellerOrderId: request.companyOrder.sellerOrder.id,
+        sellerOrderId,
         returnRequestId: request.id,
         creditNoteNumber, currencyCode: input.currencyCode,
         originalInvoiceSubtotal: invoice.subtotal,
