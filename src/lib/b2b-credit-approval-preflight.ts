@@ -61,7 +61,9 @@ export function assessB2BCreditApprovalPreflight(input: {
   lines: readonly (CreditMoney & {
     sourceReturnLineId: string;
     creditedUnits: number;
-    inspectedUnallocatedUnits: number;
+    physicallyInspectedUnits: number;
+    /** Excludes THIS draft, includes allocations by every other credit note. */
+    otherReservedUnits: number;
   })[];
   taxAllocationExplanation: string;
   reviewNote: string;
@@ -125,8 +127,9 @@ export function assessB2BCreditApprovalPreflight(input: {
     }
     ids.add(line.sourceReturnLineId);
     const credited = amount(line.creditedUnits, "調整数量");
-    const inspected = amount(line.inspectedUnallocatedUnits, "検品済み未割当数量");
-    if (credited < 1 || credited > inspected) {
+    const inspected = amount(line.physicallyInspectedUnits, "物理検品済み数量");
+    const otherReserved = amount(line.otherReservedUnits, "他の下書きの予約数量");
+    if (otherReserved > inspected || credited < 1 || credited > inspected - otherReserved) {
       fail("調整数量が検品済み未割当数量を超えています");
     }
     calculated = sumMoney(calculated, verifiedAmounts(line, "調整明細"));
