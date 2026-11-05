@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { PendingSubmitButton } from "@/components/PendingSubmitButton";
+import { B2B_RETURN_REASON_LABEL } from "@/lib/b2b-return-labels";
 import { reviewB2BReturnForm } from "./actions";
 
 export type ReviewSourceLine = {
@@ -9,7 +10,7 @@ export type ReviewSourceLine = {
   itemName: string;
   unit: string;
   requestedQuantity: number;
-  reason: string;
+  reason: keyof typeof B2B_RETURN_REASON_LABEL;
   note: string | null;
 };
 
@@ -34,7 +35,7 @@ export function ReturnReviewForm({ requestId, lines }: {
           <input type="hidden" name="sourceLineId" value={line.sourceLineId}/>
           <legend className="font-semibold">{line.itemName}</legend>
           <p className="text-sm text-slate-600">
-            申請 {line.requestedQuantity} {line.unit}／理由: {line.reason}
+            申請 {line.requestedQuantity} {line.unit}／理由: {B2B_RETURN_REASON_LABEL[line.reason]}
           </p>
           {line.note && <p className="text-sm whitespace-pre-wrap">{line.note}</p>}
           <label className="block text-sm font-medium" htmlFor={`approved-${line.sourceLineId}`}>
