@@ -1,8 +1,8 @@
 /**
  * Issue #82. Draft-only B2B return application services, not exposed as
- * Server Actions, routes or UI until migrations #107/#112 pass recovery gates.
+ * Server Actions, routes or UI until the return-request migration is separately approved and applied.
  *
- * The only writes are B2BReturnRequest/Item. No inventory, credit, receipt,
+ * Seller-line provenance was shipped to Staging by PR #133; this Draft\n * only depends on the NEW return request/item migration #112.\n * The only writes are B2BReturnRequest/Item. No inventory, credit, receipt,
  * shipment, sales order or purchase-order writes, and no emails are sent.
  */
 import { prisma } from "@/lib/db";
