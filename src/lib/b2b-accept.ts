@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/db";
 import { nextDocumentNumber } from "@/lib/document-numbering";
 import { lockCompanyConnection } from "@/lib/b2b-locks";
@@ -32,9 +33,13 @@ export async function acceptCompanyPurchaseOrder({
     });
     if (!customer) throw new Error("自社の有効な得意先を選択してください");
 
+    // Generate the seller OrderItem ID *before* creating the order.
+    // Persist that exact ID on the source company line; never infer a match
+    // from product name, quantity, array order, or duplicate SKUs.
     const mapped = incoming.items.map((line) => ({
       line,
       itemId: String(formData.get(`item_${line.id}`) ?? ""),
+      sellerOrderItemId: randomUUID(),
     }));
     if (mapped.some(({ itemId }) => !itemId)) {
       throw new Error("全明細に自社の商品を割り当ててください");
@@ -77,9 +82,10 @@ export async function acceptCompanyPurchaseOrder({
         orderer: incoming.poNumber,
         note: `企業間発注 ${incoming.poNumber}${incoming.note ? "\n" + incoming.note : ""}`,
         items: {
-          create: mapped.map(({ line, itemId }) => {
+          create: mapped.map(({ line, itemId, sellerOrderItemId }) => {
             const product = productMap.get(itemId)!;
             return {
+              id: sellerOrderItemId,
               itemId,
               itemName: product.name,
               unit: product.unit,
@@ -97,6 +103,20 @@ export async function acceptCompanyPurchaseOrder({
       where: { id: incoming.id },
       data: { sellerOrderId: order.id },
     });
+    // The DB trigger ensures each pointer belongs to this seller order and
+    // seller tenant, and disallows rewriting an established mapping.
+    for (const { line, sellerOrderItemId } of mapped) {
+      const updated = await tx.intercompanyOrderItem.updateMany({
+        where: {
+          id: line.id, intercompanyOrderId: incoming.id,
+          sellerOrderItemId: null,
+        },
+        data: { sellerOrderItemId },
+      });
+      if (updated.count !== 1) {
+        throw new Error("企業間取引の明細対応を確定できませんでした");
+      }
+    }
     return order.id;
   });
   return sellerOrderId;
