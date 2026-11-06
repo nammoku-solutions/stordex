@@ -1,9 +1,8 @@
 # Issue #82 — 返品申請・承認データモデル（Draft / 機能未公開）
 
-**状態：使い捨てCIデータベース専用。Staging・Production DBには未適用。**
+**2026-11-06更新：この返品申請マイグレーションは使い捨てCI・QA検証専用。Staging・Production DBには未適用。**
 
-依存順序：既存 Staging → Draft PR #107（企業間明細と売り手受注明細の正確な対応ID）
-→ 本Draft PR（返品申請・明細テーブル）。
+依存順序：Staging に seller-line provenance #133（`20261104150000_b2b_seller_line_provenance`）が適用済み → 本Draft PR（返品申請・明細テーブル）。元PR #107の再適用は禁止。
 CSVアーカイブのDraft PR #97/#100/#104も別途あり、正式な移行順序の調整が必要。
 
 ## 業務上の位置付け
@@ -34,9 +33,16 @@ CSVアーカイブのDraft PR #97/#100/#104も別途あり、正式な移行順�
 - 税率・請求・入金・返金の調整は後続のCreditNote設計で取り扱い、元請求を改ざんしない。
 - データ削除・保管ポリシー、操作ログ、CSV出力、Google Drive利用者マニュアル、UAT。
 
+## 2026-11-06 検証・復元準備状況
+
+- `staging` のseller-line provenance移行はPR #133で適用済み、`_prisma_migrations` 記録6件。
+- 変更前のWSL `pg_dump` はGit管理外、GPG AES-256の復号/ハッシュ照合PASS（オーナー報告）。独立した別Neonプロジェクトへの復元後、22テーブルのデータ指紋・DBスキーマ完全一致を確認。
+- **この既存バックアップは#133適用前の状態**。本移行をStagingで行う際には、適用後状態の新しい暗号化バックアップも取得し、元の復元可能性を確認する。
+- 本PRは最新Stagingからの検証用ブランチであり、ユーザーの明示承認なしにマージやライブDB操作をしない。
+
 ## デプロイ停止条件
 
-- Neon Stagingは子ブランチのためsnapshot APIが拒否、追加cloneはブランチ数上限で失敗。Issue #109で管理中。
+- Neon Stagingは子ブランチのためsnapshot API/PITRが使えない。旧検証ブランチ4件はオーナーが削除済み。複製枠を確保し独立別Neonプロジェクトへの復元も検証済み。ただし最新の適用後バックアップは別途必要。
 - 古いNeonブランチを承認なしに削除・リセットしない。独立した復元可能な最新バックアップの検証、保持/削除方針、マイグレーション順序と個別承認が揃うまでStaging DBは変更しない。
 - 使い捨てPostgreSQLでのPrisma migration/schema-drift/型・統合テスト・ビルドがPASSしても、それは本番データへの適用承認ではない。
 - Productionへは全機能実装・UAT・Codex Astra 全体最終Review PASS前に適用しない。
