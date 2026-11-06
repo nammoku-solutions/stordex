@@ -127,7 +127,7 @@ describe("return dispatch/inspection posting services (isolated PG only)", () =>
         ...dispatchStatus,tenantId:seller.id,eventId:randomUUID(),
       })).rejects.toThrow();
       await expect(recordPhysicalReturnStatus({
-        ...dispatchStatus,targetStatus:"INSPECTED",
+        ...dispatchStatus,expectedStatus:"PARTIALLY_APPROVED",
       })).rejects.toThrow("異なるステータス");
       expect((await prisma.b2BReturnRequest.findUniqueOrThrow({
         where:{id:request.id},
