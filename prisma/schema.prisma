@@ -167,6 +167,7 @@ model Tenant {
   b2bReturnStockEvents  B2BReturnStockEvent[]
   issuedB2BCredits     B2BCreditNote[]
   b2bCreditReviewAudits B2BCreditReviewAudit[]
+  b2bReturnStatusEvents B2BReturnStatusEvent[]
 }
 
 // テナント新規作成用の招待トークン（Nammoku Solutions が入金確認後に発行）
@@ -241,6 +242,7 @@ model User {
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   b2bCreditReviewAudits B2BCreditReviewAudit[]
+  b2bReturnStatusEvents B2BReturnStatusEvent[]
 
   @@unique([tenantId, email])
   @@index([email])
@@ -690,6 +692,7 @@ model B2BReturnRequest {
   seller       Tenant            @relation("B2BReturnSeller", fields: [sellerTenantId], references: [id], onDelete: Restrict)
   items        B2BReturnItem[]
   creditNotes B2BCreditNote[]
+  statusEvents B2BReturnStatusEvent[]
 
   @@unique([buyerTenantId, requestNumber])
   @@unique([id, intercompanyOrderId])
@@ -840,6 +843,32 @@ model B2BCreditReviewAudit {
   @@unique([sellerTenantId, eventId])
   @@index([creditNoteId, createdAt])
   @@index([sellerTenantId, createdAt])
+}
+
+
+/** Append-only physical return status transition audit (DRAFT only).
+ * All financial closure/credits must be handled by a separate approved
+ * settlement writer; this model explicitly excludes CLOSED transitions.
+ */
+model B2BReturnStatusEvent {
+  id               String          @id @default(cuid())
+  tenantId         String
+  returnRequestId  String
+  eventId          String
+  payloadHash      String
+  sourceTotalsHash String
+  fromStatus       B2BReturnStatus
+  toStatus         B2BReturnStatus
+  actorUserId      String
+  createdAt        DateTime        @default(now())
+
+  tenant  Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  request B2BReturnRequest @relation(fields: [returnRequestId], references: [id], onDelete: Restrict)
+  actor   User             @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, eventId])
+  @@index([returnRequestId, createdAt])
+  @@index([tenantId, createdAt])
 }
 
 // Tenant-local audit trail for CSV preview, dry run and commit results.
