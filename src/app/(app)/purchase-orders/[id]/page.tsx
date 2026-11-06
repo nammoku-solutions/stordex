@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireTenant } from "@/lib/session";
+import { b2bReturnFormsEnabled } from "@/lib/b2b-return-feature";
 import { PageHeader } from "@/components/PageHeader";
 import { dateJP, yen, num, ORDER_STATUS_LABEL } from "@/lib/format";
 import { PO_STATUS_BADGE, PO_STATUS_LABEL } from "../_status";
@@ -215,6 +216,19 @@ export default async function POPage({ params }: { params: Promise<{ id: string 
         <p className="card p-4 mb-5 text-sm text-amber-800" role="status">
           受注先が出荷前の受注を取り消しました。内容を確認し、下部の「取消」から自社の発注も取り消してください。
         </p>
+      )}
+      {b2bReturnFormsEnabled() && po.linkedCompanyOrder && (
+        <section className="card p-4 mb-5 space-y-3" aria-label="企業間返品の申請">
+          <h2 className="font-semibold">企業間返品</h2>
+          <p className="text-sm text-slate-700">
+            出荷後の返品を申請・確認できます。申請・承認だけでは在庫・請求内容は変更されません。
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <Link href={`/returns/new?purchaseOrderId=${encodeURIComponent(po.id)}`}
+              className="btn-primary">返品を申請</Link>
+            <Link href="/returns" className="btn-secondary">申請履歴</Link>
+          </div>
+        </section>
       )}
       <POStatusActions
         id={po.id}
