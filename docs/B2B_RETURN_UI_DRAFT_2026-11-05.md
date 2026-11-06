@@ -1,7 +1,7 @@
 # Issue #82 — 返品申請・売り手審査の画面 Draft（2026-11-05）
 
-**状態：Draft PRのみ。Staging/Production未適用、機能フラグ初期値OFF。**
-依存：#107（売り手明細ID）→ #112（返品DBモデル）→ #115（取引制御付き申請・審査サービス）→ このUI。
+**2026-11-06更新：Draft PRのみ。Staging/Production未適用、機能フラグ初期値OFF。**
+依存：#133で売り手明細IDのスキーマ・コードはStaging適用済み → Draft #134（返品DB）→ Draft #135（買い手申請・売り手審査サービス）→ この画面Draft。
 
 ## 画面導線
 
@@ -39,3 +39,12 @@
 6. 全機能完成後にCodex Astraの全コードレビューPASSを確認して初めてProductionリリース可
 
 **このDraftのCI PASSはStaging DBマイグレーション承認ではない。**
+
+## 2026-11-06の安全ゲート
+
+- 既存の売り手向け「返品の事前確認（閲覧のみ）」画面はそのまま残し、別の非公開UI導線だけを追加する。
+- `STORDEX_B2B_RETURNS_ENABLED` はOFFのまま。DB未移行のStaging/Productionでは有効化禁止。
+- 本PRは最新StagingからのDraft #134→#135を基点とした検証であり、CI PASSやVercel Preview READYは本番UIのUATを意味しない。
+- 購入者・売り手操作はセッション認証主体から会社IDとユーザーIDを特定し、FormDataの権限情報を信用しない。
+- 対象DB変更 `20261104153000_b2b_return_requests` は、#133適用後に取得した新しい暗号化バックアップ・独立復元の確認、および対象を指定したオーナー承認なしにStagingへ適用しない。
+- その他の在庫イベント・クレジットノート移行は未承認であり、引き続きDraftのみ。
