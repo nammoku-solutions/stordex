@@ -13,6 +13,7 @@ describe("return dispatch/inspection posting services (isolated PG only)", () =>
       const {
         postBuyerReturnDispatch, postSellerReturnInspection,
       } = await import("./b2b-return-stock-posting");
+      const { recordPhysicalReturnStatus } = await import("./b2b-return-status-service");
       const token = randomUUID().slice(0, 10);
       const buyer = await prisma.tenant.create({
         data: { name: "return buyer", slug: "test-ret-post-b-" + token },
@@ -109,6 +110,29 @@ describe("return dispatch/inspection posting services (isolated PG only)", () =>
         where:{tenantId:buyer.id},
       })).toBe(1);
 
+      const dispatchStatus = {
+        tenantId: buyer.id, userId: buyerUser.id, returnRequestId: request.id,
+        eventId: randomUUID(), expectedStatus: "APPROVED" as const,
+        targetStatus: "DISPATCHED" as const,
+      };
+      const firstStatus = await recordPhysicalReturnStatus(dispatchStatus);
+      expect(firstStatus).toMatchObject({created:true,status:"DISPATCHED"});
+      expect(await recordPhysicalReturnStatus(dispatchStatus)).toEqual({
+        eventRecordId:firstStatus.eventRecordId,created:false,status:"DISPATCHED",
+      });
+      await expect(recordPhysicalReturnStatus({
+        ...dispatchStatus,eventId:randomUUID(),
+      })).rejects.toThrow("変更されました");
+      await expect(recordPhysicalReturnStatus({
+        ...dispatchStatus,tenantId:seller.id,eventId:randomUUID(),
+      })).rejects.toThrow();
+      await expect(recordPhysicalReturnStatus({
+        ...dispatchStatus,targetStatus:"INSPECTED",
+      })).rejects.toThrow("異なるステータス");
+      expect((await prisma.b2BReturnRequest.findUniqueOrThrow({
+        where:{id:request.id},
+      })).status).toBe("DISPATCHED");
+
       await expect(postBuyerReturnDispatch({
         ...buyerArgs,quantity:1,
       })).rejects.toThrow("異なる返品データ");
@@ -138,6 +162,17 @@ describe("return dispatch/inspection posting services (isolated PG only)", () =>
       expect((await prisma.item.findUniqueOrThrow({
         where:{id:sellerItem.id},
       })).stock).toBe(6);
+
+      const partialStatus = await recordPhysicalReturnStatus({
+        tenantId:seller.id,userId:sellerUser.id,returnRequestId:request.id,
+        eventId:randomUUID(),expectedStatus:"DISPATCHED",
+        targetStatus:"PARTIALLY_INSPECTED",
+      });
+      expect(partialStatus.status).toBe("PARTIALLY_INSPECTED");
+      expect((await prisma.b2BReturnRequest.findUniqueOrThrow({
+        where:{id:request.id},
+      })).status).toBe("PARTIALLY_INSPECTED");
+
       const allBad=await postSellerReturnInspection({
         ...inspectArgs,eventId:randomUUID(),receivedNow:1,
         saleable:0,unsaleable:1,
@@ -154,6 +189,40 @@ describe("return dispatch/inspection posting services (isolated PG only)", () =>
       await expect(postSellerReturnInspection({
         ...inspectArgs,userId:staff.id,eventId:randomUUID(),
       })).rejects.toThrow("管理者権限");
+
+      await expect(recordPhysicalReturnStatus({
+        tenantId:seller.id,userId:staff.id,returnRequestId:request.id,
+        eventId:randomUUID(),expectedStatus:"PARTIALLY_INSPECTED",
+        targetStatus:"INSPECTED",
+      })).rejects.toThrow("管理者権限");
+      const fullStatus = await recordPhysicalReturnStatus({
+        tenantId:seller.id,userId:sellerUser.id,returnRequestId:request.id,
+        eventId:randomUUID(),expectedStatus:"PARTIALLY_INSPECTED",
+        targetStatus:"INSPECTED",
+      });
+      expect(fullStatus.created).toBe(true);
+      const creditWaiting = await recordPhysicalReturnStatus({
+        tenantId:seller.id,userId:sellerUser.id,returnRequestId:request.id,
+        eventId:randomUUID(),expectedStatus:"INSPECTED",
+        targetStatus:"CREDIT_PENDING",
+      });
+      expect(creditWaiting.status).toBe("CREDIT_PENDING");
+      const statusAudit = await prisma.b2BReturnStatusEvent.findUniqueOrThrow({
+        where:{id:creditWaiting.eventRecordId},
+      });
+      expect(statusAudit.sourceTotalsHash).toMatch(/^[a-f0-9]{64}$/);
+      await expect(prisma.b2BReturnStatusEvent.update({
+        where:{id:statusAudit.id},data:{sourceTotalsHash:"e".repeat(64)},
+      })).rejects.toThrow("append-only");
+      await expect(prisma.b2BReturnStatusEvent.delete({
+        where:{id:statusAudit.id},
+      })).rejects.toThrow("append-only");
+      expect((await prisma.b2BReturnRequest.findUniqueOrThrow({
+        where:{id:request.id},
+      })).status).toBe("CREDIT_PENDING");
+      expect(await prisma.b2BReturnStatusEvent.count({
+        where:{returnRequestId:request.id},
+      })).toBe(4);
 
       // Two distinct concurrent dispatches compete for ONE approved unit.
       // At most one can be committed; a serialization error may require the
@@ -186,6 +255,25 @@ describe("return dispatch/inspection posting services (isolated PG only)", () =>
       expect((await prisma.item.findUniqueOrThrow({
         where:{id:buyerItem.id},
       })).stock).toBe(1);
+
+      // Two distinct status commands race after the same physical dispatch.
+      // Both have unique event UUIDs, but exactly one can move APPROVED
+      // -> DISPATCHED; the other observes an obsolete expected state.
+      const statusRace = await Promise.allSettled([
+        recordPhysicalReturnStatus({
+          tenantId:buyer.id,userId:buyerUser.id,returnRequestId:raceRequest.id,
+          eventId:randomUUID(),expectedStatus:"APPROVED",targetStatus:"DISPATCHED",
+        }),
+        recordPhysicalReturnStatus({
+          tenantId:buyer.id,userId:buyerUser.id,returnRequestId:raceRequest.id,
+          eventId:randomUUID(),expectedStatus:"APPROVED",targetStatus:"DISPATCHED",
+        }),
+      ]);
+      expect(statusRace.filter(x=>x.status==="fulfilled")).toHaveLength(1);
+      expect(statusRace.filter(x=>x.status==="rejected")).toHaveLength(1);
+      expect(await prisma.b2BReturnStatusEvent.count({
+        where:{returnRequestId:raceRequest.id},
+      })).toBe(1);
 
       expect(await prisma.inventoryMovement.count({
         where:{tenantId:seller.id},
