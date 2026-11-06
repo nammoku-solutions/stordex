@@ -366,6 +366,8 @@ model OrderItem {
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
   item  Item  @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  // Explicit origin for B2B returns; never infer seller line by sort order.
+  companySourceLine IntercompanyOrderItem? @relation("B2BSellerSourceLine")
 
   @@index([orderId])
 }
@@ -593,6 +595,8 @@ model IntercompanyOrderItem {
   id                         String @id @default(cuid())
   intercompanyOrderId        String
   sourcePurchaseOrderItemId  String
+  // Nullable for historical accepted orders, populated atomically for new acceptances.
+  sellerOrderItemId          String? @unique
   buyerItemCode              String
   itemName                   String
   unit                       String
@@ -601,6 +605,7 @@ model IntercompanyOrderItem {
   amount                     Int
 
   order IntercompanyOrder @relation(fields: [intercompanyOrderId], references: [id], onDelete: Cascade)
+  sellerOrderItem OrderItem? @relation("B2BSellerSourceLine", fields: [sellerOrderItemId], references: [id], onDelete: Restrict)
 
   @@unique([intercompanyOrderId, sourcePurchaseOrderItemId], map: "IntercompanyOrderItem_intercompanyOrderId_sourcePurchaseOrderIt")
   @@index([intercompanyOrderId])
