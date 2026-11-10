@@ -149,6 +149,7 @@ model Tenant {
   b2bReturnsAsBuyer     B2BReturnRequest[] @relation("B2BReturnBuyer")
   b2bReturnsAsSeller    B2BReturnRequest[] @relation("B2BReturnSeller")
   b2bReturnStockEvents  B2BReturnStockEvent[]
+  b2bReturnStatusEvents B2BReturnStatusEvent[]
 }
 
 // テナント新規作成用の招待トークン（Nammoku Solutions が入金確認後に発行）
@@ -222,6 +223,7 @@ model User {
   updatedAt    DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  b2bReturnStatusEvents B2BReturnStatusEvent[]
 
   @@unique([tenantId, email])
   @@index([email])
@@ -669,6 +671,7 @@ model B2BReturnRequest {
   buyer        Tenant            @relation("B2BReturnBuyer", fields: [buyerTenantId], references: [id], onDelete: Restrict)
   seller       Tenant            @relation("B2BReturnSeller", fields: [sellerTenantId], references: [id], onDelete: Restrict)
   items        B2BReturnItem[]
+  statusEvents B2BReturnStatusEvent[]
 
   @@unique([buyerTenantId, requestNumber])
   @@unique([id, intercompanyOrderId])
@@ -723,6 +726,28 @@ model B2BReturnStockEvent {
 
   @@unique([tenantId, phase, eventId])
   @@index([returnItemId, phase, createdAt])
+  @@index([tenantId, createdAt])
+}
+
+/** Issue #82 — DRAFT ONLY. Physical return status audit, not yet applied to Staging. */
+model B2BReturnStatusEvent {
+  id               String          @id @default(cuid())
+  tenantId         String
+  returnRequestId  String
+  eventId          String
+  payloadHash      String
+  sourceTotalsHash String
+  fromStatus       B2BReturnStatus
+  toStatus         B2BReturnStatus
+  actorUserId      String
+  createdAt        DateTime        @default(now())
+
+  tenant  Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  request B2BReturnRequest @relation(fields: [returnRequestId], references: [id], onDelete: Restrict)
+  actor   User             @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, eventId])
+  @@index([returnRequestId, createdAt])
   @@index([tenantId, createdAt])
 }
 
