@@ -6,7 +6,7 @@ set -Eeuo pipefail
 umask 077
 
 die() { printf 'STOP: %s\n' "$*" >&2; exit 2; }
-mode="\${1:---check}"
+mode="${1:---check}"
 [[ $# -le 1 && ( "$mode" == "--check" || "$mode" == "--execute" ) ]] ||
   die "Usage: $0 [--check|--execute]"
 for tool in psql pg_dump pg_restore gpg sha256sum realpath mktemp; do
@@ -18,8 +18,8 @@ STAGING_BRANCH="br-sparkling-boat-ao9nrctp"
 STAGING_MIGRATION="20261104150000_b2b_seller_line_provenance"
 MIGRATION_SHA="7bec62454638cd6a8fc715797058c8580db32b103e79f4112d7968dc88a0e680"
 
-host="\${STORDEX_STAGING_BACKUP_HOST:-}"
-role="\${STORDEX_STAGING_BACKUP_USER:-}"
+host="${STORDEX_STAGING_BACKUP_HOST:-}"
+role="${STORDEX_STAGING_BACKUP_USER:-}"
 [[ -n "$host" ]] || read -r -p "Neon staging UNPOOLED host: " host
 [[ -n "$role" ]] || read -r -p "Neon staging DB user: " role
 [[ "$host" == *.neon.tech && "$host" != *-pooler.* ]] ||
@@ -88,8 +88,8 @@ if [[ "$mode" == "--check" ]]; then
   exit 0
 fi
 
-root="$(cd "$(dirname "\${BASH_SOURCE[0]}")/.." && pwd -P)"
-backup_dir="\${STORDEX_STAGING_BACKUP_DIR:-$HOME/stordex-private-backups}"
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+backup_dir="${STORDEX_STAGING_BACKUP_DIR:-$HOME/stordex-private-backups}"
 [[ "$backup_dir" == /* ]] || die "Backup destination must be an absolute path"
 backup_dir="$(realpath -m "$backup_dir")"
 case "$backup_dir/" in "$root/"*) die "Backups must be outside the Git repository";; esac
