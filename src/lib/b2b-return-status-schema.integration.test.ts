@@ -54,6 +54,8 @@ describe("return status audit schema protections (disposable PostgreSQL only)", 
     expect(indexes.find(x => x.indexname ===
       "B2BReturnStatusEvent_tenantId_eventId_key")?.indexdef)
       .toContain("UNIQUE");
-    expect(await prisma.b2BReturnStatusEvent.count()).toBe(0);
+    // Other integration suites share this disposable CI database and may
+    // create status audit rows concurrently. This schema-only assertion must
+    // not depend on the global row count or test execution order.
   }, 20000);
 });
