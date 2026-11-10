@@ -195,11 +195,20 @@ describe("internal B2B return submit/review services on disposable PostgreSQL", 
         reviewNote: "duplicate review",
       })).rejects.toThrow("処理済み");
 
-      const third = await submitB2BReturnRequest({
-        ...submitted, idempotencyKey: randomUUID(),
-        lines: [{ ...submitted.lines[0], requestedQuantity: 2 }],
-      });
-      expect(third.created).toBe(true);
+      // Two distinct simultaneous requests compete for the same two
+      // remaining units. A serialization conflict must be retried, and only
+      // one can commit; the other must fail the business quantity guard.
+      const candidates = [randomUUID(), randomUUID()];
+      const competing = await Promise.allSettled(candidates.map(key =>
+        submitB2BReturnRequest({
+          ...submitted, idempotencyKey: key,
+          lines: [{ ...submitted.lines[0], requestedQuantity: 2 }],
+        }),
+      ));
+      expect(competing.filter(result => result.status === "fulfilled")).toHaveLength(1);
+      const failed = competing.filter(result => result.status === "rejected");
+      expect(failed).toHaveLength(1);
+      expect(String(failed[0].reason)).toContain("残数量");
       await expect(submitB2BReturnRequest({
         ...submitted, idempotencyKey: randomUUID(),
         lines: [{ ...submitted.lines[0], requestedQuantity: 1 }],
