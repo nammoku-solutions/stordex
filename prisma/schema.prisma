@@ -641,8 +641,9 @@ model IntercompanyOrderItem {
 }
 
 
-// RETURN DRAFT SCHEMA ONLY. Do not enable writes or apply in Staging until
-// backup/restore, explicit schema approval, and end-to-end return tests PASS.
+// B2B return request schema was applied to Staging under approved PR #139.
+// No public return actions or UI are enabled; Production remains untouched.
+// Physical return / stock / credit migrations require separate approval.
 model B2BReturnRequest {
   id                  String          @id @default(cuid())
   intercompanyOrderId String
