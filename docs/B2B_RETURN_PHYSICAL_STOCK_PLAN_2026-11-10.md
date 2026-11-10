@@ -37,3 +37,30 @@
 - バックアップ/独立復元: Neon Stagingの24テーブル・7移行に対して新しい暗号化バックアップを取得し、別プロジェクトで行数/ハッシュとschemaを照合。
 - マイグレーション名だけを明示したオーナー個別承認。`prisma migrate deploy`の無差別実行は禁止。
 - 外部DBを使ったUATは本番Stagingではなく独立QA DBで先に行う。
+
+## 最新Stagingの暗号化バックアップ操作（ユーザーのWSLのみ）
+
+本Draftブランチ内の `scripts/backup-neon-staging-post-return-request.sh` は、
+#139適用後のStaging 24テーブル・7 Prisma移行・NeonブランチID・マイグレーションchecksumを
+一致確認する**読み取り専用**バックアップ専用ヘルパー。
+古い `backup-neon-staging-post-provenance.sh` は22テーブル・6移行を想定しており、現在のDBには使わない。
+
+```bash
+cd ~/app/stordex # 実際のStordexリポジトリの場所へ移動
+git fetch origin
+git worktree add ../stordex-return-stock-qa origin/feat/b2b-return-physical-stock-ledger-draft-20261110
+cd ../stordex-return-stock-qa
+bash scripts/backup-neon-staging-post-return-request.sh --check
+# --check がPASSした後、別途保管する暗号化バックアップを作成
+bash scripts/backup-neon-staging-post-return-request.sh --execute
+```
+
+スクリプトはNeonのunpooledホスト、DBユーザー、DBパスワードを対話的に入力する。
+パスワードやGPGパスフレーズをチャット・Git・ログに貼らない。
+`--execute`は`pg_dump -Fc`をGPG AES256へ直接ストリーム暗号化し、
+Gitリポジトリ外のprivateディレクトリへ保存する。既存DBの書き換えはしない。
+
+**重要:** バックアップ生成・復号TOC/sha256照合PASSだけでは復元テスト完了とみなさない。
+別の空のNeon DBに復元し、24表の行数と内容ハッシュ、全DDL/制約/トリガー、
+Prisma移行の7件全checksumを独立照合すること。
+復元先の削除や空のDBの新設は管理者の明示承認を要する。
