@@ -65,7 +65,12 @@ export async function recordPhysicalReturnStatus(input: Input): Promise<Result> 
   const side = input.targetStatus === "DISPATCHED" ? "BUYER" as const : "SELLER" as const;
   // Deny closure regardless of accounting booleans; a future verified
   // settlement ledger writer will own CREDIT_PENDING -> CLOSED.
-  return prisma.$transaction(async tx => {
+  // PostgreSQL serialization failures can happen when two return actors
+  // touch the same request. Re-run authorization, source locks and event
+  // evidence in a fresh SERIALIZABLE transaction on those conflicts only.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await prisma.$transaction(async tx => {
     const actor = await verifiedActor(tx, input.tenantId, input.userId);
     const source = await tx.b2BReturnRequest.findFirst({
       where: {
@@ -193,5 +198,12 @@ export async function recordPhysicalReturnStatus(input: Input): Promise<Result> 
       actorUserId: input.userId,
     }});
     return {eventRecordId:event.id,created:true,status:input.targetStatus};
-  }, {isolationLevel:"Serializable",timeout:15000});
+      }, {isolationLevel:"Serializable",timeout:15000});
+    } catch (error) {
+      const code = typeof error === "object" && error !== null && "code" in error
+        ? error.code : undefined;
+      if ((code !== "P2034" && code !== "40001") || attempt === 2) throw error;
+    }
+  }
+  throw new Error("Unreachable physical status writer retry limit");
 }
