@@ -6,16 +6,21 @@ describe("CreditNote DRAFT UAT opt-in kill switch", () => {
   it("fails closed unless exact true and nonproduction", () => {
     for(const value of [undefined, "false", "TRUE", "1", ""]) {
       vi.stubEnv("STORDEX_B2B_CREDIT_DRAFT_ENABLED",value);
-      vi.stubEnv("STORDEX_ENV","staging");
+      vi.stubEnv("VERCEL_ENV","preview");
+      vi.stubEnv("VERCEL_GIT_COMMIT_REF","staging");
       expect(b2bCreditDraftEnabled()).toBe(false);
     }
     vi.stubEnv("STORDEX_B2B_CREDIT_DRAFT_ENABLED","true");
-    vi.stubEnv("STORDEX_ENV","production");
+    vi.stubEnv("VERCEL_ENV","production");
+    vi.stubEnv("VERCEL_GIT_COMMIT_REF","staging");
     expect(b2bCreditDraftEnabled()).toBe(false);
   });
   it("can be turned on explicitly for Staging only",() => {
     vi.stubEnv("STORDEX_B2B_CREDIT_DRAFT_ENABLED","true");
-    vi.stubEnv("STORDEX_ENV","staging");
+    vi.stubEnv("VERCEL_ENV","preview");
+    vi.stubEnv("VERCEL_GIT_COMMIT_REF","staging");
     expect(b2bCreditDraftEnabled()).toBe(true);
+    vi.stubEnv("VERCEL_GIT_COMMIT_REF","main");
+    expect(b2bCreditDraftEnabled()).toBe(false);
   });
 });
