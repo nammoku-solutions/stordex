@@ -189,7 +189,10 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'Return-linked inventory movements are immutable';
   END IF;
-  RETURN CASE WHEN TG_OP = 'UPDATE' THEN NEW ELSE OLD END;
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  END IF;
+  RETURN NEW;
 END;
 $return_movement_guard$;
 
