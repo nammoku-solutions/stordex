@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireTenant } from "@/lib/session";
+import { mayManageInvoices } from "@/lib/invoice-status-policy";
 import { PageHeader } from "@/components/PageHeader";
 import { dateJP, yen, num } from "@/lib/format";
 import { INVOICE_STATUS_LABEL, INVOICE_STATUS_BADGE } from "../_status";
@@ -9,7 +10,7 @@ import { InvoiceStatusActions } from "./InvoiceStatusActions";
 
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { tenantId } = await requireTenant();
+  const { tenantId, role } = await requireTenant();
   const inv = await prisma.invoice.findFirst({
     where: { id: id, tenantId },
     include: {
@@ -98,7 +99,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         </table>
       </div>
 
-      <InvoiceStatusActions id={inv.id} status={inv.status} />
+      {mayManageInvoices(role) && <InvoiceStatusActions id={inv.id} status={inv.status} />}
     </>
   );
 }
