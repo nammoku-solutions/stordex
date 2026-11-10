@@ -1,8 +1,10 @@
-# Issue #82 — 返品申請・承認データモデル（Draft / 機能未公開）
+# Issue #82 — 返品申請・承認データモデル（Staging DB適用済み / 機能未公開）
 
-**2026-11-06更新：この返品申請マイグレーションは使い捨てCI・QA検証専用。Staging・Production DBには未適用。**
+**2026-11-10更新：PR #139 により返品申請・明細テーブルのStaging適用が完了（Prisma移行7件・合計24テーブル）。申請・承認のユーザー向けUI/Server Actionと機能フラグは未公開・OFFのまま。Production DBは未変更。**
 
-依存順序：Staging に seller-line provenance #133（`20261104150000_b2b_seller_line_provenance`）が適用済み → 本Draft PR（返品申請・明細テーブル）。元PR #107の再適用は禁止。
+以下の2026-11-06時点の検証記録は歴史的経緯として保持しています。
+
+依存順序：Staging に seller-line provenance #133（`20261104150000_b2b_seller_line_provenance`）が適用済み → Staging PR #139（返品申請・明細テーブル）。元PR #107の再適用は禁止。
 CSVアーカイブのDraft PR #97/#100/#104も別途あり、正式な移行順序の調整が必要。
 
 ## 業務上の位置付け
@@ -55,3 +57,12 @@ CSVアーカイブのDraft PR #97/#100/#104も別途あり、正式な移行順�
 - このPRは**同じmigration.sqlをバイト単位で保持**したまま、現行Stagingを基点に切り出したリリースPR。既に適用済みの `20261104150000_b2b_seller_line_provenance` は再適用しない。
 - リリースはこの移行**1件だけ**をトランザクション内で適用・Prisma履歴登録し、既存データの再照合をPASSしてからStagingにPrisma schemaとテストをマージ。新しい返品申請/明細テーブルにはUI/Server Actionをつながない。
 - 後続の申請・審査サービス #135、画面 #136、出庫・検品・クレジットノートのDraftは独立であり、**今回の承認に含まれない**。機能フラグ`STORDEX_B2B_RETURNS_ENABLED`はOFFのまま。Productionは変更せず、最終Codex Astraレビューを必須とする。
+
+
+## 2026-11-10 内部申請・審査サービス統合（Draft PR #140）
+
+- 最新Staging `45ba68ac` を起点に、Draft #135 の純粋な内部サービス・隔離PostgreSQL統合テストだけを移植。
+- 買い手OWNER/ADMINの申請、売り手OWNER/ADMINの全承認・一部承認・否認を、認可・元取引・数量・トランザクション境界で保護。
+- リトライ時の冪等性、否認後の申請数量枠の再利用、二重審査防止のテストを追加。
+- UI/Server Action未接続。機能フラグ`STORDEX_B2B_RETURNS_ENABLED`はOFF維持。入出庫・在庫・請求書・返金の処理は実装しない。
+- PR #140 はCIとレビューが完了するまでDraft扱い。次のUI #136、物理返品・CreditNoteの各追加Migrationは別審査・別リリース。
