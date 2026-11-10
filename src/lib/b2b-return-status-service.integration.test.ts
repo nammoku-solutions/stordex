@@ -207,10 +207,12 @@ describe("physical return status audit service (isolated PG only)", () => {
       expect((await prisma.b2BReturnRequest.findUniqueOrThrow({
         where:{id:request.id},
       })).status).toBe("INSPECTED");
+      // Once the audited request reaches INSPECTED, all further physical
+      // writes are blocked by status, before quantity-budget validation.
       await expect(postSellerReturnInspection({
         ...inspectArgs,eventId:randomUUID(),receivedNow:1,
         saleable:0,unsaleable:1,
-      })).rejects.toThrow("超えて");
+      })).rejects.toThrow("承認済みの返品");
       await expect(postSellerReturnInspection({
         ...inspectArgs,userId:staff.id,eventId:randomUUID(),
       })).rejects.toThrow("管理者権限");
