@@ -16,7 +16,7 @@ const UUID = /^[a-f\d]{8}-[a-f\d]{4}-[1-8][a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12
 const CURRENCY = /^[A-Z]{3}$/;
 const MAX = 2_147_483_647;
 // A formal inspection signoff must be present before credit preparation.
-const ALLOWED_RETURN_STATUSES = ["INSPECTED"] as const;
+// Formal inspection signoff is required. Earlier statuses are not eligible.
 
 export class CreditDraftServiceError extends Error {
   constructor(message: string) {
@@ -151,7 +151,7 @@ export async function createB2BCreditNoteDraft(input: {
         items: { select: { id: true, approvedQuantity: true } },
       },
     });
-    if (!request || !ALLOWED_RETURN_STATUSES.includes(request.status) ||
+    if (!request || request.status !== "INSPECTED" ||
         request.companyOrder.status !== "ACCEPTED" ||
         request.companyOrder.connection.status !== "ACTIVE" ||
         request.companyOrder.purchaseOrder.status !== "RECEIVED" ||
