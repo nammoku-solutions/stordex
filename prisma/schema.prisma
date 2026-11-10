@@ -97,6 +97,11 @@ enum B2BReturnReason {
   OTHER
 }
 
+enum B2BReturnStockPhase {
+  DISPATCH
+  INSPECTION
+}
+
 enum ImportTarget {
   CUSTOMER
   SUPPLIER
@@ -143,6 +148,7 @@ model Tenant {
   inboundCompanyOrders  IntercompanyOrder[] @relation("IntercompanySeller")
   b2bReturnsAsBuyer     B2BReturnRequest[] @relation("B2BReturnBuyer")
   b2bReturnsAsSeller    B2BReturnRequest[] @relation("B2BReturnSeller")
+  b2bReturnStockEvents  B2BReturnStockEvent[]
 }
 
 // テナント新規作成用の招待トークン（Nammoku Solutions が入金確認後に発行）
@@ -420,6 +426,7 @@ model InventoryMovement {
   tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   item      Item       @relation(fields: [itemId], references: [id], onDelete: Cascade)
   warehouse Warehouse? @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
+  b2bReturnStockEvent B2BReturnStockEvent?
 
   @@index([tenantId, createdAt])
   @@index([itemId])
@@ -685,9 +692,38 @@ model B2BReturnItem {
 
   returnRequest B2BReturnRequest   @relation(fields: [returnRequestId, intercompanyOrderId], references: [id, intercompanyOrderId], onDelete: Restrict)
   sourceLine    IntercompanyOrderItem @relation(fields: [sourceLineId, intercompanyOrderId], references: [id, intercompanyOrderId], onDelete: Restrict)
+  stockEvents   B2BReturnStockEvent[]
 
   @@unique([returnRequestId, sourceLineId])
   @@index([intercompanyOrderId, sourceLineId])
+}
+
+/**
+ * Issue #82 — DRAFT physical return stock ledger schema.
+ * NOT applied to Neon Staging/Production; migration requires separate approval.
+ * Stores an append-only DISPATCH/INSPECTION event with optional movement link.
+ */
+model B2BReturnStockEvent {
+  id              String              @id @default(cuid())
+  returnItemId    String
+  tenantId        String
+  phase           B2BReturnStockPhase
+  eventId         String
+  payloadHash     String
+  quantity        Int
+  saleable        Int                 @default(0)
+  unsaleable      Int                 @default(0)
+  movementId      String?             @unique
+  createdByUserId String
+  createdAt       DateTime            @default(now())
+
+  returnItem B2BReturnItem       @relation(fields: [returnItemId], references: [id], onDelete: Restrict)
+  tenant     Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  movement   InventoryMovement? @relation(fields: [movementId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, phase, eventId])
+  @@index([returnItemId, phase, createdAt])
+  @@index([tenantId, createdAt])
 }
 
 // Tenant-local audit trail for CSV preview, dry run and commit results.
