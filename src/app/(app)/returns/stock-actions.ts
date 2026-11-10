@@ -43,6 +43,25 @@ async function verifiedReturnId(eventId: string, tenantId: string): Promise<stri
   return event.returnItem.returnRequestId;
 }
 
+async function assertReturnItemLink(input: {
+  tenantId: string; requestId: string; returnItemId: string;
+  side: "BUYER" | "SELLER";
+}) {
+  const match = await prisma.b2BReturnItem.findFirst({
+    where: {
+      id: input.returnItemId,
+      returnRequestId: input.requestId,
+      returnRequest: input.side === "BUYER"
+        ? { buyerTenantId: input.tenantId }
+        : { sellerTenantId: input.tenantId },
+    },
+    select: { id: true },
+  });
+  if (!match) {
+    throw new ReturnStockFormError("返品申請と明細が一致しないか、操作権限がありません");
+  }
+}
+
 export async function dispatchB2BReturnForm(
   _state: StockFormState, formData: FormData,
 ): Promise<StockFormState> {
@@ -52,6 +71,10 @@ export async function dispatchB2BReturnForm(
   let requestId: string;
   try {
     const parsed = parseBuyerReturnDispatch(formData);
+    await assertReturnItemLink({
+      tenantId, requestId: parsed.requestId,
+      returnItemId: parsed.returnItemId, side: "BUYER",
+    });
     const result = await postBuyerReturnDispatch({
       tenantId, userId, returnItemId: parsed.returnItemId,
       eventId: parsed.eventId, quantity: parsed.quantity,
@@ -76,6 +99,10 @@ export async function inspectB2BReturnForm(
   let requestId: string;
   try {
     const parsed = parseSellerReturnInspection(formData);
+    await assertReturnItemLink({
+      tenantId, requestId: parsed.requestId,
+      returnItemId: parsed.returnItemId, side: "SELLER",
+    });
     const result = await postSellerReturnInspection({
       tenantId, userId, returnItemId: parsed.returnItemId,
       eventId: parsed.eventId, receivedNow: parsed.receivedNow,
