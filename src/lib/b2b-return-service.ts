@@ -43,6 +43,29 @@ type ReviewReturnLine = {
 function fail(message: string): never {
   throw new B2BReturnServiceError(message);
 }
+
+// A concurrent request may serialize behind the same source PO lock and be
+// rolled back by PostgreSQL SSI. Retry the WHOLE transaction so it re-reads
+// committed return quantities and then either succeeds or fails the budget
+// guard. Never retry authorization or business-rule errors.
+function isSerializableConflict(error: unknown): boolean {
+  if (typeof error !== "object" || error === null || !("code" in error)) return false;
+  return error.code === "P2034" || error.code === "40001";
+}
+async function withSerializableRetry<T>(
+  callback: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<T> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await prisma.$transaction(callback, {
+        isolationLevel: "Serializable", timeout: 15000,
+      });
+    } catch (error) {
+      if (!isSerializableConflict(error) || attempt === 2) throw error;
+    }
+  }
+  throw new Error("Unreachable transaction retry limit");
+}
 function requireQuantity(value: number): void {
   if (!Number.isSafeInteger(value) || value < 1 || value > INT4_MAX) {
     fail("返品数量は1〜2,147,483,647の整数で入力してください");
@@ -106,7 +129,7 @@ export async function submitB2BReturnRequest(input: {
   if (!input.buyerTenantId || !input.userId || !input.intercompanyOrderId) {
     fail("返品対象と担当者を指定してください");
   }
-  return prisma.$transaction(async tx => {
+  return withSerializableRetry(async tx => {
     await requireOperator(tx, input.buyerTenantId, input.userId);
     // Read only a locator first; lock buyer PO before connection, following
     // the existing B2B lock order to avoid lock inversion.
@@ -224,7 +247,7 @@ export async function submitB2BReturnRequest(input: {
       })),
     });
     return { requestId: created.id, created: true };
-  }, { isolationLevel: "Serializable", timeout: 15000 });
+  });
 }
 
 export async function reviewB2BReturnRequest(input: {
@@ -237,7 +260,7 @@ export async function reviewB2BReturnRequest(input: {
   if (!input.sellerTenantId || !input.userId || !input.requestId) {
     fail("返品申請と担当者を指定してください");
   }
-  return prisma.$transaction(async tx => {
+  return withSerializableRetry(async tx => {
     await requireOperator(tx, input.sellerTenantId, input.userId);
     const locator = await tx.b2BReturnRequest.findFirst({
       where: { id: input.requestId, sellerTenantId: input.sellerTenantId },
@@ -311,5 +334,5 @@ export async function reviewB2BReturnRequest(input: {
       if (result.count !== 1) fail("明細が変更されています。審査をやり直してください");
     }
     return { requestId: request.id, status: decision.status };
-  }, { isolationLevel: "Serializable", timeout: 15000 });
+  });
 }
