@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { dateJP, yen, num } from "@/lib/format";
 import { INVOICE_STATUS_LABEL, INVOICE_STATUS_BADGE } from "../_status";
 import { InvoiceStatusActions } from "./InvoiceStatusActions";
+import { b2bCreditDraftEnabled } from "@/lib/b2b-credit-draft-feature";
 
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -26,6 +27,17 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     },
   });
   if (!inv) notFound();
+  const eligibleReturns = b2bCreditDraftEnabled() &&
+    mayManageInvoices(role) && (inv.status === "ISSUED" || inv.status === "PAID")
+    ? await prisma.b2BReturnRequest.findMany({
+      where: {
+        sellerTenantId: tenantId,
+        status: "INSPECTED",
+        companyOrder: { sellerOrderId: { in: inv.orders.map(io => io.orderId) } },
+      },
+      select: { id: true, requestNumber: true },
+      take: 20,
+    }) : [];
 
   return (
     <>
@@ -99,6 +111,24 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         </table>
       </div>
 
+      {eligibleReturns.length > 0 && (
+        <section className="card p-5 mb-5" aria-label="返品CreditNote下書き">
+          <h2 className="font-semibold mb-2">返品CreditNote下書き（JPY）</h2>
+          <p className="text-sm mb-3">
+            対象の返品検品が完了しています。下書き作成は数量割当のみで、
+            請求金額や税額は確定しません。
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {eligibleReturns.map(req=>(
+              <Link key={req.id}
+                href={`/credit-notes/new?returnRequestId=${encodeURIComponent(req.id)}`}
+                className="btn-secondary">
+                返品 {req.requestNumber} の下書きを準備
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
       {mayManageInvoices(role) && <InvoiceStatusActions id={inv.id} status={inv.status} />}
     </>
   );
