@@ -76,6 +76,15 @@ enum IntercompanyOrderStatus {
 
 // Post-shipment returns are separate from pre-shipment cancellation.
 // There are no return state writers until the full controlled workflow ships.
+/** DRAFT ONLY. No issuance or settlement before separately approved accounting workflow. */
+enum B2BCreditStatus {
+  DRAFT
+  RECONCILED
+  ISSUED
+  APPLIED
+  VOID
+}
+
 enum B2BReturnStatus {
   SUBMITTED
   UNDER_REVIEW
@@ -150,6 +159,7 @@ model Tenant {
   b2bReturnsAsSeller    B2BReturnRequest[] @relation("B2BReturnSeller")
   b2bReturnStockEvents  B2BReturnStockEvent[]
   b2bReturnStatusEvents B2BReturnStatusEvent[]
+  creditNoteDrafts     B2BCreditNote[]
 }
 
 // テナント新規作成用の招待トークン（Nammoku Solutions が入金確認後に発行）
@@ -556,6 +566,7 @@ model Invoice {
   customer     Customer       @relation(fields: [customerId], references: [id], onDelete: Restrict)
   businessUnit BusinessUnit?  @relation(fields: [businessUnitId], references: [id], onDelete: SetNull)
   orders       InvoiceOrder[]
+  b2bCreditNotes B2BCreditNote[]
 
   @@unique([tenantId, invoiceNumber])
   @@index([tenantId, periodYear, periodMonth])
@@ -568,6 +579,7 @@ model InvoiceOrder {
 
   invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   order   Order   @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  returnCredits B2BCreditNote[]
 
   @@id([invoiceId, orderId])
   @@index([orderId])
@@ -672,6 +684,7 @@ model B2BReturnRequest {
   seller       Tenant            @relation("B2BReturnSeller", fields: [sellerTenantId], references: [id], onDelete: Restrict)
   items        B2BReturnItem[]
   statusEvents B2BReturnStatusEvent[]
+  creditNotes B2BCreditNote[]
 
   @@unique([buyerTenantId, requestNumber])
   @@unique([id, intercompanyOrderId])
@@ -696,7 +709,9 @@ model B2BReturnItem {
   returnRequest B2BReturnRequest   @relation(fields: [returnRequestId, intercompanyOrderId], references: [id, intercompanyOrderId], onDelete: Restrict)
   sourceLine    IntercompanyOrderItem @relation(fields: [sourceLineId, intercompanyOrderId], references: [id, intercompanyOrderId], onDelete: Restrict)
   stockEvents   B2BReturnStockEvent[]
+  creditLines   B2BCreditNoteLine[]
 
+  @@unique([id, returnRequestId])
   @@unique([returnRequestId, sourceLineId])
   @@index([intercompanyOrderId, sourceLineId])
 }
@@ -730,6 +745,60 @@ model B2BReturnStockEvent {
 }
 
 /** Issue #82 — Physical return audit schema approved and applied to Staging on 2026-11-10; Production not yet migrated. */
+/** Issue #82: UNAPPLIED, financial DRAFT ledger only. Never issue credits here. */
+model B2BCreditNote {
+  id                         String          @id @default(cuid())
+  sellerTenantId             String
+  originalInvoiceId          String
+  sellerOrderId              String
+  returnRequestId            String
+  creditNoteNumber           String
+  currencyCode               String
+  status                     B2BCreditStatus @default(DRAFT)
+  originalInvoiceSubtotal    Int
+  originalInvoiceTax         Int
+  originalInvoiceTotal       Int
+  originalInvoiceTaxRate     Int
+  originalInvoiceTaxPerOrder Boolean
+  proposedSubtotal           Int?
+  proposedTax                Int?
+  proposedTotal              Int?
+  taxAllocationExplanation   String?
+  createdByUserId            String
+  createdAt                  DateTime        @default(now())
+  updatedAt                  DateTime        @updatedAt
+
+  seller         Tenant           @relation(fields: [sellerTenantId], references: [id], onDelete: Restrict)
+  originalInvoice Invoice        @relation(fields: [originalInvoiceId], references: [id], onDelete: Restrict)
+  invoiceOrder    InvoiceOrder   @relation(fields: [originalInvoiceId, sellerOrderId], references: [invoiceId, orderId], onDelete: Restrict)
+  returnRequest   B2BReturnRequest @relation(fields: [returnRequestId], references: [id], onDelete: Restrict)
+  lines           B2BCreditNoteLine[]
+
+  @@unique([sellerTenantId, creditNoteNumber])
+  @@unique([id, returnRequestId])
+  @@index([originalInvoiceId, createdAt])
+  @@index([returnRequestId, createdAt])
+  @@index([sellerTenantId, status, createdAt])
+}
+
+model B2BCreditNoteLine {
+  id                String  @id @default(cuid())
+  creditNoteId      String
+  returnRequestId   String
+  returnItemId      String
+  creditedQuantity  Int
+  proposedSubtotal  Int?
+  proposedTax       Int?
+  proposedTotal     Int?
+  explanation       String?
+
+  creditNote B2BCreditNote @relation(fields: [creditNoteId, returnRequestId], references: [id, returnRequestId], onDelete: Restrict)
+  returnItem B2BReturnItem @relation(fields: [returnItemId, returnRequestId], references: [id, returnRequestId], onDelete: Restrict)
+
+  @@unique([creditNoteId, returnItemId])
+  @@index([returnItemId])
+}
+
 model B2BReturnStatusEvent {
   id               String          @id @default(cuid())
   tenantId         String
