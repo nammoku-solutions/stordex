@@ -1,7 +1,7 @@
-import type { InvoiceStatus, Role } from "@/generated/prisma/client";
+import type { InvoiceStatus, UserRole } from "@/generated/prisma/client";
 
 /** Source invoices may be issued only by an active authenticated tenant admin. */
-export function mayManageInvoices(role: Role | string): boolean {
+export function mayManageInvoices(role: UserRole | string): boolean {
   return role === "OWNER" || role === "ADMIN";
 }
 
