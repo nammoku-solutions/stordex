@@ -39,7 +39,8 @@ export function InvoiceStatusActions({
         </button>
       )}
       {status === "ISSUED" && (
-        <button disabled={pending} className="btn-primary" onClick={() => advance("PAID")}>
+        <button disabled={pending} className="btn-primary"
+          onClick={() => advance("PAID", "実際の入金を確認しましたか？ 入金済みへの変更は元に戻せません。")}>
           <ButtonPendingContent pending={pending && activeAction === "PAID"}>→ 入金済</ButtonPendingContent>
         </button>
       )}
@@ -52,11 +53,12 @@ export function InvoiceStatusActions({
           <ButtonPendingContent pending={pending && activeAction === "CANCELLED"}>無効化</ButtonPendingContent>
         </button>
       )}
-      <button
-        disabled={pending}
-        className="btn-secondary"
-        onClick={() => {
-          if (!window.confirm("この請求書を削除しますか？")) return;
+      {status === "DRAFT" && (
+        <button
+          disabled={pending}
+          className="btn-secondary"
+          onClick={() => {
+            if (!window.confirm("この下書き請求書を削除しますか？")) return;
           if (pending) return;
           setActiveAction("DELETE");
           start(async () => {
@@ -69,8 +71,9 @@ export function InvoiceStatusActions({
           });
         }}
       >
-        <ButtonPendingContent pending={pending && activeAction === "DELETE"}>削除</ButtonPendingContent>
-      </button>
+        <ButtonPendingContent pending={pending && activeAction === "DELETE"}>下書き削除</ButtonPendingContent>
+        </button>
+      )}
     </div>
   );
 }
