@@ -44,6 +44,8 @@ function eventScope(input: {
     payloadHash: createHash("sha256").update(source).digest("hex"),
   };
 }
+export { eventScope as fingerprintReturnEvent };
+
 function stockAmount(label: string, n: number): void {
   if (!Number.isSafeInteger(n) || n < 0 || n > RETURN_INT_MAX) {
     throw new ReturnEventPlanError(label + "が在庫整数の範囲外です");
