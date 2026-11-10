@@ -104,3 +104,64 @@ unset PGPASSWORD
 2026-11-06現時点の実施済みは**Staging同一プロジェクトのクローン作成と、22テーブルの一致検証まで**。外部`pg_dump`の取得・別プロジェクトでの`pg_restore`は**未実施**。この文書の存在やCloneのPASSをもって独立復元済みと扱わない。
 
 Issue #82のB2B返品・クレジットノートDraft PR群とCSVアーカイブのマイグレーションは、上記の復元PASS、migration順序・データ保持/削除ポリシー、オーナーによる対象別の明示承認までStaging DBに適用しない。Productionは全機能UAT後のCodex Astra全コードレビューPASSが必須。
+
+---
+
+## 2026-11-10 更新：#133適用後のStagingバックアップ（現行6件の移行に対応）
+
+**重要:** この文書前半は2026-11-06時点の手順と5件の移行履歴を記録した歴史的検証ログ。現在のStagingでは、オーナーの個別承認により `20261104150000_b2b_seller_line_provenance` が追加され、**移行履歴は6件**である。前回の `.dump.gpg` は#133移行前の復元ポイントのため、次の返品申請DB移行前に新しい復元ポイントを取得する。
+
+このリポジトリの旧 `scripts/backup-neon-staging-baselined.mjs` は**4マイグレーション時点専用**で、現在の6件のStagingには使用しない。
+
+### 現行Staging向けの安全なバックアップ取得
+
+新スクリプト `scripts/backup-neon-staging-post-provenance.sh` は、接続時にNeon DB自身が返すproject/branch ID、DB名、テーブル数、移行6件、#133のマイグレーションSHA256、次の#134未適用を**照合してから処理する**。異なる環境ならバックアップを作成しない。
+
+- GPGの`--symmetric --cipher-algo AES256`を使用し、`pg_dump -Fc`の標準出力を直接暗号化。平文の`.dump`を生成しない
+- WSL/UbuntuのCA証明書でNeonホスト名を検証（`verify-full`）、コネクションプーラーを拒否
+- Gitリポジトリ外かつ所有者専用パーミッション700の保存先のみ許可。生成した`.dump.gpg`は600
+- 取得後にGPGで復号したストリームから`pg_restore --list`を検証し、主要テーブルとマイグレーションのTABLE / TABLE DATAエントリーを確認
+- 取得の前後で環境識別・テーブル数・マイグレーション数を再確認し、暗号化済みファイルのSHA256を生成
+- ソースDBは読み取りのみ。バックアップファイル・パスワード・顧客データをGitHub、チャット、CIへ保存しない
+
+WSLでコマンドを実行する（パスワードはコマンド履歴に入力しない）：
+
+実行はStagingを含むローカルworktree/checkoutの`scripts/`から行う。保管先はWSLのGit管理外の`$HOME/stordex-private-backups`を推奨。Windows共有フォルダーへの直接保存や暗号化前の平文出力をしない。
+
+```bash
+cd ~/app/web_page/stordex  # 実際のStordexリポジトリディレクトリに置き換える
+git fetch origin
+# 作業中の別ブランチ・未コミット変更があればgit switchせず、
+# origin/stagingから専用worktreeを使う。
+git worktree add --detach ../stordex-backup-check origin/staging
+cd ../stordex-backup-check
+
+# Neon Consoleのstordex-staging → branch=staging → neondb → unpooled
+# 接続設定からホスト名とユーザー名のみ入力（パスワードは後で安全に対話入力）
+read -r -p 'Staging direct host: ' STORDEX_STAGING_BACKUP_HOST
+read -r -p 'Staging DB user: ' STORDEX_STAGING_BACKUP_USER
+export STORDEX_STAGING_BACKUP_HOST STORDEX_STAGING_BACKUP_USER
+
+bash scripts/backup-neon-staging-post-provenance.sh --check
+bash scripts/backup-neon-staging-post-provenance.sh --execute
+
+# 出力の .dump.gpg を検査。パスワードをコマンドやチャットには記載しない。
+cd ~/stordex-private-backups
+ls -lh *.dump.gpg
+sha256sum -c "$(ls -t *.dump.gpg.sha256 | head -1)"
+```
+
+`--execute`ではStaging DBパスワードと**GPG暗号化用パスフレーズ**が求められる。パスフレーズはパスワードマネージャーで管理し、GPG復号ができるか確認する。暗号化ファイルは別のアクセス管理された場所にも安全に複製し、暗号化鍵の保管・保持期限・復旧担当を記録する。
+
+### 現行バックアップの復元PASS基準
+
+`.dump.gpg`取得成功・TOCとファイルSHAの検証は**まだ復元成功ではない**。
+
+1. StagingやProduction、既存復旧確認DBとは異なる**空のPostgreSQL DB**を選び、宛先のproject/branch/databaseを確認する（同じ `neondb` 名でも別プロジェクト・別DBであることが必須）。
+2. GPGで復号したストリームを `pg_restore` に渡す（ディスク上の平文ファイルを作らない）。例：`set -o pipefail; gpg --decrypt archive.dump.gpg | pg_restore --no-owner --no-acl --exit-on-error --single-transaction --dbname=neondb`。復元先にのみ接続情報を設定し、**source Stagingを復元先に設定することは厳禁**。
+3. 22テーブルのデータ指紋とDB構造（新しい売り手受注明細ID列・FK・UNIQUE・トリガー）および**Prisma6件の移行名とchecksum**が新しいバックアップと一致することを確認する。復元前後のデータ比較はバックアップ取得時点を基準とし、Stagingに後から発生した変更を誤って欠損と扱わない。
+4. アクセス権限、暗号化鍵の復旧、オフデバイスの安全な複製、保持/削除ポリシーを記録。新しい返品申請DB `20261104153000_b2b_return_requests` は、**復元検証と対象を指定したオーナーの明示承認後のみ**Stagingへ適用する。
+
+### 未実施のこと
+
+2026-11-10時点で、この更新後の6マイグレーション版`pg_dump`の取得、独立した空DBへの復元、移行承認はまだ報告されていない。Neon内部の複製やDraft PR #134〜#136のCI PASSをもって独立バックアップ完了やStaging移行承認と見なさない。
