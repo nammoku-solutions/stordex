@@ -176,3 +176,23 @@ CREATE TRIGGER "B2BReturnStockEvent_insert_guard"
 CREATE TRIGGER "B2BReturnStockEvent_immutable_guard"
   BEFORE UPDATE OR DELETE ON "B2BReturnStockEvent"
   FOR EACH ROW EXECUTE FUNCTION stordex_guard_b2b_return_stock_event();
+
+
+-- Defense-in-depth: a return event cannot be preserved while its linked
+-- inventory movement is subsequently edited to misrepresent stock history.
+CREATE FUNCTION stordex_guard_return_linked_movement()
+RETURNS trigger LANGUAGE plpgsql AS $return_movement_guard$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM "B2BReturnStockEvent"
+    WHERE "movementId" = OLD.id
+  ) THEN
+    RAISE EXCEPTION 'Return-linked inventory movements are immutable';
+  END IF;
+  RETURN CASE WHEN TG_OP = 'UPDATE' THEN NEW ELSE OLD END;
+END;
+$return_movement_guard$;
+
+CREATE TRIGGER "InventoryMovement_return_linked_immutable_guard"
+  BEFORE UPDATE OR DELETE ON "InventoryMovement"
+  FOR EACH ROW EXECUTE FUNCTION stordex_guard_return_linked_movement();
