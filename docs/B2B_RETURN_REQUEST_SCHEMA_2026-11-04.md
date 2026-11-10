@@ -46,3 +46,12 @@ CSVアーカイブのDraft PR #97/#100/#104も別途あり、正式な移行順�
 - 古いNeonブランチを承認なしに削除・リセットしない。独立した復元可能な最新バックアップの検証、保持/削除方針、マイグレーション順序と個別承認が揃うまでStaging DBは変更しない。
 - 使い捨てPostgreSQLでのPrisma migration/schema-drift/型・統合テスト・ビルドがPASSしても、それは本番データへの適用承認ではない。
 - Productionへは全機能実装・UAT・Codex Astra 全体最終Review PASS前に適用しない。
+
+## 2026-11-10 Staging移行の個別承認・リリース計画
+
+- オーナーが、移行名 `20261104153000_b2b_return_requests` のStaging適用を明示承認。
+- #133適用**後**のStaging 22テーブル・6移行に対して、別Neonプロジェクト `delicate-rice-23940930` の新DB `stordex_restore_post_provenance_20261110` へ暗号化バックアップから復元済み。22/22テーブルの行数・全行ハッシュ一致、457/457件のスキーマ/制約/インデックス/ENUM等の一致、6件のPrisma履歴チェックサム一致。
+- PR #134の隔離PostgreSQL CI PASS、および現在のStagingデータを複製したQAブランチで**この移行の21 SQL文**を適用し既存22テーブルのデータが不変、新規2テーブルが空、外部キー・トリガーが有効であることを確認。
+- このPRは**同じmigration.sqlをバイト単位で保持**したまま、現行Stagingを基点に切り出したリリースPR。既に適用済みの `20261104150000_b2b_seller_line_provenance` は再適用しない。
+- リリースはこの移行**1件だけ**をトランザクション内で適用・Prisma履歴登録し、既存データの再照合をPASSしてからStagingにPrisma schemaとテストをマージ。新しい返品申請/明細テーブルにはUI/Server Actionをつながない。
+- 後続の申請・審査サービス #135、画面 #136、出庫・検品・クレジットノートのDraftは独立であり、**今回の承認に含まれない**。機能フラグ`STORDEX_B2B_RETURNS_ENABLED`はOFFのまま。Productionは変更せず、最終Codex Astraレビューを必須とする。
