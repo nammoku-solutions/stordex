@@ -1,11 +1,14 @@
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { mayManageInvoices } from "@/lib/invoice-status-policy";
 import { requireTenant } from "@/lib/session";
 import { PageHeader } from "@/components/PageHeader";
 import { createInvoice } from "../actions";
 import { SubmitPendingButton } from "@/components/SubmitPendingButton";
 
 export default async function NewInvoicePage() {
-  const { tenantId } = await requireTenant();
+  const { tenantId, role } = await requireTenant();
+  if (!mayManageInvoices(role)) redirect("/invoices");
   const [customers, businessUnits] = await Promise.all([
     prisma.customer.findMany({
       where: { tenantId, active: true },

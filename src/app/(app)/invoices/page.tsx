@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requireTenant } from "@/lib/session";
+import { mayManageInvoices } from "@/lib/invoice-status-policy";
 import { PageHeader } from "@/components/PageHeader";
 import { dateJP, yen } from "@/lib/format";
 import { INVOICE_STATUS_LABEL as STATUS_LABEL, INVOICE_STATUS_BADGE as STATUS_BADGE } from "./_status";
@@ -8,7 +9,7 @@ import { INVOICE_STATUS_LABEL as STATUS_LABEL, INVOICE_STATUS_BADGE as STATUS_BA
 export const dynamic = "force-dynamic";
 
 export default async function InvoicesPage() {
-  const { tenantId } = await requireTenant();
+  const { tenantId, role } = await requireTenant();
   const invoices = await prisma.invoice.findMany({
     where: { tenantId },
     include: { customer: true, orders: { select: { orderId: true } } },
@@ -20,11 +21,11 @@ export default async function InvoicesPage() {
       <PageHeader
         title="請求書"
         description="月次の集計請求書を作成します"
-        action={
+        action={mayManageInvoices(role) ? (
           <Link href="/invoices/new" className="btn-primary">
             ＋ 新規請求書
           </Link>
-        }
+        ) : undefined}
       />
       <div className="card table-wrap">
         <table className="tbl">
