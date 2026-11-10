@@ -126,6 +126,10 @@ describe("B2B credit draft service on disposable PostgreSQL only", () => {
         saleable: 2, unsaleable: 0,
         movementId: inbound.id, createdByUserId: sellerAdmin.id,
       } });
+      // The formal inspection workflow must finish before a draft can be prepared.
+      await prisma.b2BReturnRequest.update({
+        where: { id: request.id }, data: { status: "INSPECTED" },
+      });
       const data = {
         sellerTenantId: seller.id, userId: sellerAdmin.id,
         originalInvoiceId: invoice.id, returnRequestId: request.id,
