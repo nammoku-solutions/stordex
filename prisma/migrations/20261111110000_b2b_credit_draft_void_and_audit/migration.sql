@@ -89,59 +89,7 @@ BEGIN
     ELSIF OLD.status = 'DRAFT'::"B2BCreditStatus" AND
           NEW.status = 'VOID'::"B2BCreditStatus" THEN
       IF NEW."voidEventId" IS NULL OR
-         NEW."voidEventId" !~* '^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}
-  IF TG_OP = 'UPDATE' AND (
-    NEW."sellerTenantId" IS DISTINCT FROM OLD."sellerTenantId" OR
-    NEW."originalInvoiceId" IS DISTINCT FROM OLD."originalInvoiceId" OR
-    NEW."sellerOrderId" IS DISTINCT FROM OLD."sellerOrderId" OR
-    NEW."returnRequestId" IS DISTINCT FROM OLD."returnRequestId" OR
-    NEW."creditNoteNumber" IS DISTINCT FROM OLD."creditNoteNumber" OR
-    NEW."currencyCode" IS DISTINCT FROM OLD."currencyCode" OR
-    NEW."createdByUserId" IS DISTINCT FROM OLD."createdByUserId" OR
-    NEW."createdAt" IS DISTINCT FROM OLD."createdAt" OR
-    NEW."originalInvoiceSubtotal" IS DISTINCT FROM OLD."originalInvoiceSubtotal" OR
-    NEW."originalInvoiceTax" IS DISTINCT FROM OLD."originalInvoiceTax" OR
-    NEW."originalInvoiceTotal" IS DISTINCT FROM OLD."originalInvoiceTotal" OR
-    NEW."originalInvoiceTaxRate" IS DISTINCT FROM OLD."originalInvoiceTaxRate" OR
-    NEW."originalInvoiceTaxPerOrder" IS DISTINCT FROM OLD."originalInvoiceTaxPerOrder"
-  ) THEN
-    RAISE EXCEPTION 'Original invoice/return and credit document provenance are immutable';
-  END IF;
-
-  SELECT * INTO invoice_row FROM "Invoice"
-    WHERE id = NEW."originalInvoiceId" FOR UPDATE;
-  IF NOT FOUND OR invoice_row."tenantId" IS DISTINCT FROM NEW."sellerTenantId" OR
-     invoice_row.status NOT IN ('ISSUED', 'PAID') THEN
-    RAISE EXCEPTION 'Credit note requires a matching issued/paid seller invoice';
-  END IF;
-  IF NEW."originalInvoiceSubtotal" IS DISTINCT FROM invoice_row.subtotal OR
-     NEW."originalInvoiceTax" IS DISTINCT FROM invoice_row.tax OR
-     NEW."originalInvoiceTotal" IS DISTINCT FROM invoice_row.total OR
-     NEW."originalInvoiceTaxRate" IS DISTINCT FROM invoice_row."taxRate" OR
-     NEW."originalInvoiceTaxPerOrder" IS DISTINCT FROM invoice_row."taxPerOrder" THEN
-    RAISE EXCEPTION 'Original invoice accounting snapshot does not match';
-  END IF;
-  SELECT rr."sellerTenantId", co."sellerOrderId"
-    INTO request_seller, request_order
-    FROM "B2BReturnRequest" rr
-    JOIN "IntercompanyOrder" co ON co.id = rr."intercompanyOrderId"
-    WHERE rr.id = NEW."returnRequestId";
-  IF request_seller IS DISTINCT FROM NEW."sellerTenantId" OR
-     request_order IS DISTINCT FROM NEW."sellerOrderId" THEN
-    RAISE EXCEPTION 'Credit note tenant/seller order/return request mismatch';
-  END IF;
-  SELECT u."tenantId", u.role::text, t.status::text
-    INTO actor_tenant, actor_role, actor_active
-    FROM "User" u JOIN "Tenant" t ON t.id = u."tenantId"
-    WHERE u.id = NEW."createdByUserId";
-  IF actor_tenant IS DISTINCT FROM NEW."sellerTenantId" OR
-     actor_role IS DISTINCT FROM 'OWNER' AND actor_role IS DISTINCT FROM 'ADMIN' OR
-     actor_active IS DISTINCT FROM 'ACTIVE' THEN
-    RAISE EXCEPTION 'Credit note draft requires an active seller administrator';
-  END IF;
-  RETURN NEW;
-END;
-$credit_header$; OR
+         NEW."voidEventId" !~* '^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$' OR
          NEW."voidedByUserId" IS NULL OR NEW."voidReason" IS NULL OR
          length(btrim(NEW."voidReason")) < 8 OR
          length(NEW."voidReason") > 500 THEN
