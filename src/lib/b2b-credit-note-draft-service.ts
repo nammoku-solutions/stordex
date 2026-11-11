@@ -124,6 +124,9 @@ export async function createB2BCreditNoteDraft(input: {
         include: { lines: true },
       });
       if (existing) {
+        if (existing.status === "VOID") {
+          fail("取消済みの下書きは再送キーを再利用できません");
+        }
         const originalLines = existing.lines.map(line => ({
           returnItemId: line.returnItemId, creditedQuantity: line.creditedQuantity,
         })).sort((a,b) => a.returnItemId.localeCompare(b.returnItemId));
@@ -183,8 +186,14 @@ export async function createB2BCreditNoteDraft(input: {
           where: { returnItemId: line.returnItemId, phase: "INSPECTION" },
           _sum: { quantity: true },
         });
+        // Historical VOID lines stay in audit, but release their reserved
+        // inspected-unit budget. The source B2BReturnItem FOR UPDATE lock
+        // serializes this with concurrent VOID/new Draft operations.
         const allocated = await tx.b2BCreditNoteLine.aggregate({
-          where: { returnItemId: line.returnItemId },
+          where: {
+            returnItemId: line.returnItemId,
+            creditNote: { status: { not: "VOID" } },
+          },
           _sum: { creditedQuantity: true },
         });
         const available = (inspected._sum.quantity ?? 0) -

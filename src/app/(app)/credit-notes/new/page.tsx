@@ -25,7 +25,12 @@ export default async function NewCreditDraftPage({searchParams}:{
       items:{orderBy:{id:"asc"},include:{
         sourceLine:true,
         stockEvents:{where:{phase:"INSPECTION"},select:{quantity:true}},
-        creditLines:{select:{creditedQuantity:true}},
+        // Retain VOID lines for audit but do not count them as active
+        // reserved quantities when preparing a replacement Draft.
+        creditLines:{
+          where:{creditNote:{status:{not:"VOID"}}},
+          select:{creditedQuantity:true},
+        },
       }},
     },
   });

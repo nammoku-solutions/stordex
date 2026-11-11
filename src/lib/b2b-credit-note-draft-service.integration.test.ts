@@ -11,6 +11,7 @@ describe("B2B credit draft service on disposable PostgreSQL only", () => {
     async () => {
       const { prisma } = await import("@/lib/db");
       const { createB2BCreditNoteDraft } = await import("./b2b-credit-note-draft-service");
+      const { voidB2BCreditNoteDraft } = await import("./b2b-credit-note-void-service");
       const tag = randomUUID().slice(0, 10);
       const buyer = await prisma.tenant.create({
         data: { name: "Credit service buyer", slug: "ci-cs-b-" + tag },
@@ -199,6 +200,88 @@ describe("B2B credit draft service on disposable PostgreSQL only", () => {
       expect(await prisma.inventoryMovement.count({
         where: { tenantId: seller.id },
       })).toBe(1);
+      // Audited VOID must preserve the original credit header and allocation
+      // line but exclude its quantity from any future active allocation.
+      const eventId=randomUUID();
+      const voidRequest={
+        sellerTenantId:seller.id,userId:sellerAdmin.id,
+        creditNoteId:first.creditNoteId,eventId,
+        reason:"検品時に別の請求調整方法が必要と判明したため取消",
+      };
+      await expect(voidB2BCreditNoteDraft({...voidRequest,userId:staff.id}))
+        .rejects.toThrow("管理者権限");
+      await expect(voidB2BCreditNoteDraft({...voidRequest,sellerTenantId:buyer.id,userId:buyerAdmin.id}))
+        .rejects.toThrow();
+      await expect(voidB2BCreditNoteDraft({...voidRequest,eventId:"not-a-uuid"}))
+        .rejects.toThrow("イベントID");
+      const voided=await voidB2BCreditNoteDraft(voidRequest);
+      expect(voided).toEqual({creditNoteId:first.creditNoteId,voided:true});
+      expect(await voidB2BCreditNoteDraft(voidRequest)).toEqual({
+        creditNoteId:first.creditNoteId,voided:false,
+      });
+      await expect(voidB2BCreditNoteDraft({...voidRequest,eventId:randomUUID()}))
+        .rejects.toThrow("取消済み");
+      await expect(voidB2BCreditNoteDraft({...voidRequest,reason:"別の理由による再取消は不可です"}))
+        .rejects.toThrow("取消済み");
+      await expect(createB2BCreditNoteDraft(data))
+        .rejects.toThrow("取消済みの下書き");
+
+      const archived=await prisma.b2BCreditNote.findUniqueOrThrow({
+        where:{id:first.creditNoteId},include:{voidEvent:true,lines:true},
+      });
+      expect(archived.status).toBe("VOID");
+      expect(archived.voidEvent?.eventId).toBe(eventId.toLowerCase());
+      expect(archived.voidEvent?.actorUserId).toBe(sellerAdmin.id);
+      expect(archived.voidEvent?.reason).toBe(voidRequest.reason);
+      expect(archived.voidedAt).not.toBeNull();
+      expect(archived.lines).toHaveLength(1);
+      expect(archived.lines[0].creditedQuantity).toBe(1);
+
+      await expect(prisma.b2BCreditVoidEvent.delete({
+        where:{creditNoteId:first.creditNoteId},
+      })).rejects.toThrow();
+      await expect(prisma.b2BCreditVoidEvent.update({
+        where:{creditNoteId:first.creditNoteId},data:{reason:"履歴を消す"},
+      })).rejects.toThrow();
+      await expect(prisma.b2BCreditNoteLine.delete({
+        where:{id:archived.lines[0].id},
+      })).rejects.toThrow();
+      await expect(prisma.b2BCreditNote.update({
+        where:{id:first.creditNoteId},data:{status:"DRAFT"},
+      })).rejects.toThrow();
+      await expect(prisma.b2BCreditNote.update({
+        where:{id:first.creditNoteId},data:{status:"ISSUED"},
+      })).rejects.toThrow();
+
+      // Released one unit is available to a DIFFERENT new draft; only
+      // active DRAFT lines count toward the inspected-unit cap.
+      const replacement=await createB2BCreditNoteDraft({
+        ...data,idempotencyKey:randomUUID(),
+        lines:[{returnItemId:line.id,creditedQuantity:1}],
+      });
+      expect(replacement.created).toBe(true);
+      const active=await prisma.b2BCreditNoteLine.aggregate({
+        where:{
+          returnItemId:line.id,
+          creditNote:{status:{not:"VOID"}},
+        },
+        _sum:{creditedQuantity:true},
+      });
+      expect(active._sum.creditedQuantity).toBe(2);
+      const all=await prisma.b2BCreditNoteLine.aggregate({
+        where:{returnItemId:line.id},_sum:{creditedQuantity:true},
+      });
+      expect(all._sum.creditedQuantity).toBe(3); // 1 VOID + 2 active
+      await expect(createB2BCreditNoteDraft({
+        ...data,idempotencyKey:randomUUID(),
+        lines:[{returnItemId:line.id,creditedQuantity:1}],
+      })).rejects.toThrow("実検品済みの未調整数量");
+
+      expect(await prisma.b2BCreditVoidEvent.count({
+        where:{creditNoteId:first.creditNoteId},
+      })).toBe(1);
+      expect((await prisma.invoice.findUniqueOrThrow({where:{id:invoice.id}})).total).toBe(550);
+      expect(await prisma.inventoryMovement.count({where:{tenantId:seller.id}})).toBe(1);
     }, 60000,
   );
 });

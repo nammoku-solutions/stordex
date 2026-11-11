@@ -234,6 +234,8 @@ model User {
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   b2bReturnStatusEvents B2BReturnStatusEvent[]
+  voidedCreditNotes B2BCreditNote[] @relation("B2BCreditVoidActor")
+  creditVoidAuditEvents B2BCreditVoidEvent[] @relation("B2BCreditVoidAuditActor")
 
   @@unique([tenantId, email])
   @@index([email])
@@ -764,6 +766,11 @@ model B2BCreditNote {
   proposedTax                Int?
   proposedTotal              Int?
   taxAllocationExplanation   String?
+  // VOID archives without deleting quantity lines; issuance is still forbidden.
+  voidEventId                String?         @unique
+  voidedAt                   DateTime?
+  voidedByUserId             String?
+  voidReason                 String?
   createdByUserId            String
   createdAt                  DateTime        @default(now())
   updatedAt                  DateTime        @updatedAt
@@ -773,12 +780,27 @@ model B2BCreditNote {
   invoiceOrder    InvoiceOrder   @relation(fields: [originalInvoiceId, sellerOrderId], references: [invoiceId, orderId], onDelete: Restrict)
   returnRequest   B2BReturnRequest @relation(fields: [returnRequestId], references: [id], onDelete: Restrict)
   lines           B2BCreditNoteLine[]
+  voidEvent       B2BCreditVoidEvent?
+  voidedBy        User? @relation("B2BCreditVoidActor", fields: [voidedByUserId], references: [id], onDelete: Restrict)
 
   @@unique([sellerTenantId, creditNoteNumber])
   @@unique([id, returnRequestId])
   @@index([originalInvoiceId, createdAt])
   @@index([returnRequestId, createdAt])
   @@index([sellerTenantId, status, createdAt])
+}
+
+/** Append-only VOID audit. Original credit allocations are retained. */
+model B2BCreditVoidEvent {
+  id            String @id @default(cuid())
+  creditNoteId  String @unique
+  eventId       String @unique
+  actorUserId   String
+  reason        String
+  createdAt     DateTime @default(now())
+
+  creditNote B2BCreditNote @relation(fields: [creditNoteId], references: [id], onDelete: Restrict)
+  actor      User @relation("B2BCreditVoidAuditActor", fields: [actorUserId], references: [id], onDelete: Restrict)
 }
 
 model B2BCreditNoteLine {
