@@ -8,6 +8,7 @@ import { dateJP, yen, num } from "@/lib/format";
 import { INVOICE_STATUS_LABEL, INVOICE_STATUS_BADGE } from "../_status";
 import { InvoiceStatusActions } from "./InvoiceStatusActions";
 import { b2bCreditDraftEnabled } from "@/lib/b2b-credit-draft-feature";
+import { b2bCreditPreviewEnabled } from "@/lib/b2b-credit-preview-feature";
 
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -27,7 +28,9 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     },
   });
   if (!inv) notFound();
-  const eligibleReturns = b2bCreditDraftEnabled() &&
+  const draftEnabled = b2bCreditDraftEnabled();
+  const creditPreviewEnabled = b2bCreditPreviewEnabled();
+  const eligibleReturns = (draftEnabled || creditPreviewEnabled) &&
     mayManageInvoices(role) && (inv.status === "ISSUED" || inv.status === "PAID")
     ? await prisma.b2BReturnRequest.findMany({
       where: {
@@ -112,19 +115,28 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       </div>
 
       {eligibleReturns.length > 0 && (
-        <section className="card p-5 mb-5" aria-label="返品CreditNote下書き">
-          <h2 className="font-semibold mb-2">返品CreditNote下書き（JPY）</h2>
+        <section className="card p-5 mb-5" aria-label="返品CreditNote">
+          <h2 className="font-semibold mb-2">返品CreditNoteの確認</h2>
           <p className="text-sm mb-3">
-            対象の返品検品が完了しています。下書き作成は数量割当のみで、
-            請求金額や税額は確定しません。
+            検品済みの返品について、数量下書きの準備または読み取り専用の
+            金額試算を行えます。試算・下書きでは請求金額も税額も確定しません。
           </p>
           <div className="flex flex-wrap gap-2">
             {eligibleReturns.map(req=>(
-              <Link key={req.id}
-                href={`/credit-notes/new?returnRequestId=${encodeURIComponent(req.id)}`}
-                className="btn-secondary">
-                返品 {req.requestNumber} の下書きを準備
-              </Link>
+              <div key={req.id} className="flex flex-wrap gap-2">
+                {creditPreviewEnabled && (
+                  <Link href={`/credit-notes/preview?returnRequestId=${encodeURIComponent(req.id)}`}
+                    className="btn-secondary">
+                    返品 {req.requestNumber} の参考金額を試算
+                  </Link>
+                )}
+                {draftEnabled && (
+                  <Link href={`/credit-notes/new?returnRequestId=${encodeURIComponent(req.id)}`}
+                    className="btn-secondary">
+                    返品 {req.requestNumber} の数量下書きを準備
+                  </Link>
+                )}
+              </div>
             ))}
           </div>
         </section>
