@@ -30,7 +30,7 @@
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "dotenv": "^17.4.2",
-    "fast-xml-parser": "^5.11.1",
+    "fast-xml-parser": "^5.12.0",
     "next": "^16.4.2",
     "next-auth": "^4.24.15",
     "pg": "^8.23.0",
