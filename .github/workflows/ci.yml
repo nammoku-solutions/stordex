@@ -83,3 +83,8 @@ jobs:
 
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=low
+
+      # Only the ephemeral PostgreSQL 16 service is modified. This does NOT
+      # create a Prisma migration or touch Neon Staging or AWS Production.
+      - name: Rehearse unapproved CreditNote migration 12 on disposable CI DB ONLY
+        run: node scripts/ci-rehearse-credit-migration12.mjs
