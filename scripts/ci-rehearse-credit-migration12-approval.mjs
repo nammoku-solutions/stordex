@@ -28,8 +28,8 @@ const documentHash="cd".repeat(32), amountHash="ef".repeat(32);
 const id = name => prefix+name;
 const uid = i => "22222222-2222-4222-8222-" + String(i).padStart(12,"0");
 let assertions=0;
-async function reject(query, args, label) {
-  await assert.rejects(client.query(query,args),Error,label);
+async function reject(query, args, label, expected = /./) {
+  await assert.rejects(client.query(query,args),expected,label);
   assertions++;
 }
 async function checkScalar(query, args, expected, label) {
@@ -221,6 +221,43 @@ try {
     [id("return-20")],
   )).rows[0].v,"INSPECTED");
   assertions++;
+  // These adversarial checks MUST run before the positive review. After a
+  // review, a uniqueness failure would mask a broken maker/checker guard.
+  await reject(
+    insertApproval,approvalArgs(20,valid,{6:maker,0:id("self-review")}),
+    "maker cannot approve own CreditNote",
+    /Credit review requires independent active seller managers/,
+  );
+  await reject(
+    insertApproval,approvalArgs(20,valid,{7:maker,0:id("self-accountant")}),
+    "maker cannot provide own accounting signoff",
+    /Credit review requires independent active seller managers/,
+  );
+  await reject(
+    insertApproval,approvalArgs(20,valid,{6:buyerAdmin,0:id("cross-tenant")}),
+    "foreign tenant cannot review seller CreditNote",
+    /Credit review requires independent active seller managers/,
+  );
+  await reject(
+    insertApproval,approvalArgs(20,valid,{10:4800,11:480,12:5280,0:id("over-cap")}),
+    "review gross must not exceed original seller invoice",
+    /Credit review requires unchanged issued invoice financial snapshot and cap/,
+  );
+  // A source Invoice may have been altered since the immutable DRAFT snapshot.
+  // Proposal SQL now detects this; restore ONLY synthetic CI Invoice afterward.
+  await client.query(
+    'UPDATE "Invoice" SET subtotal=4399,total=4839 WHERE id=$1',
+    [invoiceId],
+  );
+  await reject(
+    insertApproval,approvalArgs(20,valid,{0:id("stale-source")}),
+    "original source Invoice financial change must block review",
+    /Credit review requires unchanged issued invoice financial snapshot and cap/,
+  );
+  await client.query(
+    'UPDATE "Invoice" SET subtotal=4400,total=4840 WHERE id=$1',
+    [invoiceId],
+  );
   await client.query(insertApproval,approvalArgs(20,valid));
   await checkScalar(
     'SELECT count(*)::int AS v FROM "B2BCreditApprovalReviewEvent" WHERE "creditNoteId"=$1',
@@ -235,14 +272,6 @@ try {
     'SELECT count(*)::int AS v FROM "Invoice" '+
     'WHERE id=$1 AND status=\'ISSUED\' AND total=4840',
     [invoiceId],1,"review must NOT mutate original issued Invoice",
-  );
-  await reject(
-    insertApproval,approvalArgs(20,valid,{6:maker,0:id("self-review")}),
-    "maker cannot approve own CreditNote",
-  );
-  await reject(
-    insertApproval,approvalArgs(20,valid,{7:maker,0:id("self-accountant")}),
-    "maker cannot provide accounting signoff",
   );
   await reject(
     'UPDATE "B2BCreditApprovalReviewEvent" SET "reason"=$1 WHERE "creditNoteId"=$2',
@@ -262,10 +291,14 @@ try {
       'SELECT id FROM "B2BInvoiceCurrencyEvidence" WHERE id=$1 FOR UPDATE',
       [revFirst.evidence],
     );
-    const attempt=approveConn.query(insertApproval,approvalArgs(21,revFirst));
+    const attempt=assert.rejects(
+      approveConn.query(insertApproval,approvalArgs(21,revFirst)),
+      /Credit review requires verified and non-revoked JPY evidence/,
+      "review waiting behind revocation must fail closed",
+    );
     await revConn.query(insertRevocation,revocationArgs(21,revFirst.evidence));
     await revConn.query("COMMIT");
-    await assert.rejects(attempt,Error,"review waiting behind revocation must fail closed");
+    await attempt;
     assertions++;
     await checkScalar(
       'SELECT count(*)::int AS v FROM "B2BCreditApprovalReviewEvent" WHERE "creditNoteId"=$1',
