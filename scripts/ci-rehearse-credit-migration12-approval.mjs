@@ -436,6 +436,119 @@ try {
   );
   await client.query('UPDATE "Invoice" SET status=\'ISSUED\' WHERE id=$1',[invoiceId]);
 
+  // CI ONLY: test the historical 2-box VOID allocation release separately
+  // from real Staging UAT. Generate two independent inspected return lines.
+  const f26=await syntheticReturnCredit(26,2);
+  const f27=await syntheticReturnCredit(27,2);
+  const beforeReallocMovements=Number((await client.query(
+    'SELECT count(*)::int AS n FROM "InventoryMovement"',
+  )).rows[0].n);
+  async function replacementDraft(suffix,kind) {
+    const credit=id("replacement-"+suffix+"-"+kind);
+    await client.query(
+      'INSERT INTO "B2BCreditNote" ("id","sellerTenantId","originalInvoiceId",'+
+      '"sellerOrderId","returnRequestId","creditNoteNumber","currencyCode",'+
+      '"status","originalInvoiceSubtotal","originalInvoiceTax","originalInvoiceTotal",'+
+      '"originalInvoiceTaxRate","originalInvoiceTaxPerOrder","createdByUserId","updatedAt")'+
+      " VALUES ($1,$2,$3,$4,$5,$6,'JPY','DRAFT',4400,440,4840,10,false,$7,now())",
+      [credit,seller,invoiceId,id("seller-order"),id("return-"+suffix),
+        "CI-REPLACEMENT-"+suffix+"-"+kind,maker],
+    );
+    return credit;
+  }
+  const insertAllocation='INSERT INTO "B2BCreditNoteLine" ('+
+    '"id","creditNoteId","returnRequestId","returnItemId","creditedQuantity") '+
+    'VALUES ($1,$2,$3,$4,$5)';
+  const allocArgs=(suffix,credit,kind)=>[
+    id("replacement-line-"+suffix+"-"+kind),
+    credit,id("return-"+suffix),id("return-item-"+suffix),2,
+  ];
+  async function voidOriginal(suffix,original){
+    await client.query(
+      'UPDATE "B2BCreditNote" SET status=\'VOID\',"voidEventId"=$1,'+
+      '"voidedByUserId"=$2,"voidReason"=$3 WHERE id=$4',
+      [uid(suffix*10+9),checker,"VOID to release inspected reallocation budget in CI only",original.credit],
+    );
+    await checkScalar(
+      'SELECT count(*)::int AS v FROM "B2BCreditNote" '+
+      "WHERE id=$1 AND status='VOID' AND \"voidedAt\" IS NOT NULL "+
+      'AND "proposedTotal" IS NULL',[original.credit],1,
+      "VOID original keeps historical note without amounts",
+    );
+    await checkScalar(
+      'SELECT count(*)::int AS v FROM "B2BCreditVoidEvent" WHERE "creditNoteId"=$1',
+      [original.credit],1,"exactly one VOID audit event",
+    );
+  }
+  const candidate=await replacementDraft(26,"single");
+  await reject(
+    insertAllocation,allocArgs(26,candidate,"single"),
+    "no allocation of already-reserved 2 units before VOID",
+    /Credit draft allocation exceeds physically inspected unallocated returns/,
+  );
+  await voidOriginal(26,f26);
+  await client.query(insertAllocation,allocArgs(26,candidate,"single"));
+  await checkScalar(
+    'SELECT count(*)::int AS v FROM "B2BCreditNoteLine" '+
+    'WHERE "creditNoteId"=$1 AND "creditedQuantity"=2',
+    [f26.credit],1,"original two-unit allocation history retained",
+  );
+  await checkScalar(
+    'SELECT coalesce(sum(l."creditedQuantity"),0)::int AS v '+
+    'FROM "B2BCreditNoteLine" l JOIN "B2BCreditNote" cn ON cn.id=l."creditNoteId" '+
+    'WHERE l."returnItemId"=$1 AND cn.status<>\'VOID\'',
+    [id("return-item-26")],2,
+    "released two units are available to a replacement DRAFT",
+  );
+  await reject(
+    'DELETE FROM "B2BCreditNoteLine" WHERE "creditNoteId"=$1',
+    [f26.credit],"VOID historical lines cannot be deleted",
+    /B2B credit draft allocation lines cannot be deleted/,
+  );
+
+  // Two different replacement draft writers race on the same 2-unit budget.
+  await voidOriginal(27,f27);
+  const a=await replacementDraft(27,"A"),b=await replacementDraft(27,"B");
+  const clients=[await connection(),await connection()];
+  try {
+    const outcomes=await Promise.allSettled([
+      clients[0].query(insertAllocation,allocArgs(27,a,"A")),
+      clients[1].query(insertAllocation,allocArgs(27,b,"B")),
+    ]);
+    assert.equal(outcomes.filter(o=>o.status==="fulfilled").length,1,
+      "only one replacement writer can reserve the inspected two units");
+    const failed=outcomes.find(o=>o.status==="rejected");
+    assert.ok(failed,"one competing writer must be rejected");
+    assert.match(String(failed.reason?.message??""),
+      /Credit draft allocation exceeds physically inspected unallocated returns/);
+    assertions++;
+    await checkScalar(
+      'SELECT coalesce(sum(l."creditedQuantity"),0)::int AS v '+
+      'FROM "B2BCreditNoteLine" l JOIN "B2BCreditNote" cn ON cn.id=l."creditNoteId" '+
+      'WHERE l."returnItemId"=$1 AND cn.status<>\'VOID\'',
+      [id("return-item-27")],2,
+      "concurrent replacement allocations cannot exceed inspected quantity",
+    );
+  } finally {
+    await Promise.all(clients.map(c=>c.end().catch(()=>{})));
+  }
+  await checkScalar(
+    'SELECT count(*)::int AS v FROM "InventoryMovement"',[],
+    beforeReallocMovements,"VOID/reallocation must not create inventory movement",
+  );
+  await checkScalar(
+    'SELECT count(*)::int AS v FROM "Invoice" '+
+    "WHERE id=$1 AND status='ISSUED' AND subtotal=4400 AND tax=440 AND total=4840",
+    [invoiceId],1,"original invoice must be unchanged",
+  );
+  await checkScalar(
+    'SELECT count(*)::int AS v FROM "B2BCreditNoteLine" '+
+    'WHERE "proposedSubtotal" IS NOT NULL OR "proposedTax" IS NOT NULL '+
+    'OR "proposedTotal" IS NOT NULL',[],0,
+    "reallocation must not persist any line monetary amounts",
+  );
+  console.log("PASS: 2-box VOID history and replacement DRAFT, competing writers serialized without stock/invoice changes");
+
   // No real invoice posting or stored money is allowed; source invoice cap
   // and immutable original-value snapshots remain separate approval gates.
   await checkScalar(
