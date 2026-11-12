@@ -39,7 +39,10 @@ Baseline: 29 public tables, **11** completed Prisma migrations, 1 historical VOI
 - [x] Author read-only source preflight and post-migration checks.
 - [x] CI static guards, typecheck, tests, build and dependency audit PASS (GitHub Actions #1146).
 - [x] Initial draft DDL/security and concurrent-evidence-review rehearsal PASS on disposable PostgreSQL 16 (CI #1146: 3 tables, 6 triggers, 19 assertions).
-- [ ] Full synthetic B2B CreditNote approval success and verify-vs-revoke/Invoice mutation races still need disposable PostgreSQL tests before authorizing a real migration.
+- [x] Synthetic buyer/seller order, inspected return, DRAFT allocation and non-posting CreditNote review event; review-before-revoke and revoke-before-review concurrency (GitHub Actions #1160).
+- [x] Stale original Invoice financial snapshot, seller maker/checker, accounting signoff, cross-tenant and over-original-amount rejection in disposable PostgreSQL (GitHub Actions #1160).
+- [x] Prisma 7 CLI introspection of all 3 new models/relations on disposable PostgreSQL, WITHOUT modifying prisma/schema.prisma (GitHub Actions #1160).
+- [ ] Still outstanding before real Staging migration approval: **actual verified source document byte hash / protected storage**; deterministic Invoice-update-vs-review race and full source invariant locking; final reviewed Prisma schema/migration pair and independent security/accounting signoff.
 - [ ] Finalize model relations in prisma/schema.prisma **in a separately authorized real-migration PR**.
 - [ ] Accounting review of policy and immutable document provenance.
 
@@ -97,3 +100,14 @@ If postcheck fails, STOP. Do not issue a destructive schema rollback against pop
 - Real DDL execution PASS: 3 proposed audit tables, 6 guards; migration count remains 11; the SQL was not installed in prisma/migrations.
 - 19 assertions include foreign tenant and STAFF rejection, USD rejection, self-review rejection, checksum mismatch, duplicate verification/revocation denial, immutable source/events, concurrent independent reviewers (exactly one commits), and missing-credit decision denial.
 - **Not yet covered**: successful review event with a complete synthetic B2B return/CreditNote, review-vs-revocation/Invoice status race, original document byte authentication. CI success does not authorize any actual Staging SQL application.
+
+
+## Extended CI approval/race/Prisma evidence — 2026-11-12
+
+- PR #161, GitHub Actions #1160 job 131015130268: full workflow SUCCESS.
+- Existing 19 CI evidence/immutability assertions PASS, plus 19 additional cases with **fully synthetic seller/buyer order, PO receipt, inspected returns, CreditNote DRAFT quantity line**, review audit and concurrent evidence revocation.
+- Deterministic race A: evidence revocation commits first, waiting review **fails**, no approval audit inserted. Race B: review audit commits first and later evidence revocation succeeds; historical review is preserved but no financial posting or status transition becomes allowed.
+- Original Invoice snapshot changed after DRAFT creation causes review rejection; currency mismatch, self-review, accounting maker self-signoff, foreign seller and over-original-total cases reject before first legitimate approval, to prevent unique-index failures hiding authorization bugs.
+- Prisma 7 db pull --print introspects the proposed ledger tables and relation fields from disposable PostgreSQL; original prisma/schema.prisma was not modified. This is **an introspection rehearsal, not an approved Prisma model/migration implementation**.
+- New audit tables exist only in throwaway CI PostgreSQL; Neon Staging remains **stordex-staging** / **dry-feather-14704968**, branch **staging** / **br-sparkling-boat-ao9nrctp**, database **neondb**. Unapplied SQL is still outside prisma/migrations.
+- Unresolved: original invoice bytes cannot be authenticated by database hash shape; need private source-document verification, authentic reviewer identity and source timestamp, live concurrency test for Invoice edits, defined policy for revoking evidence after accepted audit and future real financial issuance. This is NOT permission to migrate or issue.
