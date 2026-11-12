@@ -91,3 +91,10 @@ jobs:
 
       - name: Rehearse synthetic CreditNote review and evidence revocation races in CI ONLY
         run: node scripts/ci-rehearse-credit-migration12-approval.mjs
+
+      - name: Introspect unapproved audit schema with Prisma 7 on disposable CI DB ONLY
+        run: |
+          set -euo pipefail
+          npx prisma db pull --print > "$RUNNER_TEMP/stordex-credit-m12-introspected.prisma"
+          node scripts/ci-check-credit-migration12-introspection.mjs "$RUNNER_TEMP/stordex-credit-m12-introspected.prisma"
+          git diff --exit-code -- prisma/schema.prisma
