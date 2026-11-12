@@ -128,6 +128,7 @@ export function assessCreditApprovalReadiness(
   if (currency.invoiceId !== invoice.id ||
       currency.sellerTenantId !== invoice.sellerTenantId ||
       currency.invoiceStatus !== invoice.status ||
+      !sha256(currency.trustedInvoiceSnapshotSha256) ||
       currency.trustedInvoiceSnapshotSha256.toLowerCase() !==
         invoice.trustedInvoiceSnapshotSha256.toLowerCase()) {
     return fail("INVOICE_SNAPSHOT_MISMATCH");
