@@ -37,8 +37,9 @@ Baseline: 29 public tables, **11** completed Prisma migrations, 1 historical VOI
 - [x] Read source schema and current staging baseline.
 - [x] Author draft SQL **outside** prisma/migrations.
 - [x] Author read-only source preflight and post-migration checks.
-- [ ] CI static guards, typecheck and tests PASS.
-- [ ] DB-specific DDL rehearsal on disposable PostgreSQL (NOT Staging).
+- [x] CI static guards, typecheck, tests, build and dependency audit PASS (GitHub Actions #1146).
+- [x] Initial draft DDL/security and concurrent-evidence-review rehearsal PASS on disposable PostgreSQL 16 (CI #1146: 3 tables, 6 triggers, 19 assertions).
+- [ ] Full synthetic B2B CreditNote approval success and verify-vs-revoke/Invoice mutation races still need disposable PostgreSQL tests before authorizing a real migration.
 - [ ] Finalize model relations in prisma/schema.prisma **in a separately authorized real-migration PR**.
 - [ ] Accounting review of policy and immutable document provenance.
 
@@ -86,3 +87,13 @@ If postcheck fails, STOP. Do not issue a destructive schema rollback against pop
 **For this actual 12th migration, once approved: one fresh encrypted source backup + one independent Restore + one disposable migration rehearsal;** additional restoration exercises only on failures or if the source changes materially before apply. No new backup/Restore for every source-only PR or preview UAT. Future schema-changing migrations may need their own fresh single pair.
 
 **Current status: only Gate A SQL and runbook drafting.** No backup created, Restore run, database migration applied, flag enabled, financial adjustment, or Production work.
+
+
+## Disposable PostgreSQL CI rehearsal evidence — 2026-11-12
+
+- PR #160, GitHub Actions run #1146, job 131008268683: SUCCESS.
+- PostgreSQL 16 disposable service on localhost:5432/stordex. Source: only 11 committed Prisma migrations. The service is destroyed after the job.
+- Runner: scripts/ci-rehearse-credit-migration12.mjs, blocked outside CI=true/GITHUB_ACTIONS=true/APP_ENV=ci and exact localhost PostgreSQL identity.
+- Real DDL execution PASS: 3 proposed audit tables, 6 guards; migration count remains 11; the SQL was not installed in prisma/migrations.
+- 19 assertions include foreign tenant and STAFF rejection, USD rejection, self-review rejection, checksum mismatch, duplicate verification/revocation denial, immutable source/events, concurrent independent reviewers (exactly one commits), and missing-credit decision denial.
+- **Not yet covered**: successful review event with a complete synthetic B2B return/CreditNote, review-vs-revocation/Invoice status race, original document byte authentication. CI success does not authorize any actual Staging SQL application.
