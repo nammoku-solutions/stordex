@@ -282,7 +282,7 @@ BEGIN
   END IF;
   SELECT * INTO evidence FROM "B2BInvoiceCurrencyEvidence"
     WHERE id=NEW."evidenceId" AND "sellerTenantId"=NEW."sellerTenantId"
-      AND "invoiceId"=NEW."invoiceId" FOR SHARE;
+      AND "invoiceId"=NEW."invoiceId" FOR UPDATE;
   IF NOT FOUND OR NEW."invoiceSnapshotSha256" IS DISTINCT FROM
       evidence."invoiceSnapshotSha256" THEN
     RAISE EXCEPTION 'Review invoice hash/evidence mismatch';
