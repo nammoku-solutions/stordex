@@ -277,8 +277,13 @@ BEGIN
   SELECT * INTO original_invoice FROM "Invoice"
     WHERE id=NEW."invoiceId" AND "tenantId"=NEW."sellerTenantId" FOR SHARE;
   IF NOT FOUND OR original_invoice.status NOT IN ('ISSUED','PAID') OR
+     original_invoice.subtotal IS DISTINCT FROM credit."originalInvoiceSubtotal" OR
+     original_invoice.tax IS DISTINCT FROM credit."originalInvoiceTax" OR
+     original_invoice.total IS DISTINCT FROM credit."originalInvoiceTotal" OR
+     original_invoice."taxRate" IS DISTINCT FROM credit."originalInvoiceTaxRate" OR
+     original_invoice."taxPerOrder" IS DISTINCT FROM credit."originalInvoiceTaxPerOrder" OR
      NEW."candidateTotal" > original_invoice.total THEN
-    RAISE EXCEPTION 'Review amount exceeds original issued invoice';
+    RAISE EXCEPTION 'Credit review requires unchanged issued invoice financial snapshot and cap';
   END IF;
   SELECT * INTO evidence FROM "B2BInvoiceCurrencyEvidence"
     WHERE id=NEW."evidenceId" AND "sellerTenantId"=NEW."sellerTenantId"
