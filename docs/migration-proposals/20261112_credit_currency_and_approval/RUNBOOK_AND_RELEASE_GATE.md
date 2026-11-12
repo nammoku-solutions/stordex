@@ -42,7 +42,9 @@ Baseline: 29 public tables, **11** completed Prisma migrations, 1 historical VOI
 - [x] Synthetic buyer/seller order, inspected return, DRAFT allocation and non-posting CreditNote review event; review-before-revoke and revoke-before-review concurrency (GitHub Actions #1160).
 - [x] Stale original Invoice financial snapshot, seller maker/checker, accounting signoff, cross-tenant and over-original-amount rejection in disposable PostgreSQL (GitHub Actions #1160).
 - [x] Prisma 7 CLI introspection of all 3 new models/relations on disposable PostgreSQL, WITHOUT modifying prisma/schema.prisma (GitHub Actions #1160).
-- [ ] Still outstanding before real Staging migration approval: **actual verified source document byte hash / protected storage**; deterministic Invoice-update-vs-review race and full source invariant locking; final reviewed Prisma schema/migration pair and independent security/accounting signoff.
+- [x] CI-only Invoice UPDATE-vs-review race test, expected financial snapshot invalidation, and CANCELLED Invoice rejection added (#162, subject to CI).
+- [x] Pure canonical server-side Invoice/Order/OrderItem financial snapshot hash and trust-bound file byte/digest comparison with unit tests added (#162, subject to CI).
+- [ ] Still outstanding before real Staging migration approval: **authenticated original invoice bytes in protected immutable storage**, evidence uploader/reviewer authorization, real Prisma model/migration pair, and accounting/security signoff. Neither hash comparison nor historical acceptance authorizes issuing money.
 - [ ] Finalize model relations in prisma/schema.prisma **in a separately authorized real-migration PR**.
 - [ ] Accounting review of policy and immutable document provenance.
 
@@ -111,3 +113,10 @@ If postcheck fails, STOP. Do not issue a destructive schema rollback against pop
 - Prisma 7 db pull --print introspects the proposed ledger tables and relation fields from disposable PostgreSQL; original prisma/schema.prisma was not modified. This is **an introspection rehearsal, not an approved Prisma model/migration implementation**.
 - New audit tables exist only in throwaway CI PostgreSQL; Neon Staging remains **stordex-staging** / **dry-feather-14704968**, branch **staging** / **br-sparkling-boat-ao9nrctp**, database **neondb**. Unapplied SQL is still outside prisma/migrations.
 - Unresolved: original invoice bytes cannot be authenticated by database hash shape; need private source-document verification, authentic reviewer identity and source timestamp, live concurrency test for Invoice edits, defined policy for revoking evidence after accepted audit and future real financial issuance. This is NOT permission to migrate or issue.
+
+
+## Invoice fingerprint and source-update race extension
+
+- See `SOURCE_INTEGRITY_DESIGN.md` for the v1 deterministic financial fingerprint and private-file byte digest match contract. They are pure functions; no approved evidence exists on Staging.
+- The CI extension distinguishes Invoice-change-wins (blocked review), review-wins (later Invoice edit invalidates any prospective issue), and cancellation (blocked review) on disposable PostgreSQL only. The accepted audit is historical, NOT posting permission.
+- No changes to prisma/schema.prisma or real Prisma migrations. All six Staging B2B flags remain OFF. The 12th migration SQL proposal remains unapproved and outside automatic migration discovery.

@@ -345,6 +345,97 @@ try {
     await Promise.all([approve.end(),revoke.end()]);
   }
 
+  // Race C: an Invoice financial update commits before a review can take a
+  // SHARE lock. The review must reject the stale immutable CreditNote snapshot.
+  const invoiceChangedFirst=await syntheticReturnCredit(23,1);
+  const changing=await connection(),reviewing=await connection();
+  try {
+    await changing.query("BEGIN");
+    await changing.query(
+      'UPDATE "Invoice" SET subtotal=4397,total=4837 WHERE id=$1',
+      [invoiceId],
+    );
+    const pending=assert.rejects(
+      reviewing.query(insertApproval,approvalArgs(23,invoiceChangedFirst)),
+      /Credit review requires unchanged issued invoice financial snapshot and cap/,
+      "review must fail after concurrent Invoice amount change commits",
+    );
+    await changing.query("COMMIT");
+    await pending;
+    assertions++;
+    await checkScalar(
+      'SELECT count(*)::int AS v FROM "B2BCreditApprovalReviewEvent" WHERE "creditNoteId"=$1',
+      [invoiceChangedFirst.credit],0,
+      "stale source update cannot create a review event",
+    );
+    await client.query(
+      'UPDATE "Invoice" SET subtotal=4400,total=4840 WHERE id=$1',
+      [invoiceId],
+    );
+  } finally {
+    await changing.query("ROLLBACK").catch(()=>{});
+    await Promise.all([changing.end(),reviewing.end()]);
+  }
+
+  // Race D: a review first pins the original Invoice snapshot FOR SHARE.
+  // Concurrent editing the Invoice must wait (and fail lock_timeout in this
+  // deterministic CI check), rather than interleave in the review.
+  const reviewedFirst=await syntheticReturnCredit(24,1);
+  const reviewingFirst=await connection(),editingLater=await connection();
+  try {
+    await reviewingFirst.query("BEGIN");
+    await reviewingFirst.query(
+      'SELECT id FROM "Invoice" WHERE id=$1 FOR SHARE',
+      [invoiceId],
+    );
+    await reviewingFirst.query(insertApproval,approvalArgs(24,reviewedFirst));
+    await editingLater.query("SET lock_timeout='300ms'");
+    await assert.rejects(
+      editingLater.query(
+        'UPDATE "Invoice" SET subtotal=4395,total=4835 WHERE id=$1',
+        [invoiceId],
+      ),
+      error => error?.code==="55P03",
+      "concurrent Invoice edit must be blocked until review commit",
+    );
+    assertions++;
+    await reviewingFirst.query("COMMIT");
+    await checkScalar(
+      'SELECT count(*)::int AS v FROM "B2BCreditApprovalReviewEvent" WHERE "creditNoteId"=$1',
+      [reviewedFirst.credit],1,
+      "review-first immutable audit persists before invoice edits",
+    );
+    await client.query(
+      'UPDATE "Invoice" SET subtotal=4395,total=4835 WHERE id=$1',
+      [invoiceId],
+    );
+    await checkScalar(
+      'SELECT count(*)::int AS v FROM "B2BCreditNote" cn JOIN "Invoice" i '+
+      'ON i.id=cn."originalInvoiceId" WHERE cn.id=$1 '+
+      'AND (cn."originalInvoiceSubtotal"<>i.subtotal OR '+
+      'cn."originalInvoiceTotal"<>i.total)',
+      [reviewedFirst.credit],1,
+      "later Invoice edit invalidates previous approval for any future posting",
+    );
+    await client.query(
+      'UPDATE "Invoice" SET subtotal=4400,total=4840 WHERE id=$1',
+      [invoiceId],
+    );
+  } finally {
+    await reviewingFirst.query("ROLLBACK").catch(()=>{});
+    await Promise.all([reviewingFirst.end(),editingLater.end()]);
+  }
+
+  // Status-only changes are equally sensitive for future monetary posting.
+  const statusChanged=await syntheticReturnCredit(25,1);
+  await client.query('UPDATE "Invoice" SET status=\'CANCELLED\' WHERE id=$1',[invoiceId]);
+  await reject(
+    insertApproval,approvalArgs(25,statusChanged),
+    "cancelled original Invoice must block a new review",
+    /Credit review requires unchanged issued invoice financial snapshot and cap/,
+  );
+  await client.query('UPDATE "Invoice" SET status=\'ISSUED\' WHERE id=$1',[invoiceId]);
+
   // No real invoice posting or stored money is allowed; source invoice cap
   // and immutable original-value snapshots remain separate approval gates.
   await checkScalar(
