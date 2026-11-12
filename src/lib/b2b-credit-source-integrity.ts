@@ -79,7 +79,7 @@ export function computeOriginalInvoiceFinancialFingerprint(
   }
   if (!Array.isArray(source.orders) ||
       source.orders.length === 0 || source.orders.length > 200 ||
-      source.orders.some(x => !Array.isArray(x.lines) || x.lines.length === 0 ||
+      source.orders.some(x => !x || !Array.isArray(x.lines) || x.lines.length === 0 ||
         x.lines.length > 500)) {
     return fail("INCOMPLETE_SOURCE");
   }
@@ -120,7 +120,10 @@ export function computeOriginalInvoiceFinancialFingerprint(
     subtotal+=order.subtotal;
     orderTax+=order.tax;
     sumGross+=order.total;
-    lines.sort((a,b)=>String(a[0]).localeCompare(String(b[0]),"en"));
+    lines.sort((a,b) => {
+      const left=String(a[0]),right=String(b[0]);
+      return left < right ? -1 : left > right ? 1 : 0;
+    });
     canonical.push([
       order.orderId,order.sellerTenantId,order.subtotal,order.tax,
       order.total,order.taxRate,lines,
@@ -132,7 +135,10 @@ export function computeOriginalInvoiceFinancialFingerprint(
   } else if (Math.floor(source.subtotal*source.taxRate/100)!==source.tax) {
     return fail("TAX_MISMATCH");
   }
-  canonical.sort((a,b)=>String(a[0]).localeCompare(String(b[0]),"en"));
+  canonical.sort((a,b) => {
+    const left=String(a[0]),right=String(b[0]);
+    return left < right ? -1 : left > right ? 1 : 0;
+  });
   const payload=JSON.stringify([
     "STORDEX_INVOICE_FINANCIAL_SOURCE_V1",
     source.invoiceId,source.sellerTenantId,source.invoiceNumber,
