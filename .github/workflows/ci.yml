@@ -97,4 +97,7 @@ jobs:
           set -euo pipefail
           npx prisma db pull --print > "$RUNNER_TEMP/stordex-credit-m12-introspected.prisma"
           node scripts/ci-check-credit-migration12-introspection.mjs "$RUNNER_TEMP/stordex-credit-m12-introspected.prisma"
+          node scripts/ci-validate-credit-m12-prisma-candidate.mjs "$RUNNER_TEMP/stordex-credit-m12-introspected.prisma"
+          npx prisma validate --schema "$RUNNER_TEMP/stordex-credit-m12-introspected.prisma"
+          npx prisma migrate diff --from-config-datasource --to-schema "$RUNNER_TEMP/stordex-credit-m12-introspected.prisma" --exit-code
           git diff --exit-code -- prisma/schema.prisma
