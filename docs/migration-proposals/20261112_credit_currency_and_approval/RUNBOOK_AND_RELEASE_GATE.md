@@ -12,14 +12,14 @@ Prepared: 2026-11-12. Scope: original invoice JPY evidence, immutable evidence d
 
 Production is the future AWS Tokyo rollout, not either Neon branch named production. No Production changes here. The source Neon Staging staging branch is NOT the default/root production branch in the source project; every command must explicitly select source project ID, branch ID and database.
 
-Baseline: 29 public tables, **11** completed Prisma migrations, 1 historical VOID CreditNote, 1 immutable VOID audit event, 2 released inspected units, 0 active credit allocation, original invoice I-202611-0001 at JPY 4,840, 24 inventory movements, buyer stock 36, seller stock 138. All six Staging B2B feature switches OFF.
+Baseline: 29 public tables, **11** completed Prisma migrations, 1 historical VOID CreditNote, 1 immutable VOID audit event, and 2 active units in one new amount-free DRAFT after the two-unit Staging reallocation UAT, original invoice I-202611-0001 at JPY 4,840, 24 inventory movements, buyer stock 36, seller stock 138. All six Staging B2B feature switches OFF.
 
 ## What the proposed SQL DOES / does NOT do
 
 - Source draft file: 001_additive_schema_DRAFT_DO_NOT_APPLY.sql, stored under docs/migration-proposals, explicitly NOT under prisma/migrations and not discoverable by prisma migrate deploy.
 - Three new tables: B2BInvoiceCurrencyEvidence, B2BInvoiceCurrencyEvidenceEvent, B2BCreditApprovalReviewEvent.
 - Only additive composite unique indexes on existing parent tables for tenant-aware foreign keys; original 29 tables' existing rows are not rewritten.
-- New immutable evidence/evidence-decision/review audit tables. Verification, rejection and revocation are events, not mutable status columns. A reviewer must be a DIFFERENT active-seller OWNER/ADMIN from the submitter. An approval reviewer and accounting verifier must be DIFFERENT from the CreditNote maker. Trigger uses parent-row locks to serialize evidence revocation against prospective reviews.
+- New immutable evidence/evidence-decision/review audit tables. A submission stores the seller/invoice-scoped object key, exact S3 version ID, byte length and SHA-256 without claiming a currency. Only a separate VERIFIED event records observed JPY; rejection and revocation cannot assert verified currency. Verification, rejection and revocation are events, not mutable status columns. A reviewer must be a DIFFERENT active-seller OWNER/ADMIN from the submitter. An approval reviewer and accounting verifier must be DIFFERENT from the CreditNote maker. Trigger uses parent-row locks to serialize evidence revocation against prospective reviews.
 - Proposed review amounts and hashes are *future hypothetical audit payloads*, not an application approval action. There is no server writer/route/form in this PR.
 - **Keep existing B2BCreditNote DRAFT-or-VOID-only check and VOID audit trigger intact.** No new issued/approved credit status. No invoice update, refund, settlement, inventory change, or payment.
 - The database can validate digest shape and referential integrity, **not cryptographically prove original bytes were reviewed**. Future authenticated storage/inspection and trusted hash recomputation are required.

@@ -64,6 +64,16 @@ describe("migration 12 is a DESIGN PROPOSAL, never an applied migration", () => 
     expect(source).toContain('ON "B2BCreditApprovalReviewEvent"("creditNoteId","invoiceId","sellerTenantId")');
   });
 
+  it("separates the immutable storage receipt from independently observed currency", () => {
+    const header = source.split('CREATE TABLE "B2BInvoiceCurrencyEvidenceEvent"')[0];
+    expect(header).toContain('"documentVersionId" TEXT NOT NULL');
+    expect(header).toContain('"documentByteLength" INTEGER NOT NULL');
+    expect(header).toContain('ON "B2BInvoiceCurrencyEvidence"("documentObjectRef","documentVersionId")');
+    expect(header).not.toContain("documentExplicitCurrencyCode");
+    expect(source).toContain('"observedCurrencyCode" IS NOT DISTINCT FROM \'JPY\'');
+    expect(source).toContain('"observedCurrencyCode" IS NULL');
+  });
+
   it("has separate source-only and after-approval read-only checks", () => {
     expect(preflight).toContain("dry-feather-14704968");
     expect(preflight).toContain("br-sparkling-boat-ao9nrctp");
