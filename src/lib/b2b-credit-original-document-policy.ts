@@ -46,8 +46,8 @@ const refuse=(reason:Extract<OriginalInvoiceUploadDecision,{accepted:false}>["re
 
 function looksLikePdf(bytes:Uint8Array):boolean {
   if(bytes.length<16 || bytes.length>MAX_BYTES) return false;
-  const start=Buffer.from(bytes.subarray(0,8)).toString("ascii");
-  if(!/^%PDF-(?:1\.[0-7]|2\.0)\n?/.test(start))return false;
+  const start=Buffer.from(bytes.subarray(0,10)).toString("ascii");
+  if(!/^%PDF-(?:1\.[0-7]|2\.0)\r?\n/.test(start))return false;
   // A PDF can contain arbitrary binary content before its EOF marker.
   // Only allow ASCII whitespace after the final %%EOF marker.
   const tail=Buffer.from(bytes.subarray(Math.max(0,bytes.length-2048)))
