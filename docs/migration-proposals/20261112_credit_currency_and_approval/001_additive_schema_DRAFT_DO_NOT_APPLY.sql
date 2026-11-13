@@ -53,7 +53,8 @@ CREATE TABLE "B2BInvoiceCurrencyEvidence" (
       "documentObjectRef" ~ '^b2b-credit-evidence/[A-Za-z0-9_-]{3,128}/[A-Za-z0-9_-]{3,128}/[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}[.]pdf$'
     ),
   CONSTRAINT "B2BInvoiceCurrencyEvidence_version_check"
-    CHECK ("documentVersionId" <> 'null' AND "documentVersionId" COLLATE "C" ~ '^[!-~]{1,1024}$'),
+    CHECK (length("documentVersionId") BETWEEN 1 AND 1024 AND
+           "documentVersionId" <> 'null' AND "documentVersionId" COLLATE "C" !~ '[^!-~]'),
   CONSTRAINT "B2BInvoiceCurrencyEvidence_document_length_check"
     CHECK ("documentByteLength" BETWEEN 1 AND 10485760),
   CONSTRAINT "B2BInvoiceCurrencyEvidence_invoice_number_check"
