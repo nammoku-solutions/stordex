@@ -103,12 +103,18 @@ CREATE TABLE "B2BInvoiceCurrencyEvidenceEvent" (
     FOREIGN KEY ("reviewerUserId","sellerTenantId")
     REFERENCES "User"("id","tenantId") ON DELETE RESTRICT ON UPDATE RESTRICT
 );
+-- Expression uniqueness preserves one initial VERIFIED/REJECTED decision plus
+-- one later REVOKED event. Prisma treats a column-level partial @unique as
+-- one-to-one even though multiple event records must exist; expression indexes
+-- remain database-enforced without falsely narrowing the Prisma relationship.
 CREATE UNIQUE INDEX "B2BInvoiceCurrencyEvidenceEvent_result_once_idx"
-  ON "B2BInvoiceCurrencyEvidenceEvent"("evidenceId")
-  WHERE "eventType" IN ('VERIFIED','REJECTED');
+  ON "B2BInvoiceCurrencyEvidenceEvent"
+    ((CASE WHEN "eventType" IN ('VERIFIED','REJECTED')
+      THEN "evidenceId" ELSE NULL END));
 CREATE UNIQUE INDEX "B2BInvoiceCurrencyEvidenceEvent_revoke_once_idx"
-  ON "B2BInvoiceCurrencyEvidenceEvent"("evidenceId")
-  WHERE "eventType" = 'REVOKED';
+  ON "B2BInvoiceCurrencyEvidenceEvent"
+    ((CASE WHEN "eventType" = 'REVOKED'
+      THEN "evidenceId" ELSE NULL END));
 CREATE INDEX "B2BInvoiceCurrencyEvidenceEvent_timeline_idx"
   ON "B2BInvoiceCurrencyEvidenceEvent"("evidenceId","createdAt","id");
 
@@ -169,6 +175,10 @@ CREATE TABLE "B2BCreditApprovalReviewEvent" (
 -- proposal requires a new CreditNote rather than mutating review history.
 CREATE UNIQUE INDEX "B2BCreditApprovalReviewEvent_decision_once_idx"
   ON "B2BCreditApprovalReviewEvent"("creditNoteId");
+-- Redundant logically (creditNoteId is already unique), but explicit composite
+-- uniqueness is required by Prisma 7 for the composite tenant-safe relation.
+CREATE UNIQUE INDEX "B2BCreditApprovalReviewEvent_credit_invoice_seller_key"
+  ON "B2BCreditApprovalReviewEvent"("creditNoteId","invoiceId","sellerTenantId");
 CREATE INDEX "B2BCreditApprovalReviewEvent_seller_invoice_idx"
   ON "B2BCreditApprovalReviewEvent"("sellerTenantId","invoiceId","createdAt");
 

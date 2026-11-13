@@ -54,6 +54,16 @@ describe("migration 12 is a DESIGN PROPOSAL, never an applied migration", () => 
     expect(source).toContain("credit.\"createdByUserId\"");
   });
 
+  it("uses DB-only expression uniqueness so VERIFIED then REVOKED remains a one-to-many audit relation", () => {
+    expect(source).toContain('CREATE UNIQUE INDEX "B2BInvoiceCurrencyEvidenceEvent_result_once_idx"');
+    expect(source).toContain('CREATE UNIQUE INDEX "B2BInvoiceCurrencyEvidenceEvent_revoke_once_idx"');
+    expect(source).toContain('(CASE WHEN "eventType" IN (\'VERIFIED\',\'REJECTED\')');
+    expect(source).toContain('(CASE WHEN "eventType" = \'REVOKED\'');
+    expect(source).not.toMatch(/ON "B2BInvoiceCurrencyEvidenceEvent"\("evidenceId"\)\s+WHERE/);
+    expect(source).toContain('CREATE UNIQUE INDEX "B2BCreditApprovalReviewEvent_credit_invoice_seller_key"');
+    expect(source).toContain('ON "B2BCreditApprovalReviewEvent"("creditNoteId","invoiceId","sellerTenantId")');
+  });
+
   it("has separate source-only and after-approval read-only checks", () => {
     expect(preflight).toContain("dry-feather-14704968");
     expect(preflight).toContain("br-sparkling-boat-ao9nrctp");
