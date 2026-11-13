@@ -10,7 +10,7 @@
 -- Source DB: neondb. CURRENTLY 29 tables, 11 migrations. PRODUCTION EXCLUDED.
 -- No financial updates; existing DRAFT/VOID-only CreditNote constraints remain.
 --
--- The SQL below is PROPOSED, not executed, not yet proven by CI PostgreSQL.
+-- Proposed only. The disposable PostgreSQL CI rehearsal does not apply it to Neon.
 -- Timestamp columns follow existing Prisma timestamp(3) convention.
 
 BEGIN;
@@ -28,8 +28,8 @@ CREATE UNIQUE INDEX "B2BCreditNote_id_invoice_seller_creditReview_key"
   ON "B2BCreditNote"("id","originalInvoiceId","sellerTenantId");
 
 -- Immutable uploaded-original evidence header. There is NO trusted source
--- document upload/verification writer in this proposal. Object keys are opaque
--- storage references and must be validated by a future private storage service.
+-- document upload/verification writer in this proposal. The private object key
+-- and exact storage version come from the trusted adapter, never the browser.
 -- One invoice may have multiple evidence versions after reject/revoke; no
 -- previous evidence may be edited or deleted. Effective state is EVENT-DERIVED.
 CREATE TABLE "B2BInvoiceCurrencyEvidence" (
@@ -38,22 +38,30 @@ CREATE TABLE "B2BInvoiceCurrencyEvidence" (
   "invoiceId" TEXT NOT NULL,
   "sourceInvoiceNumber" TEXT NOT NULL,
   "documentObjectRef" TEXT NOT NULL,
+  "documentVersionId" TEXT NOT NULL,
+  "documentByteLength" INTEGER NOT NULL,
   "documentSha256" TEXT NOT NULL,
   "invoiceSnapshotSha256" TEXT NOT NULL,
-  "documentExplicitCurrencyCode" TEXT NOT NULL,
   "submittedByUserId" TEXT NOT NULL,
   "submittedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "B2BInvoiceCurrencyEvidence_pkey" PRIMARY KEY ("id"),
   CONSTRAINT "B2BInvoiceCurrencyEvidence_docref_check"
-    CHECK (length(btrim("documentObjectRef")) BETWEEN 8 AND 1024),
+    CHECK (
+      split_part("documentObjectRef", '/', 1) = 'b2b-credit-evidence' AND
+      split_part("documentObjectRef", '/', 2) = "sellerTenantId" AND
+      split_part("documentObjectRef", '/', 3) = "invoiceId" AND
+      "documentObjectRef" ~ '^b2b-credit-evidence/[A-Za-z0-9_-]{3,128}/[A-Za-z0-9_-]{3,128}/[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}[.]pdf$'
+    ),
+  CONSTRAINT "B2BInvoiceCurrencyEvidence_version_check"
+    CHECK ("documentVersionId" <> 'null' AND "documentVersionId" COLLATE "C" ~ '^[!-~]{1,1024}$'),
+  CONSTRAINT "B2BInvoiceCurrencyEvidence_document_length_check"
+    CHECK ("documentByteLength" BETWEEN 1 AND 10485760),
   CONSTRAINT "B2BInvoiceCurrencyEvidence_invoice_number_check"
     CHECK (length(btrim("sourceInvoiceNumber")) BETWEEN 1 AND 128),
   CONSTRAINT "B2BInvoiceCurrencyEvidence_document_hash_check"
     CHECK ("documentSha256" ~ '^[a-f0-9]{64}$'),
   CONSTRAINT "B2BInvoiceCurrencyEvidence_source_hash_check"
     CHECK ("invoiceSnapshotSha256" ~ '^[a-f0-9]{64}$'),
-  CONSTRAINT "B2BInvoiceCurrencyEvidence_JPY_only_check"
-    CHECK ("documentExplicitCurrencyCode" = 'JPY'),
   CONSTRAINT "B2BInvoiceCurrencyEvidence_invoice_seller_fkey"
     FOREIGN KEY ("invoiceId","sellerTenantId")
     REFERENCES "Invoice"("id","tenantId") ON DELETE RESTRICT ON UPDATE RESTRICT,
@@ -61,6 +69,8 @@ CREATE TABLE "B2BInvoiceCurrencyEvidence" (
     FOREIGN KEY ("submittedByUserId","sellerTenantId")
     REFERENCES "User"("id","tenantId") ON DELETE RESTRICT ON UPDATE RESTRICT
 );
+CREATE UNIQUE INDEX "B2BInvoiceCurrencyEvidence_document_version_key"
+  ON "B2BInvoiceCurrencyEvidence"("documentObjectRef","documentVersionId");
 CREATE UNIQUE INDEX "B2BInvoiceCurrencyEvidence_id_invoice_seller_key"
   ON "B2BInvoiceCurrencyEvidence"("id","invoiceId","sellerTenantId");
 CREATE UNIQUE INDEX "B2BInvoiceCurrencyEvidence_id_seller_key"
@@ -69,7 +79,8 @@ CREATE INDEX "B2BInvoiceCurrencyEvidence_seller_invoice_idx"
   ON "B2BInvoiceCurrencyEvidence"("sellerTenantId","invoiceId","submittedAt");
 
 -- Reviews and revocations are EVENTS, not a mutable VERIFIED flag.
--- Initial header insertion is PENDING implicitly; review event VERIFIES or
+-- Initial header insertion is PENDING implicitly and claims no currency.
+-- Only the independent VERIFIED event records observed JPY. The event VERIFIES or
 -- REJECTS, and a later REVOKED event permanently invalidates VERIFICATION.
 -- New evidence header must be created for any replacement/re-verification.
 CREATE TABLE "B2BInvoiceCurrencyEvidenceEvent" (
@@ -80,6 +91,7 @@ CREATE TABLE "B2BInvoiceCurrencyEvidenceEvent" (
   "eventType" TEXT NOT NULL,
   "reviewerUserId" TEXT NOT NULL,
   "observedDocumentSha256" TEXT NOT NULL,
+  "observedCurrencyCode" TEXT,
   "observedInvoiceSnapshotSha256" TEXT NOT NULL,
   "reason" TEXT NOT NULL,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -87,6 +99,11 @@ CREATE TABLE "B2BInvoiceCurrencyEvidenceEvent" (
   CONSTRAINT "B2BInvoiceCurrencyEvidenceEvent_event_id_key" UNIQUE ("eventId"),
   CONSTRAINT "B2BInvoiceCurrencyEvidenceEvent_kind_check"
     CHECK ("eventType" IN ('VERIFIED','REJECTED','REVOKED')),
+  CONSTRAINT "B2BInvoiceCurrencyEvidenceEvent_observed_currency_check"
+    CHECK (
+      ("eventType" = 'VERIFIED' AND "observedCurrencyCode" IS NOT DISTINCT FROM 'JPY') OR
+      ("eventType" <> 'VERIFIED' AND "observedCurrencyCode" IS NULL)
+    ),
   CONSTRAINT "B2BInvoiceCurrencyEvidenceEvent_reason_check"
     CHECK (length(btrim("reason")) BETWEEN 8 AND 500),
   CONSTRAINT "B2BInvoiceCurrencyEvidenceEvent_eventid_uuid_check"

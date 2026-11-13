@@ -7,6 +7,7 @@
  * NOT a live migration, operational runbook or financial approval.
  */
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import pg from "pg";
@@ -68,28 +69,27 @@ async function expectRejected(query, params, hint) {
 
 function evidenceParams(id, invoice = invoiceId, submitter = maker, tenant = seller) {
   return [
-    id, tenant, invoice, "CI-INV-0001", "private://ci-original-invoice-1",
-    docSha, sha, "JPY", submitter,
+    id, tenant, invoice, "CI-INV-0001",
+    `b2b-credit-evidence/${tenant}/${invoice}/${randomUUID()}.pdf`,
+    "synthetic-version-1", 128, docSha, sha, submitter,
   ];
 }
+const insertEvidenceSQL = 'INSERT INTO "B2BInvoiceCurrencyEvidence" (' +
+  '"id","sellerTenantId","invoiceId","sourceInvoiceNumber","documentObjectRef",' +
+  '"documentVersionId","documentByteLength","documentSha256","invoiceSnapshotSha256",' +
+  '"submittedByUserId") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)';
 async function insertEvidence(id, invoice = invoiceId, submitter = maker, tenant = seller) {
-  await client.query(
-    'INSERT INTO "B2BInvoiceCurrencyEvidence" (' +
-      '"id","sellerTenantId","invoiceId","sourceInvoiceNumber","documentObjectRef",' +
-      '"documentSha256","invoiceSnapshotSha256","documentExplicitCurrencyCode",' +
-      '"submittedByUserId") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
-    evidenceParams(id, invoice, submitter, tenant),
-  );
+  await client.query(insertEvidenceSQL, evidenceParams(id, invoice, submitter, tenant));
 }
 
 function eventParams(id, evidence, actor, kind, payloadHash = docSha, tenant = seller) {
   return [base + "event-" + id, evidence, tenant, uuid(id), kind, actor, payloadHash,
-    sha, "CI independent original document verification"];
+    sha, "CI independent original document verification", kind === "VERIFIED" ? "JPY" : null];
 }
 const insertEventSQL = 'INSERT INTO "B2BInvoiceCurrencyEvidenceEvent" (' +
   '"id","evidenceId","sellerTenantId","eventId","eventType",' +
-  '"reviewerUserId","observedDocumentSha256","observedInvoiceSnapshotSha256","reason")' +
-  ' VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)';
+  '"reviewerUserId","observedDocumentSha256","observedInvoiceSnapshotSha256","reason","observedCurrencyCode")' +
+  ' VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)';
 
 try {
   await client.connect();
@@ -150,40 +150,46 @@ try {
   );
   console.log("PASS: completely synthetic seller/foreign tenants, roles and source invoice");
 
-  await insertEvidence(evidenceId);
+  const firstReceipt = evidenceParams(evidenceId);
+  await client.query(insertEvidenceSQL, firstReceipt);
   testCount++;
   await expectRejected(
-    'INSERT INTO "B2BInvoiceCurrencyEvidence" (' +
-      '"id","sellerTenantId","invoiceId","sourceInvoiceNumber","documentObjectRef",' +
-      '"documentSha256","invoiceSnapshotSha256","documentExplicitCurrencyCode",' +
-      '"submittedByUserId") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+    insertEvidenceSQL,
     evidenceParams(base + "foreign-evidence", invoiceId, foreignAdmin),
     "seller invoice must reject foreign uploader",
   );
   await expectRejected(
-    'INSERT INTO "B2BInvoiceCurrencyEvidence" (' +
-      '"id","sellerTenantId","invoiceId","sourceInvoiceNumber","documentObjectRef",' +
-      '"documentSha256","invoiceSnapshotSha256","documentExplicitCurrencyCode",' +
-      '"submittedByUserId") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+    insertEvidenceSQL,
     evidenceParams(base + "staff-evidence", invoiceId, staff),
     "seller STAFF cannot submit evidence",
   );
   await expectRejected(
-    'INSERT INTO "B2BInvoiceCurrencyEvidence" (' +
-      '"id","sellerTenantId","invoiceId","sourceInvoiceNumber","documentObjectRef",' +
-      '"documentSha256","invoiceSnapshotSha256","documentExplicitCurrencyCode",' +
-      '"submittedByUserId") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+    insertEvidenceSQL,
     evidenceParams(base + "cross-tenant-evidence", invoiceId, foreignAdmin, foreign),
     "foreign tenant cannot claim seller invoice",
   );
+  for (const [index, value, suffix, reason] of [
+    [4, "https://example.invalid/original.pdf", "public-url", "reject public URLs"],
+    [4, firstReceipt[4].replace(seller, foreign), "wrong-key", "reject a key scoped to another seller"],
+    [5, "null", "null-version", "require a versioned object"],
+    [6, 10485761, "overlarge-document", "enforce the maximum object size"],
+  ]) {
+    const params = evidenceParams(base + suffix);
+    params[index] = value;
+    await expectRejected(insertEvidenceSQL, params, reason);
+  }
   await expectRejected(
-    'INSERT INTO "B2BInvoiceCurrencyEvidence" (' +
-      '"id","sellerTenantId","invoiceId","sourceInvoiceNumber","documentObjectRef",' +
-      '"documentSha256","invoiceSnapshotSha256","documentExplicitCurrencyCode",' +
-      '"submittedByUserId") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
-    [...evidenceParams(base + "unverified-currency")].map((v, i) => i === 7 ? "USD" : v),
-    "USD evidence must fail JPY-only check",
+    insertEvidenceSQL, [base + "duplicate-storage-receipt", ...firstReceipt.slice(1)],
+    "an object key and version cannot be recorded twice",
   );
+  for (const currency of [null, "USD"]) {
+    const args = eventParams(12, evidenceId, reviewer, "VERIFIED");
+    args[9] = currency;
+    await expectRejected(insertEventSQL, args, "verification requires the reviewer to observe JPY");
+  }
+  const rejectedWithCurrency = eventParams(13, evidenceId, reviewer, "REJECTED");
+  rejectedWithCurrency[9] = "JPY";
+  await expectRejected(insertEventSQL, rejectedWithCurrency, "rejection cannot assert verified currency");
   await expectRejected(
     insertEventSQL, eventParams(1, evidenceId, maker, "VERIFIED"),
     "uploader cannot verify own evidence",

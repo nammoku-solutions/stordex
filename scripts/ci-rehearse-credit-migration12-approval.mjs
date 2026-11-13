@@ -6,6 +6,7 @@
  * An accepted AUDIT RECORD is not CreditNote approval/issuance/settlement.
  */
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import pg from "pg";
 const parsed = new URL(process.env.DATABASE_URL || "postgresql://invalid.invalid/no");
 if (
@@ -94,17 +95,17 @@ async function syntheticReturnCredit(suffix,quantity) {
   await client.query(
     'INSERT INTO "B2BInvoiceCurrencyEvidence" (' +
     '"id","sellerTenantId","invoiceId","sourceInvoiceNumber","documentObjectRef",' +
-    '"documentSha256","invoiceSnapshotSha256","documentExplicitCurrencyCode",' +
-    '"submittedByUserId") VALUES ($1,$2,$3,$4,$5,$6,$7,\'JPY\',$8)',
+    '"documentVersionId","documentByteLength","documentSha256","invoiceSnapshotSha256",' +
+    '"submittedByUserId") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
     [evidence,seller,invoiceId,"CI-INV-0001",
-      "private://original-invoice/ci-review-"+suffix,
-      documentHash,invoiceHash,maker],
+      `b2b-credit-evidence/${seller}/${invoiceId}/${randomUUID()}.pdf`,
+      "synthetic-version-1",128,documentHash,invoiceHash,maker],
   );
   await client.query(
     'INSERT INTO "B2BInvoiceCurrencyEvidenceEvent" ("id","evidenceId",' +
     '"sellerTenantId","eventId","eventType","reviewerUserId",' +
-    '"observedDocumentSha256","observedInvoiceSnapshotSha256","reason")' +
-    " VALUES ($1,$2,$3,$4,'VERIFIED',$5,$6,$7,$8)",
+    '"observedDocumentSha256","observedInvoiceSnapshotSha256","reason","observedCurrencyCode")' +
+    " VALUES ($1,$2,$3,$4,'VERIFIED',$5,$6,$7,$8,'JPY')",
     [id("approved-verified-"+suffix),evidence,seller,uid(suffix*10+3),
       checker,documentHash,invoiceHash,
       "Independently reviewed original CI invoice bytes (synthetic only)"],
