@@ -24,6 +24,16 @@ The GitHub Actions disposable postgres:16 service first applies the existing 11 
 
 This is a **candidate extraction and validation gate**, not an actual tracked Prisma migration file. PostgreSQL partial unique indexes, CHECKs, triggers and concurrency/immutability policies may not be fully represented in Prisma and require additional SQL assertions and database UAT before release.
 
+## P1012 schema compatibility issue detected and draft-only correction
+
+The first full Prisma 7 validate invocation returned P1012 twice:
+- A single-field unique index on the CreditNote review record was interpreted as a one-to-one relation even though its foreign key references a three-column seller-scoped key.
+- A partial unique index on an evidence event was interpreted as unconditional uniqueness on evidenceId; that would incorrectly prevent retaining both a VERIFIED and a later REVOKED audit event.
+
+The draft SQL now explicitly models composite uniqueness for the CreditNote/referenced Invoice/seller key and uses **expression unique indexes** for the initial verification decision and later revocation events. Expression indexes allow the correct two-event history and are enforced by PostgreSQL while avoiding a misleading Prisma one-to-one field. CI validates the resulting one-to-many event model, exact audit uniqueness, and all existing concurrency/immutability checks against disposable PostgreSQL. The extra composite unique index is logically redundant but intentionally documents a valid Prisma-representable composite reference.
+
+This correction was made only inside the unapproved SQL proposal, NOT in live Staging.
+
 ## Mandatory remaining gates
 
 - Authenticated, tenant-scoped private immutable original invoice file custody and independent JPY-document verification. A SHA-256 match on untrusted bytes and untrusted digest is NOT authenticity.
