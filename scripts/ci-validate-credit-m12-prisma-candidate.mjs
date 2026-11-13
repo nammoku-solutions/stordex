@@ -62,6 +62,14 @@ assert.match(review,/\baccountingVerifierUserId\s+String\b/);
 assert.match(review,/\bcandidateTotal\s+Int\b/);
 assert.match(model("B2BCreditNote"),/\bstatus\s+B2BCreditStatus\b/);
 assert.match(model("Invoice"),/\bstatus\s+InvoiceStatus\b/);
+// Audit-only schema metadata, no row data, credentials or private records.
+for (const [name,block] of [
+  ["B2BCreditApprovalReviewEvent",review],
+  ["B2BInvoiceCurrencyEvidenceEvent",evidenceEvent],
+]) {
+  const relationships=block.split("\n").filter(x=>/creditNoteId|evidenceId|@@unique|@unique/.test(x));
+  console.log("PRISMA_CANDIDATE_RELATIONS "+name+" "+JSON.stringify(relationships));
+}
 const digest=createHash("sha256").update(schema,"utf8").digest("hex");
 console.log("PASS: Prisma draft-only candidate schema includes all three modeled audit tables and source relationships");
 console.log("PASS: operating prisma/schema.prisma still excludes unapproved ledgers and is unchanged");
