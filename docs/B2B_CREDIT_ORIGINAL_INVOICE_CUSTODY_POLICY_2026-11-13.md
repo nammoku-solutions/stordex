@@ -36,7 +36,7 @@ The server-side S3 adapter sends writes to a configured bucket/account with an e
 
 The separate review preflight refuses the original uploader, an inactive seller or a non-manager, other tenant/invoice references, and changed/cancelled invoice sources. The reviewer supplies the invoice number and explicit currency observed in the original. Matching the exact stored version and the current financial fingerprint only makes the review ready to record. It does not record the review or set currency as verified.
 
-Tests use a fake S3 client and synthetic bytes. No cloud or browser UAT has been run for these components.
+Tests use a fake S3 client and synthetic bytes. The [AWS sandbox runbook](STORDEX_INVOICE_EVIDENCE_AWS_SANDBOX.md) contains a separate, synthetic-only CloudFormation and smoke procedure. No cloud or browser UAT has been run for these components.
 
 ## Integration and security prerequisites before a real uploader
 

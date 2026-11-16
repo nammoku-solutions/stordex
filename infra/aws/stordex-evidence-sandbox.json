@@ -1,0 +1,100 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Stordex synthetic invoice evidence sandbox. No application, database, or IAM role changes.",
+  "Resources": {
+    "SandboxKey": {
+      "Type": "AWS::KMS::Key",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "Description": "Stordex synthetic evidence sandbox only",
+        "EnableKeyRotation": true,
+        "KeyPolicy": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "EnableAccountIAM",
+              "Effect": "Allow",
+              "Principal": {"AWS": {"Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:root"}},
+              "Action": "kms:*",
+              "Resource": "*"
+            }
+          ]
+        },
+        "Tags": [{"Key": "StordexScope", "Value": "synthetic-evidence-sandbox"}]
+      }
+    },
+    "SandboxBucket": {
+      "Type": "AWS::S3::Bucket",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "BucketName": {"Fn::Sub": "stordex-evidence-sandbox-${AWS::AccountId}-${AWS::Region}"},
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "BlockPublicPolicy": true,
+          "IgnorePublicAcls": true,
+          "RestrictPublicBuckets": true
+        },
+        "OwnershipControls": {"Rules": [{"ObjectOwnership": "BucketOwnerEnforced"}]},
+        "VersioningConfiguration": {"Status": "Enabled"},
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [
+            {"ServerSideEncryptionByDefault": {"SSEAlgorithm": "aws:kms", "KMSMasterKeyID": {"Fn::GetAtt": ["SandboxKey", "Arn"]}}}
+          ]
+        },
+        "Tags": [{"Key": "StordexScope", "Value": "synthetic-evidence-sandbox"}]
+      }
+    },
+    "SandboxBucketPolicy": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": {"Ref": "SandboxBucket"},
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "RequireTLS",
+              "Effect": "Deny",
+              "Principal": "*",
+              "Action": "s3:*",
+              "Resource": [
+                {"Fn::GetAtt": ["SandboxBucket", "Arn"]},
+                {"Fn::Sub": "${SandboxBucket.Arn}/*"}
+              ],
+              "Condition": {"Bool": {"aws:SecureTransport": "false"}}
+            },
+            {
+              "Sid": "RequireConditionalCreate",
+              "Effect": "Deny",
+              "Principal": "*",
+              "Action": "s3:PutObject",
+              "Resource": {"Fn::Sub": "${SandboxBucket.Arn}/*"},
+              "Condition": {"StringNotEquals": {"s3:if-none-match": "*"}}
+            },
+            {
+              "Sid": "RequireKms",
+              "Effect": "Deny",
+              "Principal": "*",
+              "Action": "s3:PutObject",
+              "Resource": {"Fn::Sub": "${SandboxBucket.Arn}/*"},
+              "Condition": {"StringNotEquals": {"s3:x-amz-server-side-encryption": "aws:kms"}}
+            },
+            {
+              "Sid": "RequireSandboxKey",
+              "Effect": "Deny",
+              "Principal": "*",
+              "Action": "s3:PutObject",
+              "Resource": {"Fn::Sub": "${SandboxBucket.Arn}/*"},
+              "Condition": {"StringNotEquals": {"s3:x-amz-server-side-encryption-aws-kms-key-id": {"Fn::GetAtt": ["SandboxKey", "Arn"]}}}
+            }
+          ]
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "BucketName": {"Value": {"Ref": "SandboxBucket"}},
+    "KmsKeyArn": {"Value": {"Fn::GetAtt": ["SandboxKey", "Arn"]}}
+  }
+}
