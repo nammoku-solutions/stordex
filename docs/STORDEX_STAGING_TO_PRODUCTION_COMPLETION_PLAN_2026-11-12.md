@@ -34,6 +34,12 @@ Tasks for Gate 3 and Gate 4 should reuse already-merged features and existing dr
 
 **Finance product decision before posting**: for v1 record manual refund/offset instructions with explicit status and audit instead of auto-initiating bank transfers; requiring real payment provider integration is a separate scope decision. Independent tax/accounting sign-off remains required.
 
+## Staging cloud boundary
+
+- Vercel＋Neon remain the application and database hosts. Do not provision the full AWS Staging stack from Draft PR #170 for this work.
+- Start with the private, versioned synthetic-evidence S3 sandbox, one dedicated KMS key and IAM/OIDC. See [Vercel OIDC isolation](STORDEX_EVIDENCE_VERCEL_OIDC.md).
+- Use SES Sandbox when implementing notifications (#110), using only simulator or explicitly verified test recipients. Adopt an application SQS queue or EventBridge only if the same async/retry design is selected for Production; OpenNext's internal infrastructure is separate. No service is enabled by this plan.
+
 ## Implementation order and dependencies
 
 1. Gate 1 schema design and Gate 2 remaining small UAT; get explicit owner permission for EACH real Staging migration or mutable UAT.
