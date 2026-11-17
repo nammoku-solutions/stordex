@@ -1,0 +1,70 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "OIDC runtime role for the dedicated Stordex Vercel evidence staging project. Synthetic sandbox objects only.",
+  "Parameters": {
+    "VercelTeamSlug": {
+      "Type": "String",
+      "AllowedPattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+      "Description": "Vercel team slug with an existing team-issuer IAM OIDC provider."
+    },
+    "SandboxKeyId": {
+      "Type": "String",
+      "AllowedPattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "Description": "Key ID from the sandbox stack. Account and region are derived from this stack."
+    }
+  },
+  "Resources": {
+    "VercelEvidenceRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "Description": "Write and read exact versions of synthetic Stordex evidence only.",
+        "MaxSessionDuration": 3600,
+        "AssumeRolePolicyDocument": {
+          "Fn::Sub": [
+            "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Federated\":\"${ProviderArn}\"},\"Action\":\"sts:AssumeRoleWithWebIdentity\",\"Condition\":{\"StringEquals\":{\"${IssuerHostPath}:aud\":\"https://vercel.com/${VercelTeamSlug}\",\"${IssuerHostPath}:sub\":\"owner:${VercelTeamSlug}:project:stordex-evidence-staging:environment:production\"}}}]}",
+            {
+              "ProviderArn": {"Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/oidc.vercel.com/${VercelTeamSlug}"},
+              "IssuerHostPath": {"Fn::Sub": "oidc.vercel.com/${VercelTeamSlug}"}
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "StordexSyntheticEvidenceSandboxOnly",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Sid": "InspectSandboxSettings",
+                  "Effect": "Allow",
+                  "Action": ["s3:GetBucketTagging", "s3:GetBucketPublicAccessBlock", "s3:GetBucketVersioning", "s3:GetBucketOwnershipControls", "s3:GetEncryptionConfiguration"],
+                  "Resource": {"Fn::Sub": "arn:${AWS::Partition}:s3:::stordex-evidence-sandbox-${AWS::AccountId}-${AWS::Region}"}
+                },
+                {
+                  "Sid": "WriteAndReadSyntheticVersions",
+                  "Effect": "Allow",
+                  "Action": ["s3:PutObject", "s3:GetObjectVersion"],
+                  "Resource": {"Fn::Sub": "arn:${AWS::Partition}:s3:::stordex-evidence-sandbox-${AWS::AccountId}-${AWS::Region}/b2b-credit-evidence/uat-synthetic-seller/uat-synthetic-invoice/*"}
+                },
+                {
+                  "Sid": "UseSandboxKeyThroughS3Only",
+                  "Effect": "Allow",
+                  "Action": ["kms:GenerateDataKey", "kms:Decrypt"],
+                  "Resource": {"Fn::Sub": "arn:${AWS::Partition}:kms:${AWS::Region}:${AWS::AccountId}:key/${SandboxKeyId}"},
+                  "Condition": {
+                    "StringEquals": {"kms:ViaService": {"Fn::Sub": "s3.${AWS::Region}.${AWS::URLSuffix}"}},
+                    "StringLike": {
+                      "kms:EncryptionContext:aws:s3:arn": {"Fn::Sub": "arn:${AWS::Partition}:s3:::stordex-evidence-sandbox-${AWS::AccountId}-${AWS::Region}/b2b-credit-evidence/uat-synthetic-seller/uat-synthetic-invoice/*"}
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "Tags": [{"Key": "StordexScope", "Value": "synthetic-evidence-sandbox"}]
+      }
+    }
+  },
+  "Outputs": {"VercelRoleArn": {"Value": {"Fn::GetAtt": ["VercelEvidenceRole", "Arn"]}}}
+}
