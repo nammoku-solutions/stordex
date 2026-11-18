@@ -13,7 +13,7 @@ import {
 
 type Input = Parameters<typeof prepareAuthenticatedOriginalInvoiceDocument>[0];
 type PrivateStorage = Pick<ReturnType<typeof createOriginalInvoicePrivateStorage>, "put">;
-type Inspection =
+export type OriginalInvoiceInspection =
   | Readonly<{ verdict: "CLEAN"; inspectedSha256: string }>
   | Readonly<{ verdict: "BLOCKED" | "UNAVAILABLE" }>;
 
@@ -22,7 +22,7 @@ const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest(
 export async function storeInspectedOriginalInvoice(
   input: Input,
   dependencies: Readonly<{
-    inspectPdf: (bytes: Uint8Array) => Promise<Inspection>;
+    inspectPdf: (bytes: Uint8Array) => Promise<OriginalInvoiceInspection>;
     storage: PrivateStorage;
   }>,
 ) {
