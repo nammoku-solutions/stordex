@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { prepareAuthenticatedOriginalInvoiceDocument as prepare } from "./b2b-credit-original-document-source";
+import {
+  prepareAuthenticatedOriginalInvoiceDocument as prepare,
+  prepareAuthenticatedOriginalInvoiceReview as review,
+} from "./b2b-credit-original-document-source";
 
 const mocks = vi.hoisted(() => ({
   session: vi.fn(), user: vi.fn(), invoice: vi.fn(), transaction: vi.fn(),
@@ -23,17 +26,16 @@ const input = () => ({
   bytes: new TextEncoder().encode("%PDF-1.7\n1 0 obj\nendobj\n%%EOF\n"),
 });
 
-describe("authenticated original invoice source preparation", () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-    mocks.session.mockResolvedValue({ user: actor });
-    mocks.user.mockResolvedValue(actor);
-    mocks.invoice.mockResolvedValue(invoice());
-    mocks.transaction.mockImplementation((callback) => callback({
-      user: { findFirst: mocks.user }, invoice: { findFirst: mocks.invoice },
-    }));
-  });
+const tx = { user: { findFirst: mocks.user }, invoice: { findFirst: mocks.invoice } };
+beforeEach(() => {
+  vi.resetAllMocks();
+  mocks.session.mockResolvedValue({ user: actor });
+  mocks.user.mockResolvedValue(actor);
+  mocks.invoice.mockResolvedValue(invoice());
+  mocks.transaction.mockImplementation(callback => callback(tx));
+});
 
+describe("authenticated original invoice source preparation", () => {
   it("uses server identity, current DB membership, and a tenant-scoped read snapshot", async () => {
     const first = await prepare({ ...input(), ...{ tenantId: "tenant-b", snapshotSha256: "browser-hash" } });
     const second = await prepare(input());
@@ -49,6 +51,8 @@ describe("authenticated original invoice source preparation", () => {
     expect(first).toMatchObject({
       accepted: true, proposedPrivateObjectKey: expect.stringContaining("/tenant-a/invoice-one/"),
       sourceSnapshotSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+      sellerTenantId: actor.tenantId, invoiceId: "invoice-one", sourceInvoiceNumber: "INV-01",
+      submittedByUserId: actor.id,
       sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
       storageCompleted: false, independentReviewCompleted: false,
       currencyVerified: false, financialPostingAllowed: false,
@@ -107,5 +111,103 @@ describe("authenticated original invoice source preparation", () => {
     await expect(prepare({ ...input(), mimeType: "text/html" })).resolves.toMatchObject({
       accepted: false, reason: "INVALID_CONTENT_TYPE",
     });
+  });
+});
+
+async function reviewFixture() {
+  const upload = await prepare(input());
+  if (!upload.accepted) throw new Error("invalid test invoice");
+  const evidence = {
+    id: "evidence-one", invoiceId: upload.invoiceId, sellerTenantId: actor.tenantId,
+    sourceInvoiceNumber: upload.sourceInvoiceNumber, submittedByUserId: "user-other",
+    invoiceSnapshotSha256: upload.sourceSnapshotSha256, documentObjectRef: upload.proposedPrivateObjectKey,
+    documentVersionId: "stored-v1", documentSha256: upload.sha256, documentByteLength: upload.byteLength,
+    hasDecision: false,
+  };
+  return {
+    evidence,
+    request: {
+      invoiceId: evidence.invoiceId, evidenceId: evidence.id,
+      inspectedVersionId: evidence.documentVersionId, inspectedDocumentSha256: evidence.documentSha256,
+      observation: { originalInvoiceNumber: "INV-01", explicitCurrency: "JPY", inspectedOriginal: true },
+    },
+    deps: {
+      readEvidence: vi.fn().mockResolvedValue(evidence),
+      readStoredVersion: vi.fn().mockResolvedValue(input().bytes),
+    },
+  };
+}
+
+describe("authenticated independent review preparation", () => {
+  it("reads seller-scoped pending evidence in the source transaction, then reads the exact stored version outside it", async () => {
+    const { evidence, request, deps } = await reviewFixture();
+    let inTransaction = false;
+    mocks.transaction.mockImplementationOnce(async callback => {
+      inTransaction = true;
+      try { return await callback(tx); } finally { inTransaction = false; }
+    });
+    deps.readEvidence.mockImplementationOnce(async () => {
+      expect(inTransaction).toBe(true);
+      return evidence;
+    });
+    deps.readStoredVersion.mockImplementationOnce(async () => {
+      expect(inTransaction).toBe(false);
+      return input().bytes;
+    });
+    const forgedFields = { reviewerUserId: "user-other", tenantId: "tenant-b", documentObjectRef: "browser-supplied-key" };
+    await expect(review({ ...request, ...forgedFields }, deps)).resolves.toEqual({
+      ready: true, observedDocumentSha256: evidence.documentSha256,
+      observedInvoiceSnapshotSha256: evidence.invoiceSnapshotSha256,
+      reviewRecorded: false, currencyVerified: false, financialPostingAllowed: false,
+    });
+    expect(deps.readEvidence).toHaveBeenCalledWith(tx, {
+      evidenceId: evidence.id, invoiceId: evidence.invoiceId, sellerTenantId: actor.tenantId,
+    });
+    expect(deps.readStoredVersion).toHaveBeenCalledWith(
+      { invoiceId: evidence.invoiceId, sellerTenantId: actor.tenantId },
+      expect.objectContaining({ key: evidence.documentObjectRef, versionId: evidence.documentVersionId }),
+    );
+  });
+
+  it("stops an invalid id or a revoked role before the ledger or storage is called", async () => {
+    const { request, deps } = await reviewFixture();
+    await expect(review({ ...request, evidenceId: "../evidence" }, deps)).resolves.toMatchObject({ ready: false });
+    mocks.user.mockResolvedValueOnce({ ...actor, role: "STAFF" });
+    await expect(review(request, deps)).resolves.toEqual({ ready: false, reason: "REVIEW_UNAVAILABLE" });
+    expect(deps.readEvidence).not.toHaveBeenCalled();
+    expect(deps.readStoredVersion).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { id: "evidence-other" }, { sellerTenantId: "tenant-b" }, { invoiceId: "invoice-other" },
+    { submittedByUserId: actor.id }, { hasDecision: true }, { hasDecision: undefined },
+    { invoiceSnapshotSha256: "b".repeat(64) }, { sourceInvoiceNumber: "INV-02" },
+    { documentVersionId: "null" }, { documentByteLength: 10 * 1024 * 1024 + 1 },
+    { documentObjectRef: "b2b-credit-evidence/tenant-b/invoice-one/3cf2815e-13ee-49d0-a3e4-077d4a28894e.pdf" },
+  ])("rejects out-of-scope, stale, decided or malformed ledger records without S3 access", async override => {
+    const { evidence, request, deps } = await reviewFixture();
+    deps.readEvidence.mockResolvedValueOnce({ ...evidence, ...override });
+    await expect(review(request, deps)).resolves.toEqual({ ready: false, reason: "REVIEW_UNAVAILABLE" });
+    expect(deps.readStoredVersion).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { inspectedVersionId: "old-version" }, { inspectedDocumentSha256: "b".repeat(64) },
+    { observation: { originalInvoiceNumber: "INV-01", explicitCurrency: "USD", inspectedOriginal: true } },
+  ])("won't substitute a different version, bytes, or currency for the reviewer's observations", async override => {
+    const { request, deps } = await reviewFixture();
+    await expect(review({ ...request, ...override }, deps)).resolves.toEqual({
+      ready: false, reason: "OBSERVATION_MISMATCH",
+    });
+    expect(deps.readStoredVersion).not.toHaveBeenCalled();
+  });
+
+  it("never verifies corrupted or absent document bytes", async () => {
+    const { request, deps } = await reviewFixture();
+    deps.readStoredVersion.mockResolvedValueOnce(new Uint8Array(input().bytes.byteLength));
+    await expect(review(request, deps)).resolves.toEqual({ ready: false, reason: "DOCUMENT_UNAVAILABLE" });
+    deps.readEvidence.mockResolvedValueOnce(null);
+    await expect(review(request, deps)).resolves.toEqual({ ready: false, reason: "REVIEW_UNAVAILABLE" });
+    expect(deps.readStoredVersion).toHaveBeenCalledTimes(1);
   });
 });
