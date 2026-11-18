@@ -20,12 +20,17 @@ const fail = (): never => { throw new Error("Original invoice private storage ve
 const validVersion = (version: unknown): version is string =>
   typeof version === "string" && version !== "null" && /^[\x21-\x7e]{1,1024}$/.test(version);
 
-function validateIdentity(value: ObjectIdentity) {
-  if (!idPattern.test(value.sellerTenantId) || !idPattern.test(value.invoiceId) ||
-      !hashPattern.test(value.sha256) || !Number.isInteger(value.byteLength) ||
-      value.byteLength < 1 || value.byteLength > MAX_ORIGINAL_INVOICE_PDF_BYTES) fail();
+function validIdentity(value: ObjectIdentity): boolean {
+  if (typeof value.sellerTenantId !== "string" || !idPattern.test(value.sellerTenantId) ||
+      typeof value.invoiceId !== "string" || !idPattern.test(value.invoiceId) ||
+      typeof value.sha256 !== "string" || !hashPattern.test(value.sha256) || !Number.isInteger(value.byteLength) ||
+      value.byteLength < 1 || value.byteLength > MAX_ORIGINAL_INVOICE_PDF_BYTES) return false;
   const prefix = `b2b-credit-evidence/${value.sellerTenantId}/${value.invoiceId}/`;
-  if (!value.key.startsWith(prefix) || !objectName.test(value.key.slice(prefix.length))) fail();
+  return typeof value.key === "string" && value.key.startsWith(prefix) && objectName.test(value.key.slice(prefix.length));
+}
+
+export function isValidOriginalInvoiceStorageReceipt(receipt: OriginalInvoiceStorageReceipt): boolean {
+  return validIdentity(receipt) && validVersion(receipt.versionId);
 }
 
 /**
@@ -41,7 +46,7 @@ export function createOriginalInvoicePrivateStorage(client: S3Client, config: Or
 
   return {
     async put(candidate: ObjectIdentity, bytes: Uint8Array): Promise<OriginalInvoiceStorageReceipt> {
-      validateIdentity(candidate);
+      if (!validIdentity(candidate)) fail();
       if (!(bytes instanceof Uint8Array) || bytes.byteLength !== candidate.byteLength) fail();
       // Snapshot before the asynchronous write so later caller mutations cannot change the bytes.
       const payload = Buffer.from(bytes);
@@ -60,9 +65,8 @@ export function createOriginalInvoicePrivateStorage(client: S3Client, config: Or
     },
 
     async read(scope: Scope, receipt: OriginalInvoiceStorageReceipt): Promise<Uint8Array> {
-      validateIdentity(receipt);
       if (scope.sellerTenantId !== receipt.sellerTenantId || scope.invoiceId !== receipt.invoiceId ||
-          !validVersion(receipt.versionId)) fail();
+          !isValidOriginalInvoiceStorageReceipt(receipt)) fail();
       const result = await client.send(new GetObjectCommand({
         Bucket: bucket, ExpectedBucketOwner: expectedBucketOwner, Key: receipt.key, VersionId: receipt.versionId,
       }), { abortSignal: AbortSignal.timeout(15_000) });
