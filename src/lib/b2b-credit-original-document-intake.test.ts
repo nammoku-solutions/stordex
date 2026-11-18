@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { storeInspectedOriginalInvoice } from "./b2b-credit-original-document-intake";
+import { createOriginalInvoiceRecordingCheckpoint } from "./b2b-credit-original-document-checkpoint";
 
 const prepare = vi.hoisted(() => vi.fn());
 vi.mock("./b2b-credit-original-document-source", () => ({ prepareAuthenticatedOriginalInvoiceDocument: prepare }));
@@ -23,6 +27,8 @@ function fixture() {
     dependencies: {
       inspectPdf: vi.fn(async (bytes: Uint8Array) => ({ verdict: "CLEAN" as const, inspectedSha256: digest(bytes) })),
       storage: { put: vi.fn<Put>(async identity => ({ ...identity, versionId: "storage-v1" })) },
+      saveIntent: vi.fn<Parameters<typeof storeInspectedOriginalInvoice>[1]["saveIntent"]>()
+        .mockResolvedValue("synthetic-intent"),
     },
   };
 }
@@ -52,6 +58,8 @@ describe("original invoice custody intake", () => {
     expect(prepare).toHaveBeenCalledTimes(2);
     expect(dependencies.storage.put.mock.calls[0][1]).toEqual(file());
     expect(prepare.mock.invocationCallOrder[1]).toBeLessThan(dependencies.storage.put.mock.invocationCallOrder[0]);
+    expect(dependencies.saveIntent.mock.invocationCallOrder[0]).toBeLessThan(dependencies.storage.put.mock.invocationCallOrder[0]);
+    expect(dependencies.saveIntent.mock.calls[0][0].identity).toEqual(dependencies.storage.put.mock.calls[0][0]);
   });
 
   it("never scans or stores rejected source requests", async () => {
@@ -61,6 +69,7 @@ describe("original invoice custody intake", () => {
       stored: false, reason: "SOURCE_UNAVAILABLE",
     });
     expect(dependencies.inspectPdf).not.toHaveBeenCalled();
+    expect(dependencies.saveIntent).not.toHaveBeenCalled();
     expect(dependencies.storage.put).not.toHaveBeenCalled();
   });
 
@@ -114,6 +123,54 @@ describe("original invoice custody intake", () => {
         stored: false, reason: "STORAGE_UNCONFIRMED",
       });
       expect(dependencies.storage.put).toHaveBeenCalledTimes(i + 1);
+    }
+  });
+
+  it("never puts an object if the intent cannot be persisted first", async () => {
+    const { input, dependencies } = fixture();
+    dependencies.saveIntent.mockRejectedValueOnce(new Error("disk unavailable"));
+    await expect(storeInspectedOriginalInvoice(input, dependencies)).resolves.toEqual({
+      stored: false, reason: "INTENT_UNCONFIRMED",
+    });
+    expect(dependencies.storage.put).not.toHaveBeenCalled();
+  });
+
+  it.skipIf(process.platform === "win32")("recovers a lost PUT acknowledgment from the persisted intent without another PUT", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "stordex-intake-"));
+    try {
+      const first = await createOriginalInvoiceRecordingCheckpoint(directory);
+      const { input, dependencies } = fixture();
+      let committed: Awaited<ReturnType<Put>> | undefined;
+      dependencies.storage.put.mockImplementationOnce(async identity => {
+        committed = { ...identity, versionId: "committed-version" };
+        throw new Error("connection lost after PUT");
+      });
+      await expect(storeInspectedOriginalInvoice(input, { ...dependencies, saveIntent: first.saveIntent }))
+        .resolves.toEqual({ stored: false, reason: "STORAGE_UNCONFIRMED" });
+      expect(await first.pendingIds()).toEqual([]);
+      await expect(storeInspectedOriginalInvoice(input, { ...dependencies, saveIntent: first.saveIntent }))
+        .resolves.toEqual({ stored: false, reason: "INTENT_UNCONFIRMED" });
+      const restart = await createOriginalInvoiceRecordingCheckpoint(directory);
+      const [id] = await restart.pendingIntentIds();
+      expect(id).toMatch(/^intent-/);
+      const recordIfCurrent = vi.fn(async (record: Parameters<Parameters<typeof restart.resumeIntent>[1]["recordIfCurrent"]>[0]) =>
+        ({ status: "INSERTED" as const, record }));
+      const recover = vi.fn(async () => ({ ...committed!, versionId: "null" }));
+      await expect(restart.resumeIntent(id, { storage: { recover }, recordIfCurrent }))
+        .resolves.toMatchObject({ reason: "STORAGE_UNCONFIRMED" });
+      recover.mockResolvedValueOnce({ ...committed!, sha256: "b".repeat(64) });
+      await expect(restart.resumeIntent(id, { storage: { recover }, recordIfCurrent }))
+        .resolves.toMatchObject({ reason: "STORAGE_UNCONFIRMED" });
+      expect(recordIfCurrent).not.toHaveBeenCalled();
+      expect(await restart.pendingIntentIds()).toEqual([id]);
+      recover.mockResolvedValueOnce(committed!);
+      await expect(restart.resumeIntent(id, { storage: { recover }, recordIfCurrent }))
+        .resolves.toMatchObject({ recorded: true, currencyVerified: false, financialPostingAllowed: false });
+      expect(recordIfCurrent.mock.calls[0][0].receipt.versionId).toBe("committed-version");
+      expect(await restart.pendingIntentIds()).toEqual([]);
+      expect(dependencies.storage.put).toHaveBeenCalledTimes(1);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
     }
   });
 });
