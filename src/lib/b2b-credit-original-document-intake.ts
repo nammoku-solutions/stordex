@@ -6,13 +6,20 @@
 import { createHash } from "node:crypto";
 import { prepareAuthenticatedOriginalInvoiceDocument } from "./b2b-credit-original-document-source";
 import {
-  isValidOriginalInvoiceStorageReceipt,
+  originalInvoiceReceiptMatches,
   MAX_ORIGINAL_INVOICE_PDF_BYTES,
   type createOriginalInvoicePrivateStorage,
+  type OriginalInvoiceObjectIdentity,
 } from "./b2b-credit-original-document-storage";
 
 type Input = Parameters<typeof prepareAuthenticatedOriginalInvoiceDocument>[0];
 type PrivateStorage = Pick<ReturnType<typeof createOriginalInvoicePrivateStorage>, "put">;
+export type OriginalInvoiceWriteIntent = Readonly<{
+  identity: OriginalInvoiceObjectIdentity;
+  sourceInvoiceNumber: string;
+  submittedByUserId: string;
+  invoiceSnapshotSha256: string;
+}>;
 export type OriginalInvoiceInspection =
   | Readonly<{ verdict: "CLEAN"; inspectedSha256: string }>
   | Readonly<{ verdict: "BLOCKED" | "UNAVAILABLE" }>;
@@ -24,6 +31,8 @@ export async function storeInspectedOriginalInvoice(
   dependencies: Readonly<{
     inspectPdf: (bytes: Uint8Array) => Promise<OriginalInvoiceInspection>;
     storage: PrivateStorage;
+    // Resolve only after the intent is durably published on the worker's private volume.
+    saveIntent: (intent: OriginalInvoiceWriteIntent) => Promise<string>;
   }>,
 ) {
   if (!(input.bytes instanceof Uint8Array) ||
@@ -67,20 +76,26 @@ export async function storeInspectedOriginalInvoice(
     sellerTenantId: after.sellerTenantId, invoiceId: after.invoiceId,
     key: after.proposedPrivateObjectKey, sha256: after.sha256, byteLength: after.byteLength,
   };
+  const provenance = {
+    sourceInvoiceNumber: after.sourceInvoiceNumber,
+    submittedByUserId: after.submittedByUserId,
+    invoiceSnapshotSha256: after.sourceSnapshotSha256,
+  };
+  try {
+    await dependencies.saveIntent({ identity: { ...identity }, ...provenance });
+  } catch {
+    return { stored: false, reason: "INTENT_UNCONFIRMED" } as const;
+  }
   try {
     const receipt = await dependencies.storage.put({ ...identity }, request.bytes);
-    if (!receipt || !isValidOriginalInvoiceStorageReceipt(receipt) ||
-        receipt.sellerTenantId !== identity.sellerTenantId || receipt.invoiceId !== identity.invoiceId ||
-        receipt.key !== identity.key || receipt.sha256 !== identity.sha256 || receipt.byteLength !== identity.byteLength) {
+    if (!originalInvoiceReceiptMatches(identity, receipt)) {
       return { stored: false, reason: "STORAGE_UNCONFIRMED" } as const;
     }
     return {
       stored: true,
       submission: {
         receipt: { ...identity, versionId: receipt.versionId },
-        sourceInvoiceNumber: after.sourceInvoiceNumber,
-        submittedByUserId: after.submittedByUserId,
-        invoiceSnapshotSha256: after.sourceSnapshotSha256,
+        ...provenance,
       },
       evidenceRecorded: false,
       currencyVerified: false,
@@ -88,7 +103,7 @@ export async function storeInspectedOriginalInvoice(
     } as const;
   } catch {
     // An ambiguous or failed write is never a durable evidence submission.
-    // Do not delete or retry the object here. A future executor must reconcile.
+    // Keep the pre-write intent and do not delete or retry the object here.
     return { stored: false, reason: "STORAGE_UNCONFIRMED" } as const;
   }
 }

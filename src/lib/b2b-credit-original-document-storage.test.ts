@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { Readable } from "node:stream";
-import { GetObjectCommand, PutObjectCommand, type S3Client } from "@aws-sdk/client-s3";
+import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, type S3Client } from "@aws-sdk/client-s3";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createOriginalInvoicePrivateStorage } from "./b2b-credit-original-document-storage";
 
@@ -65,6 +65,40 @@ describe("version-bound, private original invoice storage", () => {
       Bucket: config.bucket, ExpectedBucketOwner: config.expectedBucketOwner,
       Key: candidate.key, VersionId: receipt.versionId,
     });
+  });
+
+  it("discovers a committed version and verifies an exact-version read before returning it", async () => {
+    const { Body: _unused, ...head } = readResult();
+    send.mockResolvedValueOnce(head).mockResolvedValueOnce(readResult());
+    await expect(store.recover(candidate)).resolves.toEqual(receipt);
+    const [discovery, read] = send.mock.calls.map(([command]) => command);
+    expect(discovery).toBeInstanceOf(HeadObjectCommand);
+    expect(discovery.input).toEqual({
+      Bucket: config.bucket, ExpectedBucketOwner: config.expectedBucketOwner, Key: candidate.key,
+    });
+    expect(read).toBeInstanceOf(GetObjectCommand);
+    expect(read.input.VersionId).toBe(receipt.versionId);
+  });
+
+  it.each([{ VersionId: "null" }, { DeleteMarker: true }, { SSEKMSKeyId: "wrong-key" }])(
+    "does not recover an unsafe current object or issue a PUT", async override => {
+      send.mockResolvedValueOnce({ ...readResult(), ...override });
+      await expect(store.recover(candidate)).rejects.toThrow();
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(send.mock.calls[0][0]).toBeInstanceOf(HeadObjectCommand);
+    },
+  );
+
+  it("never puts on absence or on a digest mismatch", async () => {
+    send.mockRejectedValueOnce(new Error("NotFound"));
+    await expect(store.recover(candidate)).rejects.toThrow();
+    expect(send).toHaveBeenCalledTimes(1);
+    send.mockResolvedValueOnce(readResult())
+      .mockResolvedValueOnce({ ...readResult(), Body: Readable.from([Buffer.alloc(bytes.length)]) });
+    await expect(store.recover(candidate)).rejects.toThrow();
+    expect(send.mock.calls.map(([command]) => command.constructor)).toEqual([
+      HeadObjectCommand, HeadObjectCommand, GetObjectCommand,
+    ]);
   });
 
   it("blocks cross-tenant or cross-invoice reads without contacting S3", async () => {
