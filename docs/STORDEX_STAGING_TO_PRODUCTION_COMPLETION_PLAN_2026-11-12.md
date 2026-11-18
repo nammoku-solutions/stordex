@@ -1,5 +1,5 @@
 # Stordex — bounded plan from current Staging to initial Production
-Updated: 2026-11-12. Planning artifact; not a deployment authorization.
+Updated: 2026-11-18. Planning artifact; not a deployment authorization.
 
 ## Product finish line
 
@@ -37,7 +37,7 @@ Tasks for Gate 3 and Gate 4 should reuse already-merged features and existing dr
 ## Staging cloud boundary
 
 - Vercel＋Neon remain the application and database hosts. Do not provision the full AWS Staging stack from Draft PR #170 for this work.
-- Start with the private, versioned synthetic-evidence S3 sandbox, one dedicated KMS key and IAM/OIDC. See [Vercel OIDC isolation](STORDEX_EVIDENCE_VERCEL_OIDC.md).
+- The private, versioned synthetic-evidence S3 sandbox, one dedicated KMS key and IAM/OIDC were provisioned in Tokyo NonProd. The dedicated Vercel build passed OIDC, encrypted synthetic PDF storage, overwrite rejection and exact-version readback. Real invoice custody and app-side integration remain open. See the [Vercel OIDC verification record](STORDEX_EVIDENCE_VERCEL_OIDC.md).
 - Use SES Sandbox when implementing notifications (#110), using only simulator or explicitly verified test recipients. Adopt an application SQS queue or EventBridge only if the same async/retry design is selected for Production; OpenNext's internal infrastructure is separate. No service is enabled by this plan.
 
 ## Implementation order and dependencies

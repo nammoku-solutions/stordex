@@ -44,6 +44,7 @@ Baseline: 29 public tables, **11** completed Prisma migrations, 1 historical VOI
 - [x] Prisma 7 CLI introspection of all 3 new models/relations on disposable PostgreSQL, WITHOUT modifying prisma/schema.prisma (GitHub Actions #1160).
 - [x] CI-only Invoice UPDATE-vs-review race test, expected financial snapshot invalidation, and CANCELLED Invoice rejection added (#162, subject to CI).
 - [x] Pure canonical server-side Invoice/Order/OrderItem financial snapshot hash and trust-bound file byte/digest comparison with unit tests added (#162, subject to CI).
+- [x] Synthetic-only AWS custody smoke PASS (2026-11-18): Vercel OIDC, private S3 SSE-KMS, overwrite rejection, exact-version readback and matching SHA-256. See [verification record](../../STORDEX_EVIDENCE_VERCEL_OIDC.md). This does not establish authenticated original invoice custody or permission to use actual documents.
 - [ ] Still outstanding before real Staging migration approval: **authenticated original invoice bytes in protected immutable storage**, evidence uploader/reviewer authorization, real Prisma model/migration pair, and accounting/security signoff. Neither hash comparison nor historical acceptance authorizes issuing money.
 - [ ] Finalize model relations in prisma/schema.prisma **in a separately authorized real-migration PR**.
 - [ ] Accounting review of policy and immutable document provenance.
@@ -57,6 +58,8 @@ Run this gate ONLY after the owner approves the specific next Staging migration 
 3. Restore to a **new** DB inside separate recovery project **delicate-rice-23940930** / branch **br-ancient-voice-aoutl8qq** (its name production is just a branch name, NOT Production). Never overwrite existing recovery DB. If permissions/quota prevent a new DB/branch, STOP rather than delete archived branches without approval (Issue #109).
 4. At the same logical snapshot, compare **all 29 existing table row counts and normalized-content hashes**, 11 original migration records and checksums, tenant-scope totals, credit/return/invoice/stock invariants. Abort on ANY mismatch.
 5. Exercise the draft SQL (after it becomes a real reviewed Prisma migration) on a **separate disposable rehearsal copy only**, and test SQL constraints, immutable events, FKs, duplicate submissions, role changes and verify/revoke race. Capture rollback strategy and independent restore evidence.
+
+The existing `npm run db:migrate:preflight:staging` command is read-only and may be used separately to inspect the above source target. Load only the intended Staging `.env.staging` (with `APP_ENV=staging`), and run it from the release baseline that still contains **11** committed migrations. It checks the Neon server's project, branch and database before reading migration rows. It rejects unknown, missing, unfinished or duplicate completed entries and compares the completed SQL checksums against exact repository file bytes. Confirm `ok=true`, the exact source identity, and the expected table and migration counts. This check is not a restore, does not cover invoice/stock content hashes, and does not grant permission for Gates B or C. Never run it using the independent recovery or actual Production credentials.
 
 ## Gate C — real Staging application (SECOND explicit, exact-target authorization)
 
@@ -91,7 +94,7 @@ If postcheck fails, STOP. Do not issue a destructive schema rollback against pop
 
 **For this actual 12th migration, once approved: one fresh encrypted source backup + one independent Restore + one disposable migration rehearsal;** additional restoration exercises only on failures or if the source changes materially before apply. No new backup/Restore for every source-only PR or preview UAT. Future schema-changing migrations may need their own fresh single pair.
 
-**Current status: only Gate A SQL and runbook drafting.** No backup created, Restore run, database migration applied, flag enabled, financial adjustment, or Production work.
+**Current status: Gate A candidate design and CI rehearsal, plus a separate synthetic-only cloud custody smoke PASS.** For #12, no fresh backup created, independent Restore run, real database migration applied, flag enabled, financial adjustment, or Production work.
 
 
 ## Disposable PostgreSQL CI rehearsal evidence — 2026-11-12
