@@ -6,7 +6,8 @@ import { createHash } from "node:crypto";
 import type { storeInspectedOriginalInvoice } from "./b2b-credit-original-document-intake";
 import { isValidOriginalInvoiceStorageReceipt } from "./b2b-credit-original-document-storage";
 
-type Stored = Extract<Awaited<ReturnType<typeof storeInspectedOriginalInvoice>>, { stored: true }>;
+export type ConfirmedOriginalInvoice = Extract<Awaited<ReturnType<typeof storeInspectedOriginalInvoice>>, { stored: true }>;
+type Stored = ConfirmedOriginalInvoice;
 type Submission = Stored["submission"];
 type PendingRecord = Readonly<Submission & { evidenceId: string }>;
 type RecordAttempt =
@@ -16,11 +17,34 @@ type RecordAttempt =
 const id = /^[A-Za-z0-9_-]{3,128}$/;
 const sha256 = /^[a-f0-9]{64}$/;
 const clone = (submission: Submission): Submission => ({
-  receipt: { ...submission.receipt },
+  receipt: {
+    sellerTenantId: submission.receipt.sellerTenantId, invoiceId: submission.receipt.invoiceId,
+    key: submission.receipt.key, versionId: submission.receipt.versionId,
+    sha256: submission.receipt.sha256, byteLength: submission.receipt.byteLength,
+  },
   sourceInvoiceNumber: submission.sourceInvoiceNumber,
   submittedByUserId: submission.submittedByUserId,
   invoiceSnapshotSha256: submission.invoiceSnapshotSha256,
 });
+
+export function parseConfirmedOriginalInvoice(input: unknown): Stored | null {
+  const stored = input as Partial<Stored> | null;
+  if (stored?.stored !== true || stored.evidenceRecorded !== false || stored.currencyVerified !== false ||
+      stored.financialPostingAllowed !== false || !stored.submission?.receipt) return null;
+  const submission = clone(stored.submission);
+  if (!isValidOriginalInvoiceStorageReceipt(submission.receipt) ||
+      typeof submission.submittedByUserId !== "string" || !id.test(submission.submittedByUserId) ||
+      typeof submission.invoiceSnapshotSha256 !== "string" || !sha256.test(submission.invoiceSnapshotSha256) ||
+      typeof submission.sourceInvoiceNumber !== "string" ||
+      submission.sourceInvoiceNumber.trim().length < 1 || submission.sourceInvoiceNumber.trim().length > 128) return null;
+  return { stored: true, submission, evidenceRecorded: false, currencyVerified: false, financialPostingAllowed: false };
+}
+
+export function confirmedOriginalInvoiceEvidenceId(stored: Stored): string {
+  return "evidence-" + createHash("sha256").update(JSON.stringify([
+    stored.submission.receipt.key, stored.submission.receipt.versionId,
+  ])).digest("hex");
+}
 
 function sameRecord(candidate: PendingRecord, record: PendingRecord) {
   return record != null && record.receipt != null &&
@@ -48,21 +72,10 @@ export async function recordConfirmedOriginalInvoice(
     recordIfCurrent: (candidate: PendingRecord) => Promise<RecordAttempt>;
   }>,
 ) {
-  if (stored?.stored !== true || stored.evidenceRecorded !== false || !stored.submission?.receipt) {
-    return { recorded: false, reason: "INVALID_RECEIPT" } as const;
-  }
-  const submission = clone(stored.submission);
-  if (!isValidOriginalInvoiceStorageReceipt(submission.receipt) ||
-      typeof submission.submittedByUserId !== "string" || !id.test(submission.submittedByUserId) ||
-      typeof submission.invoiceSnapshotSha256 !== "string" || !sha256.test(submission.invoiceSnapshotSha256) ||
-      typeof submission.sourceInvoiceNumber !== "string" ||
-      submission.sourceInvoiceNumber.trim().length < 1 || submission.sourceInvoiceNumber.trim().length > 128) {
-    return { recorded: false, reason: "INVALID_RECEIPT" } as const;
-  }
-
-  const evidenceId = "evidence-" + createHash("sha256").update(JSON.stringify([
-    submission.receipt.key, submission.receipt.versionId,
-  ])).digest("hex");
+  const confirmed = parseConfirmedOriginalInvoice(stored);
+  if (!confirmed) return { recorded: false, reason: "INVALID_RECEIPT" } as const;
+  const { submission } = confirmed;
+  const evidenceId = confirmedOriginalInvoiceEvidenceId(confirmed);
   const candidate = { evidenceId, ...submission };
 
   // Never request another S3 PUT after a lost DB acknowledgement. The calling
