@@ -21,8 +21,10 @@ The GitHub Actions disposable postgres:16 service first applies the existing 11 
 3. Run prisma validate --schema against the temporary candidate.
 4. Run prisma migrate diff --from-config-datasource --to-schema <temporary Prisma file> --exit-code and require zero representable drift.
 5. Verify git diff --exit-code -- prisma/schema.prisma (no committed operational schema edit).
+6. Only after the preceding checks succeed, retain `stordex-credit-m12-candidate-not-approved` on the CI run. It pairs the exact rehearsed SQL with the validated Prisma introspection, a source commit manifest and `SHA256SUMS`. The bundle contains schema files only, not any database data or connection details. Verify the two hashes with `sha256sum --check SHA256SUMS` after downloading.
 
 This is a **candidate extraction and validation gate**, not an actual tracked Prisma migration file. PostgreSQL partial unique indexes, CHECKs, triggers and concurrency/immutability policies may not be fully represented in Prisma and require additional SQL assertions and database UAT before release.
+Preparing this candidate neither moves the SQL into `prisma/migrations` nor approves a backup, Restore or apply on Neon Staging.
 
 ## P1012 schema compatibility issue detected and draft-only correction
 
