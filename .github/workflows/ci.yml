@@ -100,4 +100,29 @@ jobs:
           node scripts/ci-validate-credit-m12-prisma-candidate.mjs "$RUNNER_TEMP/stordex-credit-m12-introspected.prisma"
           npx prisma validate --schema "$RUNNER_TEMP/stordex-credit-m12-introspected.prisma"
           npx prisma migrate diff --from-config-datasource --to-schema "$RUNNER_TEMP/stordex-credit-m12-introspected.prisma" --exit-code
-          git diff --exit-code -- prisma/schema.prisma
+          git diff --exit-code -- prisma/schema.prisma prisma/migrations
+
+      - name: Package validated CreditNote migration 12 candidate (not approved)
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/stordex-credit-m12-candidate"
+          mkdir "$out"
+          cp docs/migration-proposals/20261112_credit_currency_and_approval/001_additive_schema_DRAFT_DO_NOT_APPLY.sql \
+            "$out/001_additive_schema_DRAFT_DO_NOT_APPLY.sql"
+          cp "$RUNNER_TEMP/stordex-credit-m12-introspected.prisma" "$out/candidate.prisma"
+          printf 'status=NOT_APPROVED_NOT_APPLIED\nsource_commit=%s\n' "$(git rev-parse HEAD)" \
+            > "$out/RELEASE_CANDIDATE.txt"
+          printf 'verification=disposable_PostgreSQL_16_and_Prisma_CI_only\n' >> "$out/RELEASE_CANDIDATE.txt"
+          (
+            cd "$out"
+            sha256sum 001_additive_schema_DRAFT_DO_NOT_APPLY.sql candidate.prisma > SHA256SUMS
+            sha256sum --check SHA256SUMS
+          )
+
+      - name: Retain the unapproved migration 12 candidate
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: stordex-credit-m12-candidate-not-approved
+          path: ${{ runner.temp }}/stordex-credit-m12-candidate/
+          if-no-files-found: error
+          retention-days: 30
