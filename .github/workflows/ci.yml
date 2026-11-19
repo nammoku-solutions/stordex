@@ -88,7 +88,7 @@ jobs:
         timeout-minutes: 5
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends clamav-daemon
+          sudo apt-get install -y --no-install-recommends clamav-daemon qpdf
           node --import tsx scripts/ci-smoke-original-invoice-clamd.ts
 
       # Only the ephemeral PostgreSQL 16 service is modified. This does NOT
@@ -112,6 +112,12 @@ jobs:
           npx prisma migrate diff --from-config-datasource --to-schema "$RUNNER_TEMP/stordex-credit-m12-introspected.prisma" --exit-code
           git diff --exit-code -- prisma/schema.prisma prisma/migrations
 
+      - name: Rehearse exact migration 12 bytes through Prisma deploy on a separate disposable DB ONLY
+        run: >-
+          node scripts/ci-rehearse-credit-m12-prisma-deploy.mjs
+          "$RUNNER_TEMP/stordex-credit-m12-introspected.prisma"
+          "$RUNNER_TEMP/stordex-credit-m12-deploy-rehearsal.json"
+
       - name: Package validated CreditNote migration 12 candidate (not approved)
         run: |
           set -euo pipefail
@@ -120,12 +126,13 @@ jobs:
           cp docs/migration-proposals/20261112_credit_currency_and_approval/001_additive_schema_DRAFT_DO_NOT_APPLY.sql \
             "$out/001_additive_schema_DRAFT_DO_NOT_APPLY.sql"
           cp "$RUNNER_TEMP/stordex-credit-m12-introspected.prisma" "$out/candidate.prisma"
+          cp "$RUNNER_TEMP/stordex-credit-m12-deploy-rehearsal.json" "$out/deploy-rehearsal.json"
           printf 'status=NOT_APPROVED_NOT_APPLIED\nsource_commit=%s\n' "$(git rev-parse HEAD)" \
             > "$out/RELEASE_CANDIDATE.txt"
           printf 'verification=disposable_PostgreSQL_16_and_Prisma_CI_only\n' >> "$out/RELEASE_CANDIDATE.txt"
           (
             cd "$out"
-            sha256sum 001_additive_schema_DRAFT_DO_NOT_APPLY.sql candidate.prisma > SHA256SUMS
+            sha256sum 001_additive_schema_DRAFT_DO_NOT_APPLY.sql candidate.prisma deploy-rehearsal.json > SHA256SUMS
             sha256sum --check SHA256SUMS
           )
 

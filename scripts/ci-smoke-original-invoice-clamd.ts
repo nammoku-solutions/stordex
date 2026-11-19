@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { lstat, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -24,10 +24,20 @@ async function main() {
     // This local signature only marks an inert UUID inserted into a generated PDF.
     await writeFile(join(db, "synthetic.ndb"),
       "Stordex.CI.SyntheticMarker:0:*:" + Buffer.from(rejectedMarker).toString("hex") + "\n");
-    await writeFile(config, [
-      "Foreground yes", "LocalSocket " + socketPath, "LocalSocketMode 600",
-      "DatabaseDirectory " + db, "ScanPDF yes", "Bytecode no", "",
-    ].join("\n"), { mode: 0o600 });
+    const profile = await readFile(new URL("../infra/evidence-uat/clamd.conf", import.meta.url), "utf8");
+    assert.doesNotMatch(profile, /^\s*(TCPAddr|TCPSocket)\s/m);
+    assert.match(profile, /^OfficialDatabaseOnly yes$/m);
+    assert.match(profile, /^FailIfCvdOlderThan 3$/m);
+    const group = execFileSync("id", ["-gn"], { encoding: "utf8" }).trim();
+    assert.match(group, /^[a-zA-Z0-9_-]+$/);
+    // Only the signature source and non-shared socket identity differ in CI.
+    await writeFile(config, profile
+      .replace(/^LocalSocket .*$/m, "LocalSocket " + socketPath)
+      .replace(/^LocalSocketGroup .*$/m, "LocalSocketGroup " + group)
+      .replace(/^LocalSocketMode .*$/m, "LocalSocketMode 600")
+      .replace(/^DatabaseDirectory .*$/m, "DatabaseDirectory " + db)
+      .replace(/^OfficialDatabaseOnly yes$/m, "OfficialDatabaseOnly no")
+      .replace(/^FailIfCvdOlderThan .*\n/m, ""), { mode: 0o600 });
     daemon = spawn("clamd", ["--config-file=" + config], { stdio: ["ignore", "inherit", "inherit"] });
     daemon.once("error", error => { launchError = error; });
     const child = daemon;
@@ -54,10 +64,16 @@ async function main() {
       verdict: "CLEAN", inspectedSha256: createHash("sha256").update(clean).digest("hex"),
     });
     assert.deepEqual(await inspect(buildSyntheticPdf(rejectedMarker)), { verdict: "BLOCKED" });
+    const cleanPath = join(directory, "clean.pdf");
+    const encryptedPath = join(directory, "encrypted.pdf");
+    await writeFile(cleanPath, clean);
+    execFileSync("qpdf", ["--encrypt", "ci-only-user", "ci-only-owner", "256", "--", cleanPath, encryptedPath]);
+    assert.deepEqual(await inspect(await readFile(encryptedPath)), { verdict: "BLOCKED" },
+      "the same scanner policy must reject a password-protected PDF");
     assert.deepEqual(await createClamdOriginalInvoiceInspector({
       socketPath: join(directory, "absent.sock"), timeoutMs: 1_000,
     })(clean), { verdict: "UNAVAILABLE" });
-    console.log("CLAMD_REAL_ENGINE_SMOKE_PASS");
+    console.log("CLAMD_REAL_ENGINE_SMOKE_PASS (clean, signature match, encrypted PDF, unavailable socket)");
   } finally {
     if (daemon && closed) {
       daemon.kill("SIGTERM");
