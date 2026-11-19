@@ -236,7 +236,12 @@ model User {
   b2bReturnStatusEvents B2BReturnStatusEvent[]
   voidedCreditNotes B2BCreditNote[] @relation("B2BCreditVoidActor")
   creditVoidAuditEvents B2BCreditVoidEvent[] @relation("B2BCreditVoidAuditActor")
+  creditAccountingReviews B2BCreditApprovalReviewEvent[]    @relation("B2BCreditApprovalReviewEvent_accountingVerifierUserId_sellerTenantIdToUser")
+  creditReviews           B2BCreditApprovalReviewEvent[]    @relation("B2BCreditApprovalReviewEvent_reviewerUserId_sellerTenantIdToUser")
+  currencyEvidence        B2BInvoiceCurrencyEvidence[]
+  currencyEvidenceEvents  B2BInvoiceCurrencyEvidenceEvent[]
 
+  @@unique([id, tenantId], map: "User_id_tenantId_creditReview_key")
   @@unique([tenantId, email])
   @@index([email])
 }
@@ -569,7 +574,9 @@ model Invoice {
   businessUnit BusinessUnit?  @relation(fields: [businessUnitId], references: [id], onDelete: SetNull)
   orders       InvoiceOrder[]
   b2bCreditNotes B2BCreditNote[]
+  currencyEvidence B2BInvoiceCurrencyEvidence[]
 
+  @@unique([id, tenantId], map: "Invoice_id_tenantId_currencyEvidence_key")
   @@unique([tenantId, invoiceNumber])
   @@index([tenantId, periodYear, periodMonth])
 }
@@ -782,7 +789,9 @@ model B2BCreditNote {
   lines           B2BCreditNoteLine[]
   voidEvent       B2BCreditVoidEvent?
   voidedBy        User? @relation("B2BCreditVoidActor", fields: [voidedByUserId], references: [id], onDelete: Restrict)
+  creditApprovalReview B2BCreditApprovalReviewEvent?
 
+  @@unique([id, originalInvoiceId, sellerTenantId], map: "B2BCreditNote_id_invoice_seller_creditReview_key")
   @@unique([sellerTenantId, creditNoteNumber])
   @@unique([id, returnRequestId])
   @@index([originalInvoiceId, createdAt])
@@ -862,4 +871,73 @@ model ImportJob {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, createdAt])
+}
+
+// Migration #12 evidence and review metadata. PostgreSQL owns the checks,
+// append-only triggers, and expression indexes that Prisma cannot represent.
+model B2BInvoiceCurrencyEvidence {
+  id                     String                            @id
+  sellerTenantId         String
+  invoiceId              String
+  sourceInvoiceNumber    String
+  documentObjectRef      String
+  documentVersionId      String
+  documentByteLength     Int
+  documentSha256         String
+  invoiceSnapshotSha256  String
+  submittedByUserId      String
+  submittedAt            DateTime                          @default(now())
+  creditReviews          B2BCreditApprovalReviewEvent[]
+  invoice                Invoice                           @relation(fields: [invoiceId, sellerTenantId], references: [id, tenantId], onUpdate: Restrict, map: "B2BInvoiceCurrencyEvidence_invoice_seller_fkey")
+  submittedBy            User                              @relation(fields: [submittedByUserId, sellerTenantId], references: [id, tenantId], onUpdate: Restrict, map: "B2BInvoiceCurrencyEvidence_submitter_seller_fkey")
+  currencyEvidenceEvents B2BInvoiceCurrencyEvidenceEvent[]
+
+  @@unique([documentObjectRef, documentVersionId], map: "B2BInvoiceCurrencyEvidence_document_version_key")
+  @@unique([id, invoiceId, sellerTenantId], map: "B2BInvoiceCurrencyEvidence_id_invoice_seller_key")
+  @@unique([id, sellerTenantId], map: "B2BInvoiceCurrencyEvidence_id_seller_key")
+  @@index([sellerTenantId, invoiceId, submittedAt], map: "B2BInvoiceCurrencyEvidence_seller_invoice_idx")
+}
+
+model B2BInvoiceCurrencyEvidenceEvent {
+  id                            String                     @id
+  evidenceId                    String
+  sellerTenantId                String
+  eventId                       String                     @unique(map: "B2BInvoiceCurrencyEvidenceEvent_event_id_key")
+  eventType                     String
+  reviewerUserId                String
+  observedDocumentSha256        String
+  observedCurrencyCode          String?
+  observedInvoiceSnapshotSha256 String
+  reason                        String
+  createdAt                     DateTime                   @default(now())
+  currencyEvidence              B2BInvoiceCurrencyEvidence @relation(fields: [evidenceId, sellerTenantId], references: [id, sellerTenantId], onUpdate: Restrict, map: "B2BInvoiceCurrencyEvidenceEvent_evidence_fkey")
+  reviewer                      User                       @relation(fields: [reviewerUserId, sellerTenantId], references: [id, tenantId], onUpdate: Restrict, map: "B2BInvoiceCurrencyEvidenceEvent_reviewer_fkey")
+
+  @@index([evidenceId, createdAt, id], map: "B2BInvoiceCurrencyEvidenceEvent_timeline_idx")
+}
+
+model B2BCreditApprovalReviewEvent {
+  id                       String                     @id
+  eventId                  String                     @unique(map: "B2BCreditApprovalReviewEvent_event_id_key")
+  creditNoteId             String                     @unique(map: "B2BCreditApprovalReviewEvent_decision_once_idx")
+  invoiceId                String
+  sellerTenantId           String
+  evidenceId               String
+  reviewerUserId           String
+  accountingVerifierUserId String
+  eventType                String
+  invoiceSnapshotSha256    String
+  computedAmountsSha256    String
+  candidateSubtotal        Int
+  candidateTax             Int
+  candidateTotal           Int
+  reason                   String
+  createdAt                DateTime                   @default(now())
+  accountingVerifier       User                       @relation("B2BCreditApprovalReviewEvent_accountingVerifierUserId_sellerTenantIdToUser", fields: [accountingVerifierUserId, sellerTenantId], references: [id, tenantId], onUpdate: Restrict, map: "B2BCreditApprovalReviewEvent_accounting_fkey")
+  creditNote               B2BCreditNote              @relation(fields: [creditNoteId, invoiceId, sellerTenantId], references: [id, originalInvoiceId, sellerTenantId], onUpdate: Restrict, map: "B2BCreditApprovalReviewEvent_credit_note_fkey")
+  currencyEvidence         B2BInvoiceCurrencyEvidence @relation(fields: [evidenceId, invoiceId, sellerTenantId], references: [id, invoiceId, sellerTenantId], onUpdate: Restrict, map: "B2BCreditApprovalReviewEvent_evidence_fkey")
+  reviewer                 User                       @relation("B2BCreditApprovalReviewEvent_reviewerUserId_sellerTenantIdToUser", fields: [reviewerUserId, sellerTenantId], references: [id, tenantId], onUpdate: Restrict, map: "B2BCreditApprovalReviewEvent_reviewer_fkey")
+
+  @@unique([creditNoteId, invoiceId, sellerTenantId], map: "B2BCreditApprovalReviewEvent_credit_invoice_seller_key")
+  @@index([sellerTenantId, invoiceId, createdAt], map: "B2BCreditApprovalReviewEvent_seller_invoice_idx")
 }

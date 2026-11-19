@@ -47,4 +47,4 @@ const invoice=getModel("Invoice");
 assert.match(invoice,/\bstatus\s+InvoiceStatus\b/);
 console.log("PASS: Prisma 7 disposable DB introspection recognizes all 3 audit models");
 console.log("PASS: modeled tenant-scope, inverse relations, source hashes, original Invoice/CreditNote still present");
-console.log("PASS: original prisma/schema.prisma intentionally untouched; candidate Migration 12 not recorded");
+console.log("PASS: CI introspection reads the disposable database without changing committed files");

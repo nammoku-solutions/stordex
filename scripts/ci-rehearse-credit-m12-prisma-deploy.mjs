@@ -4,15 +4,13 @@
  */
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import { copyFile, cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import pg from "pg";
+import { baselineMigrationCount, loadMigration12, migrationName, sha256 } from "./ci-credit-m12-source.mjs";
 
 const baselineUrl = "postgresql://stordex:stordex@localhost:5432/stordex?schema=public";
 const rehearsalDb = "stordex_m12_prisma_rehearsal";
-const migrationName = "20261119120000_b2b_invoice_evidence_and_review";
-const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
 const ledgers = ["B2BCreditApprovalReviewEvent", "B2BInvoiceCurrencyEvidence", "B2BInvoiceCurrencyEvidenceEvent"];
 
 async function main() {
@@ -22,9 +20,8 @@ async function main() {
   const reportPath = process.argv[3];
   assert.ok(candidateSchema && isAbsolute(candidateSchema) && reportPath && isAbsolute(reportPath), "Absolute CI input/output paths required");
   const root = process.cwd();
-  const proposal = join(root, "docs/migration-proposals/20261112_credit_currency_and_approval/001_additive_schema_DRAFT_DO_NOT_APPLY.sql");
-  const sql = await readFile(proposal);
-  assert.match(sql.toString("utf8"), /DO NOT RUN ON STAGING OR PRODUCTION/);
+  const { sql, formal, migrationPath } = loadMigration12(root);
+  const checkedSchema = formal ? join(root, "prisma/schema.prisma") : candidateSchema;
   const scratch = await mkdtemp(join(root, ".stordex-m12-ci-")); // Prisma config resolves repository node_modules
   const control = new pg.Client({ connectionString: baselineUrl });
   const url = baselineUrl.replace("/stordex?", "/" + rehearsalDb + "?");
@@ -53,14 +50,19 @@ async function main() {
     await db.connect();
     assert.equal((await db.query("SELECT current_database() AS name")).rows[0].name, rehearsalDb);
     await copyFile(join(root, "prisma/schema.prisma"), join(scratch, "schema.prisma"));
-    await cp(join(root, "prisma/migrations"), migrations, { recursive: true, errorOnExist: true });
+    await cp(join(root, "prisma/migrations"), migrations, {
+      recursive: true,
+      errorOnExist: true,
+      // Start with the 11-migration baseline even on a formal candidate checkout.
+      filter: path => path !== migrationPath,
+    });
     await writeFile(config, [
       'import { defineConfig, env } from "prisma/config";',
       'export default defineConfig({ schema: "schema.prisma", migrations: { path: "migrations" },',
       '  datasource: { url: env("DATABASE_URL") } });',
     ].join("\n"), { mode: 0o600 });
     const names = (await readdir(migrations, { withFileTypes: true })).filter(e => e.isDirectory()).map(e => e.name).sort();
-    assert.equal(names.length, 11);
+    assert.equal(names.length, baselineMigrationCount);
     assert.ok(migrationName > names.at(-1));
     run("migrate", "deploy");
     const before = await databaseState();
@@ -72,7 +74,7 @@ async function main() {
 
     await mkdir(join(migrations, migrationName));
     await writeFile(join(migrations, migrationName, "migration.sql"), sql, { mode: 0o600 });
-    await copyFile(candidateSchema, join(scratch, "schema.prisma"));
+    await copyFile(checkedSchema, join(scratch, "schema.prisma"));
     run("migrate", "deploy");
     const after = await databaseState();
     assert.deepEqual(after, { tables: 32, applied: 12, unfinished: 0 });
@@ -98,6 +100,8 @@ async function main() {
       status: "CI_PASS_NOT_APPROVED_NOT_APPLIED_TO_STAGING",
       database: rehearsalDb, migrationName, migrationSha256: checksum,
       prismaSchemaSha256: sha256(await readFile(candidateSchema)),
+      schemaCheckedByDeployRehearsal: formal ? "prisma/schema.prisma" : "candidate.prisma",
+      deploySchemaSha256: sha256(await readFile(checkedSchema)),
       before, after, emptyLedgers: ledgers, guardCount: 6,
     }, null, 2) + "\n", { mode: 0o600 });
     console.log("PRISMA_M12_DEPLOY_REHEARSAL_PASS (11 → 12, exact checksum, three empty ledgers, repeat deploy no-op)");

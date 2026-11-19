@@ -1,0 +1,385 @@
+-- DESIGN PROPOSAL ONLY; DO NOT RUN ON STAGING OR PRODUCTION.
+-- Not located in prisma/migrations: prisma migrate deploy must NOT discover it.
+-- Candidate 12th additive migration for B2B credit currency source evidence and
+-- append-only human review histories. Requires exact-owner approval, new external
+-- encrypted backup, independent Restore, SQL/PostgreSQL verification and a
+-- reviewed Prisma schema + migration pair BEFORE any application.
+--
+-- Source Neon project: stordex-staging, ID dry-feather-14704968
+-- Source Neon branch: staging, ID br-sparkling-boat-ao9nrctp
+-- Source DB: neondb. CURRENTLY 29 tables, 11 migrations. PRODUCTION EXCLUDED.
+-- No financial updates; existing DRAFT/VOID-only CreditNote constraints remain.
+--
+-- Proposed only. The disposable PostgreSQL CI rehearsal does not apply it to Neon.
+-- Timestamp columns follow existing Prisma timestamp(3) convention.
+
+BEGIN;
+SET LOCAL lock_timeout = '5s';
+SET LOCAL statement_timeout = '60s';
+
+-- Composite referenced keys guarantee tenant ownership in the new tables.
+-- Primary IDs already uniquely identify records; composite indexes add
+-- multicolumn tenant-aware referential integrity without changing rows.
+CREATE UNIQUE INDEX "Invoice_id_tenantId_currencyEvidence_key"
+  ON "Invoice"("id","tenantId");
+CREATE UNIQUE INDEX "User_id_tenantId_creditReview_key"
+  ON "User"("id","tenantId");
+CREATE UNIQUE INDEX "B2BCreditNote_id_invoice_seller_creditReview_key"
+  ON "B2BCreditNote"("id","originalInvoiceId","sellerTenantId");
+
+-- Immutable uploaded-original evidence header. There is NO trusted source
+-- document upload/verification writer in this proposal. The private object key
+-- and exact storage version come from the trusted adapter, never the browser.
+-- One invoice may have multiple evidence versions after reject/revoke; no
+-- previous evidence may be edited or deleted. Effective state is EVENT-DERIVED.
+CREATE TABLE "B2BInvoiceCurrencyEvidence" (
+  "id" TEXT NOT NULL,
+  "sellerTenantId" TEXT NOT NULL,
+  "invoiceId" TEXT NOT NULL,
+  "sourceInvoiceNumber" TEXT NOT NULL,
+  "documentObjectRef" TEXT NOT NULL,
+  "documentVersionId" TEXT NOT NULL,
+  "documentByteLength" INTEGER NOT NULL,
+  "documentSha256" TEXT NOT NULL,
+  "invoiceSnapshotSha256" TEXT NOT NULL,
+  "submittedByUserId" TEXT NOT NULL,
+  "submittedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "B2BInvoiceCurrencyEvidence_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "B2BInvoiceCurrencyEvidence_docref_check"
+    CHECK (
+      split_part("documentObjectRef", '/', 1) = 'b2b-credit-evidence' AND
+      split_part("documentObjectRef", '/', 2) = "sellerTenantId" AND
+      split_part("documentObjectRef", '/', 3) = "invoiceId" AND
+      "documentObjectRef" ~ '^b2b-credit-evidence/[A-Za-z0-9_-]{3,128}/[A-Za-z0-9_-]{3,128}/[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}[.]pdf$'
+    ),
+  CONSTRAINT "B2BInvoiceCurrencyEvidence_version_check"
+    CHECK (length("documentVersionId") BETWEEN 1 AND 1024 AND
+           "documentVersionId" <> 'null' AND "documentVersionId" COLLATE "C" !~ '[^!-~]'),
+  CONSTRAINT "B2BInvoiceCurrencyEvidence_document_length_check"
+    CHECK ("documentByteLength" BETWEEN 1 AND 10485760),
+  CONSTRAINT "B2BInvoiceCurrencyEvidence_invoice_number_check"
+    CHECK (length(btrim("sourceInvoiceNumber")) BETWEEN 1 AND 128),
+  CONSTRAINT "B2BInvoiceCurrencyEvidence_document_hash_check"
+    CHECK ("documentSha256" ~ '^[a-f0-9]{64}$'),
+  CONSTRAINT "B2BInvoiceCurrencyEvidence_source_hash_check"
+    CHECK ("invoiceSnapshotSha256" ~ '^[a-f0-9]{64}$'),
+  CONSTRAINT "B2BInvoiceCurrencyEvidence_invoice_seller_fkey"
+    FOREIGN KEY ("invoiceId","sellerTenantId")
+    REFERENCES "Invoice"("id","tenantId") ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT "B2BInvoiceCurrencyEvidence_submitter_seller_fkey"
+    FOREIGN KEY ("submittedByUserId","sellerTenantId")
+    REFERENCES "User"("id","tenantId") ON DELETE RESTRICT ON UPDATE RESTRICT
+);
+CREATE UNIQUE INDEX "B2BInvoiceCurrencyEvidence_document_version_key"
+  ON "B2BInvoiceCurrencyEvidence"("documentObjectRef","documentVersionId");
+CREATE UNIQUE INDEX "B2BInvoiceCurrencyEvidence_id_invoice_seller_key"
+  ON "B2BInvoiceCurrencyEvidence"("id","invoiceId","sellerTenantId");
+CREATE UNIQUE INDEX "B2BInvoiceCurrencyEvidence_id_seller_key"
+  ON "B2BInvoiceCurrencyEvidence"("id","sellerTenantId");
+CREATE INDEX "B2BInvoiceCurrencyEvidence_seller_invoice_idx"
+  ON "B2BInvoiceCurrencyEvidence"("sellerTenantId","invoiceId","submittedAt");
+
+-- Reviews and revocations are EVENTS, not a mutable VERIFIED flag.
+-- Initial header insertion is PENDING implicitly and claims no currency.
+-- Only the independent VERIFIED event records observed JPY. The event VERIFIES or
+-- REJECTS, and a later REVOKED event permanently invalidates VERIFICATION.
+-- New evidence header must be created for any replacement/re-verification.
+CREATE TABLE "B2BInvoiceCurrencyEvidenceEvent" (
+  "id" TEXT NOT NULL,
+  "evidenceId" TEXT NOT NULL,
+  "sellerTenantId" TEXT NOT NULL,
+  "eventId" TEXT NOT NULL,
+  "eventType" TEXT NOT NULL,
+  "reviewerUserId" TEXT NOT NULL,
+  "observedDocumentSha256" TEXT NOT NULL,
+  "observedCurrencyCode" TEXT,
+  "observedInvoiceSnapshotSha256" TEXT NOT NULL,
+  "reason" TEXT NOT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "B2BInvoiceCurrencyEvidenceEvent_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "B2BInvoiceCurrencyEvidenceEvent_event_id_key" UNIQUE ("eventId"),
+  CONSTRAINT "B2BInvoiceCurrencyEvidenceEvent_kind_check"
+    CHECK ("eventType" IN ('VERIFIED','REJECTED','REVOKED')),
+  CONSTRAINT "B2BInvoiceCurrencyEvidenceEvent_observed_currency_check"
+    CHECK (
+      ("eventType" = 'VERIFIED' AND "observedCurrencyCode" IS NOT DISTINCT FROM 'JPY') OR
+      ("eventType" <> 'VERIFIED' AND "observedCurrencyCode" IS NULL)
+    ),
+  CONSTRAINT "B2BInvoiceCurrencyEvidenceEvent_reason_check"
+    CHECK (length(btrim("reason")) BETWEEN 8 AND 500),
+  CONSTRAINT "B2BInvoiceCurrencyEvidenceEvent_eventid_uuid_check"
+    CHECK ("eventId" ~* '^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$'),
+  CONSTRAINT "B2BInvoiceCurrencyEvidenceEvent_document_hash_check"
+    CHECK ("observedDocumentSha256" ~ '^[a-f0-9]{64}$'),
+  CONSTRAINT "B2BInvoiceCurrencyEvidenceEvent_source_hash_check"
+    CHECK ("observedInvoiceSnapshotSha256" ~ '^[a-f0-9]{64}$'),
+  CONSTRAINT "B2BInvoiceCurrencyEvidenceEvent_evidence_fkey"
+    FOREIGN KEY ("evidenceId","sellerTenantId")
+    REFERENCES "B2BInvoiceCurrencyEvidence"("id","sellerTenantId")
+    ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT "B2BInvoiceCurrencyEvidenceEvent_reviewer_fkey"
+    FOREIGN KEY ("reviewerUserId","sellerTenantId")
+    REFERENCES "User"("id","tenantId") ON DELETE RESTRICT ON UPDATE RESTRICT
+);
+-- Expression uniqueness preserves one initial VERIFIED/REJECTED decision plus
+-- one later REVOKED event. Prisma treats a column-level partial @unique as
+-- one-to-one even though multiple event records must exist; expression indexes
+-- remain database-enforced without falsely narrowing the Prisma relationship.
+CREATE UNIQUE INDEX "B2BInvoiceCurrencyEvidenceEvent_result_once_idx"
+  ON "B2BInvoiceCurrencyEvidenceEvent"
+    ((CASE WHEN "eventType" IN ('VERIFIED','REJECTED')
+      THEN "evidenceId" ELSE NULL END));
+CREATE UNIQUE INDEX "B2BInvoiceCurrencyEvidenceEvent_revoke_once_idx"
+  ON "B2BInvoiceCurrencyEvidenceEvent"
+    ((CASE WHEN "eventType" = 'REVOKED'
+      THEN "evidenceId" ELSE NULL END));
+CREATE INDEX "B2BInvoiceCurrencyEvidenceEvent_timeline_idx"
+  ON "B2BInvoiceCurrencyEvidenceEvent"("evidenceId","createdAt","id");
+
+-- Immutable maker/checker review record; NO CreditNote status/amount write.
+-- An APPROVED review event is NOT CreditNote issuance or money movement.
+-- The future writer MUST server-side recompute the amounts and hashes inside
+-- an audited transaction; DB checks below cannot prove authentic originals.
+CREATE TABLE "B2BCreditApprovalReviewEvent" (
+  "id" TEXT NOT NULL,
+  "eventId" TEXT NOT NULL,
+  "creditNoteId" TEXT NOT NULL,
+  "invoiceId" TEXT NOT NULL,
+  "sellerTenantId" TEXT NOT NULL,
+  "evidenceId" TEXT NOT NULL,
+  "reviewerUserId" TEXT NOT NULL,
+  "accountingVerifierUserId" TEXT NOT NULL,
+  "eventType" TEXT NOT NULL,
+  "invoiceSnapshotSha256" TEXT NOT NULL,
+  "computedAmountsSha256" TEXT NOT NULL,
+  "candidateSubtotal" INTEGER NOT NULL,
+  "candidateTax" INTEGER NOT NULL,
+  "candidateTotal" INTEGER NOT NULL,
+  "reason" TEXT NOT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "B2BCreditApprovalReviewEvent_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "B2BCreditApprovalReviewEvent_event_id_key" UNIQUE ("eventId"),
+  CONSTRAINT "B2BCreditApprovalReviewEvent_eventid_uuid_check"
+    CHECK ("eventId" ~* '^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$'),
+  CONSTRAINT "B2BCreditApprovalReviewEvent_status_check"
+    CHECK ("eventType" IN ('REVIEW_ACCEPTED','REVIEW_REJECTED')),
+  CONSTRAINT "B2BCreditApprovalReviewEvent_source_hash_check"
+    CHECK ("invoiceSnapshotSha256" ~ '^[a-f0-9]{64}$'),
+  CONSTRAINT "B2BCreditApprovalReviewEvent_amount_hash_check"
+    CHECK ("computedAmountsSha256" ~ '^[a-f0-9]{64}$'),
+  CONSTRAINT "B2BCreditApprovalReviewEvent_amounts_check"
+    CHECK ("candidateSubtotal" >= 0 AND "candidateTax" >= 0 AND
+           "candidateTotal" >= 0 AND
+           "candidateSubtotal"::BIGINT + "candidateTax"::BIGINT =
+              "candidateTotal"::BIGINT),
+  CONSTRAINT "B2BCreditApprovalReviewEvent_reason_check"
+    CHECK (length(btrim("reason")) BETWEEN 8 AND 500),
+  CONSTRAINT "B2BCreditApprovalReviewEvent_credit_note_fkey"
+    FOREIGN KEY ("creditNoteId","invoiceId","sellerTenantId")
+    REFERENCES "B2BCreditNote"("id","originalInvoiceId","sellerTenantId")
+    ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT "B2BCreditApprovalReviewEvent_evidence_fkey"
+    FOREIGN KEY ("evidenceId","invoiceId","sellerTenantId")
+    REFERENCES "B2BInvoiceCurrencyEvidence"("id","invoiceId","sellerTenantId")
+    ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT "B2BCreditApprovalReviewEvent_reviewer_fkey"
+    FOREIGN KEY ("reviewerUserId","sellerTenantId")
+    REFERENCES "User"("id","tenantId") ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT "B2BCreditApprovalReviewEvent_accounting_fkey"
+    FOREIGN KEY ("accountingVerifierUserId","sellerTenantId")
+    REFERENCES "User"("id","tenantId") ON DELETE RESTRICT ON UPDATE RESTRICT
+);
+-- Exactly one independent decision per CreditNote; any subsequent new monetary
+-- proposal requires a new CreditNote rather than mutating review history.
+CREATE UNIQUE INDEX "B2BCreditApprovalReviewEvent_decision_once_idx"
+  ON "B2BCreditApprovalReviewEvent"("creditNoteId");
+-- Redundant logically (creditNoteId is already unique), but explicit composite
+-- uniqueness is required by Prisma 7 for the composite tenant-safe relation.
+CREATE UNIQUE INDEX "B2BCreditApprovalReviewEvent_credit_invoice_seller_key"
+  ON "B2BCreditApprovalReviewEvent"("creditNoteId","invoiceId","sellerTenantId");
+CREATE INDEX "B2BCreditApprovalReviewEvent_seller_invoice_idx"
+  ON "B2BCreditApprovalReviewEvent"("sellerTenantId","invoiceId","createdAt");
+
+CREATE FUNCTION stordex_deny_credit_evidence_ledger_mutation()
+RETURNS trigger LANGUAGE plpgsql AS $ledger_deny$
+BEGIN
+  RAISE EXCEPTION 'Credit evidence and approval audit ledger is append-only';
+END;
+$ledger_deny$;
+
+-- Evidence header: validate seller and original invoice at creation time.
+CREATE FUNCTION stordex_guard_currency_evidence_insert()
+RETURNS trigger LANGUAGE plpgsql AS $currency_header$
+DECLARE
+  source_invoice RECORD;
+  uploader RECORD;
+BEGIN
+  SELECT "tenantId","invoiceNumber",status::text INTO source_invoice
+    FROM "Invoice" WHERE id=NEW."invoiceId" FOR SHARE;
+  IF NOT FOUND OR source_invoice."tenantId" IS DISTINCT FROM NEW."sellerTenantId" OR
+     source_invoice."invoiceNumber" IS DISTINCT FROM NEW."sourceInvoiceNumber" OR
+     source_invoice.status NOT IN ('ISSUED','PAID') THEN
+    RAISE EXCEPTION 'Currency evidence requires same-seller issued/paid source invoice';
+  END IF;
+  SELECT u."tenantId",u.role::text AS role,t.status::text AS tenant_status
+    INTO uploader FROM "User" u JOIN "Tenant" t ON t.id=u."tenantId"
+    WHERE u.id=NEW."submittedByUserId";
+  IF NOT FOUND OR uploader."tenantId" IS DISTINCT FROM NEW."sellerTenantId" OR
+     uploader.role NOT IN ('OWNER','ADMIN') OR
+     uploader.tenant_status IS DISTINCT FROM 'ACTIVE' THEN
+    RAISE EXCEPTION 'Currency evidence requires active seller administrator';
+  END IF;
+  NEW."submittedAt" := clock_timestamp();
+  RETURN NEW;
+END;
+$currency_header$;
+CREATE TRIGGER "B2BInvoiceCurrencyEvidence_insert_guard"
+  BEFORE INSERT ON "B2BInvoiceCurrencyEvidence"
+  FOR EACH ROW EXECUTE FUNCTION stordex_guard_currency_evidence_insert();
+
+-- Each verification/rejection/revocation is ordered with a row-level lock,
+-- preventing concurrent reviewers from both writing a first decision.
+CREATE FUNCTION stordex_guard_currency_evidence_event_insert()
+RETURNS trigger LANGUAGE plpgsql AS $currency_event$
+DECLARE
+  source_evidence RECORD;
+  reviewer RECORD;
+BEGIN
+  -- The evidence lock orders writes, but it does not change an old
+  -- transaction snapshot. Read the event history afresh after taking it.
+  IF current_setting('transaction_isolation') <> 'read committed' THEN
+    RAISE EXCEPTION 'Currency evidence event writes require READ COMMITTED';
+  END IF;
+  SELECT * INTO source_evidence FROM "B2BInvoiceCurrencyEvidence"
+    WHERE id=NEW."evidenceId" AND "sellerTenantId"=NEW."sellerTenantId"
+    FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Currency evidence missing'; END IF;
+  SELECT u."tenantId",u.role::text AS role,t.status::text AS tenant_status
+    INTO reviewer FROM "User" u JOIN "Tenant" t ON t.id=u."tenantId"
+    WHERE u.id=NEW."reviewerUserId";
+  IF NOT FOUND OR reviewer."tenantId" IS DISTINCT FROM NEW."sellerTenantId" OR
+     reviewer.role NOT IN ('OWNER','ADMIN') OR
+     reviewer.tenant_status IS DISTINCT FROM 'ACTIVE' OR
+     NEW."reviewerUserId" = source_evidence."submittedByUserId" THEN
+    RAISE EXCEPTION 'Currency review requires independent active seller administrator';
+  END IF;
+  IF NEW."observedDocumentSha256" IS DISTINCT FROM source_evidence."documentSha256" OR
+     NEW."observedInvoiceSnapshotSha256" IS DISTINCT FROM
+       source_evidence."invoiceSnapshotSha256" THEN
+    RAISE EXCEPTION 'Original document/source hash mismatch';
+  END IF;
+  IF NEW."eventType" IN ('VERIFIED','REJECTED') AND EXISTS (
+    SELECT 1 FROM "B2BInvoiceCurrencyEvidenceEvent"
+    WHERE "evidenceId"=NEW."evidenceId" AND "sellerTenantId"=NEW."sellerTenantId"
+  ) THEN
+    RAISE EXCEPTION 'Currency evidence already reviewed';
+  END IF;
+  -- Revocation wins regardless of timestamp ties, clock drift or event IDs.
+  IF NEW."eventType"='REVOKED' AND (
+    NOT EXISTS (
+      SELECT 1 FROM "B2BInvoiceCurrencyEvidenceEvent"
+      WHERE "evidenceId"=NEW."evidenceId" AND "sellerTenantId"=NEW."sellerTenantId" AND "eventType"='VERIFIED'
+    ) OR EXISTS (
+      SELECT 1 FROM "B2BInvoiceCurrencyEvidenceEvent"
+      WHERE "evidenceId"=NEW."evidenceId" AND "sellerTenantId"=NEW."sellerTenantId" AND "eventType"='REVOKED'
+    )
+  ) THEN
+    RAISE EXCEPTION 'Only an independently verified evidence can be revoked';
+  END IF;
+  NEW."createdAt" := clock_timestamp();
+  RETURN NEW;
+END;
+$currency_event$;
+CREATE TRIGGER "B2BInvoiceCurrencyEvidenceEvent_insert_guard"
+  BEFORE INSERT ON "B2BInvoiceCurrencyEvidenceEvent"
+  FOR EACH ROW EXECUTE FUNCTION stordex_guard_currency_evidence_event_insert();
+
+-- A decision stays an audit record, never a state transition. The original
+-- amount hash is not verifiable in SQL alone: the future audit writer must
+-- lock and recompute the trusted Invoice+Order+line snapshot in this transaction.
+CREATE FUNCTION stordex_guard_credit_approval_review_insert()
+RETURNS trigger LANGUAGE plpgsql AS $credit_review$
+DECLARE
+  credit RECORD;
+  original_invoice RECORD;
+  reviewer RECORD;
+  accountant RECORD;
+  evidence RECORD;
+BEGIN
+  IF current_setting('transaction_isolation') <> 'read committed' THEN
+    RAISE EXCEPTION 'Credit review audit writes require READ COMMITTED';
+  END IF;
+  SELECT * INTO credit FROM "B2BCreditNote"
+    WHERE id=NEW."creditNoteId" AND "sellerTenantId"=NEW."sellerTenantId"
+      AND "originalInvoiceId"=NEW."invoiceId" FOR UPDATE;
+  IF NOT FOUND OR credit.status IS DISTINCT FROM 'DRAFT'::"B2BCreditStatus" OR
+     credit."proposedSubtotal" IS NOT NULL OR credit."proposedTax" IS NOT NULL OR
+     credit."proposedTotal" IS NOT NULL THEN
+    RAISE EXCEPTION 'Review can only describe an unissued non-financial DRAFT';
+  END IF;
+  SELECT * INTO original_invoice FROM "Invoice"
+    WHERE id=NEW."invoiceId" AND "tenantId"=NEW."sellerTenantId" FOR SHARE;
+  IF NOT FOUND OR original_invoice.status NOT IN ('ISSUED','PAID') OR
+     original_invoice.subtotal IS DISTINCT FROM credit."originalInvoiceSubtotal" OR
+     original_invoice.tax IS DISTINCT FROM credit."originalInvoiceTax" OR
+     original_invoice.total IS DISTINCT FROM credit."originalInvoiceTotal" OR
+     original_invoice."taxRate" IS DISTINCT FROM credit."originalInvoiceTaxRate" OR
+     original_invoice."taxPerOrder" IS DISTINCT FROM credit."originalInvoiceTaxPerOrder" OR
+     NEW."candidateTotal" > original_invoice.total THEN
+    RAISE EXCEPTION 'Credit review requires unchanged issued invoice financial snapshot and cap';
+  END IF;
+  SELECT * INTO evidence FROM "B2BInvoiceCurrencyEvidence"
+    WHERE id=NEW."evidenceId" AND "sellerTenantId"=NEW."sellerTenantId"
+      AND "invoiceId"=NEW."invoiceId" FOR UPDATE;
+  IF NOT FOUND OR NEW."invoiceSnapshotSha256" IS DISTINCT FROM
+      evidence."invoiceSnapshotSha256" THEN
+    RAISE EXCEPTION 'Review invoice hash/evidence mismatch';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM "B2BInvoiceCurrencyEvidenceEvent"
+    WHERE "evidenceId"=NEW."evidenceId" AND "sellerTenantId"=NEW."sellerTenantId"
+      AND "eventType"='VERIFIED' AND "observedCurrencyCode"='JPY'
+  ) OR EXISTS (
+    SELECT 1 FROM "B2BInvoiceCurrencyEvidenceEvent"
+    WHERE "evidenceId"=NEW."evidenceId" AND "sellerTenantId"=NEW."sellerTenantId" AND "eventType"='REVOKED'
+  ) THEN
+    RAISE EXCEPTION 'Credit review requires verified and non-revoked JPY evidence';
+  END IF;
+  SELECT u."tenantId",u.role::text AS role,t.status::text AS tenant_status
+    INTO reviewer FROM "User" u JOIN "Tenant" t ON t.id=u."tenantId"
+    WHERE u.id=NEW."reviewerUserId";
+  SELECT u."tenantId",u.role::text AS role,t.status::text AS tenant_status
+    INTO accountant FROM "User" u JOIN "Tenant" t ON t.id=u."tenantId"
+    WHERE u.id=NEW."accountingVerifierUserId";
+  IF reviewer."tenantId" IS DISTINCT FROM NEW."sellerTenantId" OR
+     reviewer.role NOT IN ('OWNER','ADMIN') OR
+     reviewer.tenant_status IS DISTINCT FROM 'ACTIVE' OR
+     accountant."tenantId" IS DISTINCT FROM NEW."sellerTenantId" OR
+     accountant.role NOT IN ('OWNER','ADMIN') OR
+     accountant.tenant_status IS DISTINCT FROM 'ACTIVE' OR
+     NEW."reviewerUserId"=credit."createdByUserId" OR
+     NEW."accountingVerifierUserId"=credit."createdByUserId" THEN
+    RAISE EXCEPTION 'Credit review requires independent active seller managers';
+  END IF;
+  -- No final issued credit may be inferred from this record. No credit header
+  -- update, invoice update, stock movement or settlement occurs in this SQL.
+  NEW."createdAt" := clock_timestamp();
+  RETURN NEW;
+END;
+$credit_review$;
+CREATE TRIGGER "B2BCreditApprovalReviewEvent_insert_guard"
+  BEFORE INSERT ON "B2BCreditApprovalReviewEvent"
+  FOR EACH ROW EXECUTE FUNCTION stordex_guard_credit_approval_review_insert();
+
+-- Header and event histories cannot be amended or erased.
+CREATE TRIGGER "B2BInvoiceCurrencyEvidence_immutable"
+  BEFORE UPDATE OR DELETE ON "B2BInvoiceCurrencyEvidence"
+  FOR EACH ROW EXECUTE FUNCTION stordex_deny_credit_evidence_ledger_mutation();
+CREATE TRIGGER "B2BInvoiceCurrencyEvidenceEvent_immutable"
+  BEFORE UPDATE OR DELETE ON "B2BInvoiceCurrencyEvidenceEvent"
+  FOR EACH ROW EXECUTE FUNCTION stordex_deny_credit_evidence_ledger_mutation();
+CREATE TRIGGER "B2BCreditApprovalReviewEvent_immutable"
+  BEFORE UPDATE OR DELETE ON "B2BCreditApprovalReviewEvent"
+  FOR EACH ROW EXECUTE FUNCTION stordex_deny_credit_evidence_ledger_mutation();
+
+COMMIT;

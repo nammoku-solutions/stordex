@@ -1,6 +1,6 @@
 # Proposed 12th Stordex Migration — release gate (NOT APPROVED / NOT APPLIED)
 
-Prepared: 2026-11-12. Scope: original invoice JPY evidence, immutable evidence decisions/revocations, and immutable maker/checker accounting review audit metadata. This is a **draft-only schema**, not a financial adjustment workflow.
+Prepared: 2026-11-12. Scope: original invoice JPY evidence, immutable evidence decisions/revocations, and immutable maker/checker accounting review audit metadata. This is an **unapproved schema change**, not a financial adjustment workflow. See the [release-review candidate and hosting plan](STAGING_EVIDENCE_HOST_AND_M12.md) for the exact candidate checksums and CI baseline.
 
 ## Exact infrastructure and safety boundary
 
@@ -85,7 +85,7 @@ The approval message must identify:
 - exact reviewed migration name, Git SHA, SQL checksum and expected table/migration counts;
 - timestamp and independent Restore validation PASS.
 
-Only then apply the EXACT reviewed migration in one transaction (or audited migration-tool workflow) to Staging and mark the checksum-identical _prisma_migrations history once. Never manually rerun an already-applied migration.
+Only then use `prisma migrate deploy` once from the exact reviewed revision against the verified Staging target. Let Prisma record the exact checksum in `_prisma_migrations`. Do not run the SQL manually or edit migration history.
 
 Use 003_postcheck_READ_ONLY_AFTER_APPROVAL.sql after applying:
 - expected **32** public tables, **12** completed migrations, 0 incomplete;
