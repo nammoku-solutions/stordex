@@ -4,12 +4,15 @@
  * storage authorization, currency verification, or permission to post money.
  */
 import { prisma } from "@/lib/db";
-import { requireSession } from "@/lib/session";
+import { readSessionUser, requireSession } from "@/lib/session";
 import type { Prisma } from "@/generated/prisma/client";
 import { prepareOriginalInvoiceForPrivateStorage } from "./b2b-credit-original-document-policy";
 import { prepareIndependentOriginalInvoiceReview } from "./b2b-credit-original-document-review";
 import { isValidOriginalInvoiceStorageReceipt } from "./b2b-credit-original-document-storage";
 import { loadTrustedOriginalInvoiceSource, type TrustedSource } from "./b2b-credit-original-document-snapshot";
+import {
+  createOriginalInvoiceReviewDownloader, type OriginalInvoiceReviewDownloadInput,
+} from "./b2b-credit-original-document-download";
 import {
   createOriginalInvoiceDecisionRecorder, createOriginalInvoiceRevocationRecorder,
   type OriginalInvoiceDecisionInput, type OriginalInvoiceRevocationInput,
@@ -150,5 +153,17 @@ export async function recordAuthenticatedOriginalInvoiceDecision(
 export async function revokeAuthenticatedOriginalInvoiceVerification(input: OriginalInvoiceRevocationInput) {
   return createOriginalInvoiceRevocationRecorder({
     db: prisma, requireReviewer: async () => (await requireSession()).user,
+  })(input);
+}
+
+/** Internal only. No public storage URL, route or feature enablement. */
+export async function downloadAuthenticatedOriginalInvoiceForReview(
+  input: OriginalInvoiceReviewDownloadInput,
+  readStoredVersion: Parameters<typeof prepareIndependentOriginalInvoiceReview>[1],
+) {
+  return createOriginalInvoiceReviewDownloader({
+    db: prisma,
+    readReviewer: readSessionUser,
+    readStoredVersion,
   })(input);
 }

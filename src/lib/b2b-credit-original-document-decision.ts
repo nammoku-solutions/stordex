@@ -5,7 +5,10 @@ import {
 } from "./b2b-credit-original-document-ledger";
 import { prepareIndependentOriginalInvoiceReview } from "./b2b-credit-original-document-review";
 import { loadTrustedOriginalInvoiceSource } from "./b2b-credit-original-document-snapshot";
-import { isValidOriginalInvoiceStorageReceipt } from "./b2b-credit-original-document-storage";
+import {
+  isEvidenceScopedId as isId, lockEvidence, readEvidence, readEvents, readReviewableEvidence,
+  type EvidenceRow, type EventRow, type Reviewer,
+} from "./b2b-credit-original-document-review-access";
 
 export type OriginalInvoiceDecisionInput = Readonly<{
   invoiceId: string;
@@ -23,19 +26,6 @@ export type OriginalInvoiceRevocationInput = Readonly<{
   eventId: string;
   reason: string;
 }>;
-type Reviewer = Readonly<{ id: string; tenantId: string }>;
-type EvidenceRow = Readonly<{
-  submittedByUserId: string; sourceInvoiceNumber: string; invoiceSnapshotSha256: string;
-  documentObjectRef: string; documentVersionId: string; documentByteLength: number; documentSha256: string;
-}>;
-type EventRow = Readonly<{
-  id: string; eventId: string; eventType: string; reviewerUserId: string;
-  observedDocumentSha256: string; observedInvoiceSnapshotSha256: string;
-  observedCurrencyCode: string | null; reason: string;
-}>;
-
-const scopedId = /^[A-Za-z0-9_-]{3,128}$/;
-const isId = (value: unknown): value is string => typeof value === "string" && scopedId.test(value);
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const unavailable = { recorded: false, reason: "REVIEW_UNAVAILABLE" } as const;
 
@@ -46,34 +36,6 @@ function reviewCommand(input: OriginalInvoiceRevocationInput) {
   const reason = input.reason.trim();
   if (reason.length > 1000 || reason.includes("\0") || [...reason].length < 8 || [...reason].length > 500) return null;
   return { invoiceId, evidenceId, eventId: input.eventId.toLowerCase(), reason };
-}
-
-async function lockEvidence(tx: Prisma.TransactionClient, actor: Reviewer, invoiceId: string, evidenceId: string) {
-  const [header] = await tx.$queryRaw<{ id: string }[]>`
-    SELECT id FROM "B2BInvoiceCurrencyEvidence" WHERE id=${evidenceId}
-    AND "invoiceId"=${invoiceId} AND "sellerTenantId"=${actor.tenantId} FOR UPDATE
-  `;
-  return !!header;
-}
-
-async function readEvidence(tx: Prisma.TransactionClient, actor: Reviewer, invoiceId: string, evidenceId: string) {
-  const [evidence] = await tx.$queryRaw<EvidenceRow[]>`
-    SELECT "submittedByUserId","sourceInvoiceNumber","invoiceSnapshotSha256","documentObjectRef",
-      "documentVersionId","documentByteLength","documentSha256"
-    FROM "B2BInvoiceCurrencyEvidence"
-    WHERE id=${evidenceId} AND "invoiceId"=${invoiceId} AND "sellerTenantId"=${actor.tenantId}
-  `;
-  return evidence;
-}
-
-async function readEvents(tx: Prisma.TransactionClient, actor: Reviewer, evidenceId: string) {
-  return tx.$queryRaw<EventRow[]>`
-    SELECT "id","eventId","eventType","reviewerUserId","observedDocumentSha256",
-      "observedInvoiceSnapshotSha256","observedCurrencyCode","reason"
-    FROM "B2BInvoiceCurrencyEvidenceEvent"
-    WHERE "evidenceId"=${evidenceId} AND "sellerTenantId"=${actor.tenantId}
-    LIMIT 3
-  `;
 }
 
 async function appendEvent(
@@ -98,14 +60,6 @@ type ReviewerDependencies = Readonly<{
   db: Pick<PrismaClient, "$transaction">;
   requireReviewer: () => Promise<Reviewer>;
 }>;
-
-function bindReceipt(actor: Reviewer, request: OriginalInvoiceDecisionInput, evidence: EvidenceRow) {
-  return {
-    sellerTenantId: actor.tenantId, invoiceId: request.invoiceId,
-    key: evidence.documentObjectRef, versionId: evidence.documentVersionId,
-    byteLength: evidence.documentByteLength, sha256: evidence.documentSha256,
-  };
-}
 
 /**
  * Actor must come from an authenticated session in trusted server code.
@@ -141,18 +95,17 @@ export function createOriginalInvoiceDecisionRecorder(dependencies: ReviewerDepe
     const prepared = await db.$transaction(async tx => {
       const trusted = await loadTrustedOriginalInvoiceSource(tx, actor, invoiceId);
       if (!trusted.accepted) return null;
-      const evidence = await readEvidence(tx, actor, invoiceId, evidenceId);
-      if (!evidence || evidence.submittedByUserId === actor.id ||
-          evidence.sourceInvoiceNumber !== trusted.source.invoice.invoiceNumber ||
-          evidence.invoiceSnapshotSha256 !== trusted.source.snapshotSha256) return null;
+      const candidate = await readReviewableEvidence(tx, trusted.source, evidenceId);
+      if (!candidate) return null;
+      const { evidence } = candidate;
       const events = await readEvents(tx, actor, evidenceId);
       if (events.length && (events.length !== 1 || !matchesReplay(events[0], evidence))) return null;
-      return { evidence, source: trusted.source };
+      return { ...candidate, source: trusted.source };
     }, { isolationLevel: "RepeatableRead", timeout: 15_000 });
     if (!prepared) return unavailable;
 
-    const receipt = bindReceipt(actor, request, prepared.evidence);
-    if (!isValidOriginalInvoiceStorageReceipt(receipt) || receipt.versionId !== request.inspectedVersionId ||
+    const { receipt } = prepared;
+    if (receipt.versionId !== request.inspectedVersionId ||
         receipt.sha256 !== request.inspectedDocumentSha256) return { recorded: false, reason: "OBSERVATION_MISMATCH" } as const;
     // Fetch and hash bytes outside DB locks. The writer below reauthorizes and
     // rechecks the exact evidence pointer and canonical source before commit.

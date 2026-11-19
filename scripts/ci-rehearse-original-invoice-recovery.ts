@@ -16,6 +16,7 @@ import { confirmedOriginalInvoiceEvidenceId,
   type ConfirmedOriginalInvoice, type recordConfirmedOriginalInvoice,
 } from "../src/lib/b2b-credit-original-document-recording";
 import { createOriginalInvoiceLedgerRecorder } from "../src/lib/b2b-credit-original-document-ledger";
+import { createOriginalInvoiceReviewDownloader } from "../src/lib/b2b-credit-original-document-download";
 import {
   createOriginalInvoiceDecisionRecorder, createOriginalInvoiceRevocationRecorder, type OriginalInvoiceDecisionInput,
 } from "../src/lib/b2b-credit-original-document-decision";
@@ -187,6 +188,76 @@ async function main() {
       observation: { ...decisionInput.observation, explicitCurrency: "USD" },
     })).recorded, false);
     assert.equal(reads, 2, "scope, version and observation must be checked before retrieving PDF bytes");
+    const downloadInput = { invoiceId, evidenceId: pending.evidenceId };
+    const downloadAs = (
+      id: string, tenantId = seller,
+      readStoredVersion: Parameters<typeof createOriginalInvoiceReviewDownloader>[0]["readStoredVersion"] = storage.read,
+    ) => createOriginalInvoiceReviewDownloader({
+      db: writerDb, readReviewer: async () => ({ id, tenantId }), readStoredVersion,
+    });
+    const download = downloadAs(reviewer);
+    const assertNoDownload = async (refused: Awaited<ReturnType<typeof download>>) => {
+      assert.equal(refused.available, false);
+      assert.equal(refused.response.status, 404);
+      assert.equal(refused.response.headers.get("cache-control"), "private, no-store");
+      assert.equal(refused.response.headers.get("content-disposition"), null);
+      assert.equal(refused.response.headers.get("location"), null);
+      assert.equal(refused.response.body, null);
+      assert.equal("inspection" in refused, false);
+    };
+    for (const result of await Promise.all([
+      createOriginalInvoiceReviewDownloader({ db: writerDb, readReviewer: async () => null, readStoredVersion: storage.read })(downloadInput),
+      downloadAs(actor)(downloadInput),
+      downloadAs("ci-m12-foreign-admin", "ci-m12-foreign")(downloadInput),
+      downloadAs("ci-m12-staff")(downloadInput),
+      download({ ...downloadInput, invoiceId: "ci-m12-invoice" }),
+      download({ ...downloadInput, evidenceId: "nonexistent-evidence" }),
+    ])) await assertNoDownload(result);
+    assert.equal(reads, 2, "unauthorized download attempts must not call storage");
+    const viewed = await download(downloadInput);
+    assert.ok(viewed.available);
+    assert.equal(viewed.response.status, 200);
+    assert.deepEqual(Buffer.from(await viewed.response.arrayBuffer()), bytes);
+    assert.equal(viewed.response.headers.get("content-type"), "application/pdf");
+    assert.equal(viewed.response.headers.get("content-disposition"), 'attachment; filename="stordex-original-invoice.pdf"');
+    assert.equal(viewed.response.headers.get("content-length"), String(bytes.byteLength));
+    assert.equal(viewed.response.headers.get("cache-control"), "private, no-store");
+    assert.equal(viewed.response.headers.get("cross-origin-resource-policy"), "same-origin");
+    assert.equal(viewed.response.headers.get("x-content-type-options"), "nosniff");
+    assert.equal(viewed.response.headers.get("location"), null);
+    assert.equal(viewed.response.headers.get("etag"), null);
+    assert.deepEqual(viewed.inspection, { inspectedVersionId: version, inspectedDocumentSha256: hash(bytes) });
+    await assertNoDownload(await downloadAs(reviewer, seller, async () => Buffer.alloc(bytes.byteLength))(downloadInput));
+    await assertNoDownload(await downloadAs(reviewer, seller, async () => { throw new Error("private provider error"); })(downloadInput));
+    let sessionReads = 0;
+    await assertNoDownload(await createOriginalInvoiceReviewDownloader({
+      db: writerDb, readReviewer: async () => ++sessionReads === 1 ? { id: reviewer, tenantId: seller } : null,
+      readStoredVersion: storage.read,
+    })(downloadInput));
+    const downgradeOnDownload = downloadAs(reviewer, seller, async (scope, receipt) => {
+      const fetched = await storage.read(scope, receipt);
+      await client.query(`UPDATE "User" SET role='STAFF' WHERE id=$1`, [reviewer]);
+      return fetched;
+    });
+    try {
+      await assertNoDownload(await downgradeOnDownload(downloadInput));
+    } finally {
+      await client.query(`UPDATE "User" SET role='ADMIN' WHERE id=$1`, [reviewer]);
+    }
+    const changedOnDownload = downloadAs(reviewer, seller, async (scope, receipt) => {
+      const fetched = await storage.read(scope, receipt);
+      await client.query('UPDATE "OrderItem" SET "itemId"=$2 WHERE id=$1', [lineA, replacementItemId]);
+      return fetched;
+    });
+    try {
+      await assertNoDownload(await changedOnDownload(downloadInput));
+    } finally {
+      await client.query('UPDATE "OrderItem" SET "itemId"=$2 WHERE id=$1', [lineA, itemId]);
+    }
+    const { rows: [afterDownload] } = await client.query(
+      'SELECT count(*)::int AS count FROM "B2BInvoiceCurrencyEvidenceEvent" WHERE "evidenceId"=$1', [pending.evidenceId],
+    );
+    assert.equal(afterDownload.count, 0, "viewing does not record a decision");
     const corruptRead = makeDecision(reviewer, seller, async (scope, receipt) => {
       await storage.read(scope, receipt);
       return Buffer.alloc(bytes.byteLength);
@@ -212,7 +283,13 @@ async function main() {
     } finally {
       await client.query('UPDATE "OrderItem" SET "itemId"=$2 WHERE id=$1', [lineA, itemId]);
     }
-    const verified = await makeDecision(reviewer)(decisionInput);
+    let verified: Awaited<ReturnType<ReturnType<typeof makeDecision>>> | undefined;
+    await assertNoDownload(await downloadAs("ci-m12-checker", seller, async (scope, receipt) => {
+      const fetched = await storage.read(scope, receipt);
+      verified = await makeDecision(reviewer)({ ...decisionInput, ...viewed.inspection });
+      return fetched;
+    })(downloadInput));
+    assert.ok(verified);
     assert.equal(verified.recorded, true);
     if (!verified.recorded) throw new Error("Decision recording failed");
     assert.equal(verified.financialPostingAllowed, false);
@@ -225,6 +302,10 @@ async function main() {
     );
     assert.deepEqual(decisionRows, [{ eventType: "VERIFIED", reviewerUserId: reviewer,
       observedCurrencyCode: "JPY", observedDocumentSha256: hash(bytes) }]);
+    const readsBeforeReviewedDownload = reads;
+    await assertNoDownload(await download(downloadInput));
+    assert.equal(reads, readsBeforeReviewedDownload);
+    console.log("ORIGINAL_INVOICE_DOWNLOAD_REHEARSAL_PASS (private attachment, exact bytes, reauthorization and decision race)");
 
     const rejectedReceipt = { ...confirmed, submission: { ...confirmed.submission, receipt: {
       ...pending.receipt, key: `b2b-credit-evidence/${seller}/${invoiceId}/${randomUUID()}.pdf`,
