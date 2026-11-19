@@ -30,32 +30,47 @@ async function lockSource(
   // invoice links and order lines, while SHARE locks pin existing edges/lines
   // and item ownership. Separate READ COMMITTED statements see changes that
   // committed while we waited, including writes by other isolation levels.
+  // Pin mutable FK edges before joining the referenced parent rows. EPQ
+  // on a joined locking query may otherwise skip a concurrently moved edge.
+  const links = await tx.$queryRaw<{ orderId: string }[]>`
+    SELECT "orderId" FROM "InvoiceOrder" WHERE "invoiceId"=${invoice}
+    ORDER BY "orderId" LIMIT ${MAX_ORDERS + 1} FOR SHARE
+  `;
+  if (!links.length || links.length > MAX_ORDERS) return false;
   const orders = await tx.$queryRaw<{ id: string; tenantId: string }[]>`
     SELECT o.id, o."tenantId" FROM "InvoiceOrder" io JOIN "Order" o ON o.id=io."orderId"
-    WHERE io."invoiceId"=${invoice} ORDER BY o.id LIMIT ${MAX_ORDERS + 1}
-    FOR SHARE OF io FOR UPDATE OF o
+    WHERE io."invoiceId"=${invoice} ORDER BY o.id FOR UPDATE OF o
   `;
-  if (!orders.length || orders.length > MAX_ORDERS || orders.some(order => order.tenantId !== seller)) return false;
-  const lines = await tx.$queryRaw<{ orderId: string; itemTenantId: string }[]>`
-    SELECT io."orderId", owned."itemTenantId"
+  if (orders.length !== links.length || orders.some(order => order.tenantId !== seller)) return false;
+  const lines = await tx.$queryRaw<{ orderId: string; itemId: string }[]>`
+    SELECT io."orderId", line."itemId"
     FROM "InvoiceOrder" io
     CROSS JOIN LATERAL (
-      SELECT i."tenantId" AS "itemTenantId"
-      FROM "OrderItem" li JOIN "Item" i ON i.id=li."itemId"
+      SELECT li."itemId" FROM "OrderItem" li
       WHERE li."orderId"=io."orderId" ORDER BY li.id LIMIT ${MAX_LINES_PER_ORDER + 1}
-      FOR SHARE OF li,i
-    ) owned
+      FOR SHARE OF li
+    ) line
     WHERE io."invoiceId"=${invoice}
   `;
   const counts = new Map<string, number>();
   for (const line of lines) {
-    if (line.itemTenantId !== seller) return false;
     counts.set(line.orderId, (counts.get(line.orderId) ?? 0) + 1);
   }
-  return orders.every(order => {
+  if (!orders.every(order => {
     const count = counts.get(order.id);
     return !!count && count <= MAX_LINES_PER_ORDER;
-  });
+  })) return false;
+  const items = await tx.$queryRaw<{ id: string; tenantId: string }[]>`
+    SELECT i.id,i."tenantId" FROM "Item" i
+    JOIN (
+      SELECT DISTINCT li."itemId" FROM "InvoiceOrder" io
+      JOIN "OrderItem" li ON li."orderId"=io."orderId"
+      WHERE io."invoiceId"=${invoice}
+    ) used ON used."itemId"=i.id
+    ORDER BY i.id FOR SHARE OF i
+  `;
+  return items.length === new Set(lines.map(line => line.itemId)).size &&
+    items.every(item => item.tenantId === seller);
 }
 
 type EvidenceRow = {

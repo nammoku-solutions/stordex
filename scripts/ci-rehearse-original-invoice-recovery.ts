@@ -43,6 +43,7 @@ async function main() {
     const sourceInvoiceNumber = "CI-INV-RECOVERY";
     const orderId = "ci-recovery-order";
     const itemId = "ci-recovery-item";
+    const replacementItemId = "ci-recovery-replacement-item";
     const lineA = "ci-recovery-line-a";
     const lineB = "ci-recovery-line-b";
     const customer = "ci-m12-customer";
@@ -59,8 +60,9 @@ async function main() {
     );
     await client.query(
       'INSERT INTO "Item" ("id","tenantId","code","name","unit","updatedAt") ' +
-      "VALUES ($1,$2,'CI-RECOVERY-ITEM','Synthetic recovery item','box',now())",
-      [itemId, seller],
+      "VALUES ($1,$2,'CI-RECOVERY-ITEM','Synthetic recovery item','box',now())," +
+      "($3,$2,'CI-RECOVERY-REPLACEMENT','Synthetic replacement item','box',now())",
+      [itemId, seller, replacementItemId],
     );
     await client.query(
       'INSERT INTO "OrderItem" ("id","orderId","itemId","itemName","unit","quantity","unitPrice","amount") ' +
@@ -161,12 +163,12 @@ async function main() {
       await client.query(`UPDATE "User" SET role='ADMIN' WHERE id=$1`, [actor]);
     }
 
-    // Change the signed line details without altering any invoice totals.
+    // Change the referenced item and line details without altering invoice totals.
     // Confirm the writer waits for the change to commit before rereading.
     await client.query("BEGIN");
     let racing: ReturnType<RecordPort> | undefined;
     try {
-      await client.query('UPDATE "OrderItem" SET amount=2199,"unitPrice"=2199 WHERE id=$1', [lineA]);
+      await client.query('UPDATE "OrderItem" SET amount=2199,"unitPrice"=2199,"itemId"=$2 WHERE id=$1', [lineA, replacementItemId]);
       await client.query('UPDATE "OrderItem" SET amount=2201,"unitPrice"=2201 WHERE id=$1', [lineB]);
       racing = submit(pending);
       // Attach a handler immediately so any early SQL error remains test output.
