@@ -17,6 +17,7 @@ import { confirmedOriginalInvoiceEvidenceId,
 } from "../src/lib/b2b-credit-original-document-recording";
 import { createOriginalInvoiceLedgerRecorder } from "../src/lib/b2b-credit-original-document-ledger";
 import { createOriginalInvoiceReviewDownloader } from "../src/lib/b2b-credit-original-document-download";
+import { createEvidenceReviewTickets } from "../src/lib/b2b-credit-evidence-ticket";
 import {
   createOriginalInvoiceDecisionRecorder, createOriginalInvoiceRevocationRecorder, type OriginalInvoiceDecisionInput,
 } from "../src/lib/b2b-credit-original-document-decision";
@@ -283,10 +284,24 @@ async function main() {
     } finally {
       await client.query('UPDATE "OrderItem" SET "itemId"=$2 WHERE id=$1', [lineA, itemId]);
     }
+    const tickets = createEvidenceReviewTickets(Buffer.alloc(32, 7)); // synthetic CI key
+    const ticketed = (id: string) => createOriginalInvoiceDecisionRecorder({
+      db: writerDb, requireReviewer: async () => ({ id, tenantId: seller }),
+      readStoredVersion: storage.read, verifyReviewTicket: tickets.verify,
+    });
+    assert.deepEqual(viewed.reviewer, { id: reviewer, tenantId: seller });
+    const reviewTicket = tickets.issue({ reviewerId: viewed.reviewer.id, sellerTenantId: viewed.reviewer.tenantId,
+      invoiceId, evidenceId: pending.evidenceId, ...viewed.inspection });
+    const ticketedInput = { invoiceId, evidenceId: decisionInput.evidenceId, eventId: decisionInput.eventId,
+      decision: decisionInput.decision, reason: decisionInput.reason, observation: decisionInput.observation, reviewTicket };
+    const readsBeforeTicketRefusal = reads;
+    assert.equal((await ticketed(reviewer)(decisionInput)).recorded, false, "HTTP recorder must not accept raw version/hash");
+    assert.equal((await ticketed("ci-m12-checker")(ticketedInput)).recorded, false, "ticket cannot be shared across reviewers");
+    assert.equal(reads, readsBeforeTicketRefusal);
     let verified: Awaited<ReturnType<ReturnType<typeof makeDecision>>> | undefined;
     await assertNoDownload(await downloadAs("ci-m12-checker", seller, async (scope, receipt) => {
       const fetched = await storage.read(scope, receipt);
-      verified = await makeDecision(reviewer)({ ...decisionInput, ...viewed.inspection });
+      verified = await ticketed(reviewer)(ticketedInput);
       return fetched;
     })(downloadInput));
     assert.ok(verified);

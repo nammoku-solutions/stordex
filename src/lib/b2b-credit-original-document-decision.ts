@@ -5,21 +5,24 @@ import {
 } from "./b2b-credit-original-document-ledger";
 import { prepareIndependentOriginalInvoiceReview } from "./b2b-credit-original-document-review";
 import { loadTrustedOriginalInvoiceSource } from "./b2b-credit-original-document-snapshot";
+import type { ReviewTicketBinding } from "./b2b-credit-evidence-ticket";
 import {
   isEvidenceScopedId as isId, lockEvidence, readEvidence, readEvents, readReviewableEvidence,
   type EvidenceRow, type EventRow, type Reviewer,
 } from "./b2b-credit-original-document-review-access";
 
-export type OriginalInvoiceDecisionInput = Readonly<{
+type DecisionForm = Readonly<{
   invoiceId: string;
   evidenceId: string;
   eventId: string;
   decision: "VERIFIED" | "REJECTED";
   reason: string;
   observation: { originalInvoiceNumber: string; explicitCurrency: string; inspectedOriginal: boolean };
-  inspectedVersionId: string;
-  inspectedDocumentSha256: string;
 }>;
+export type OriginalInvoiceDecisionInput = DecisionForm & Readonly<{
+  inspectedVersionId: string; inspectedDocumentSha256: string;
+}>;
+export type TicketedInvoiceDecisionInput = DecisionForm & Readonly<{ reviewTicket: string }>;
 export type OriginalInvoiceRevocationInput = Readonly<{
   invoiceId: string;
   evidenceId: string;
@@ -69,17 +72,16 @@ type ReviewerDependencies = Readonly<{
  */
 export function createOriginalInvoiceDecisionRecorder(dependencies: ReviewerDependencies & Readonly<{
   readStoredVersion: Parameters<typeof prepareIndependentOriginalInvoiceReview>[1];
+  verifyReviewTicket?: (ticket: string, binding: ReviewTicketBinding) => boolean;
 }>) {
   const { db, requireReviewer, readStoredVersion } = dependencies;
-  return async (input: OriginalInvoiceDecisionInput) => {
+  return async (input: OriginalInvoiceDecisionInput | TicketedInvoiceDecisionInput) => {
     const command = reviewCommand(input);
     if (!command) return unavailable;
     const request = { ...input, ...command, observation: { ...input.observation } };
     const { invoiceId, evidenceId, eventId, observation, decision, reason } = request;
     const currency = decision === "VERIFIED" ? "JPY" : null;
-    if ((decision !== "VERIFIED" && decision !== "REJECTED") || observation.inspectedOriginal !== true ||
-        typeof request.inspectedDocumentSha256 !== "string" || !/^[a-f0-9]{64}$/.test(request.inspectedDocumentSha256) ||
-        typeof request.inspectedVersionId !== "string" || request.inspectedVersionId.length > 1024) return unavailable;
+    if ((decision !== "VERIFIED" && decision !== "REJECTED") || observation.inspectedOriginal !== true) return unavailable;
     const authenticated = await requireReviewer();
     const actor = { id: authenticated.id, tenantId: authenticated.tenantId };
     if (!isId(actor.id) || !isId(actor.tenantId)) return unavailable;
@@ -105,8 +107,16 @@ export function createOriginalInvoiceDecisionRecorder(dependencies: ReviewerDepe
     if (!prepared) return unavailable;
 
     const { receipt } = prepared;
-    if (receipt.versionId !== request.inspectedVersionId ||
-        receipt.sha256 !== request.inspectedDocumentSha256) return { recorded: false, reason: "OBSERVATION_MISMATCH" } as const;
+    const isBoundToDownload = () => {
+      if ("reviewTicket" in request) return dependencies.verifyReviewTicket?.(request.reviewTicket, {
+        reviewerId: actor.id, sellerTenantId: actor.tenantId, invoiceId, evidenceId,
+        inspectedVersionId: receipt.versionId, inspectedDocumentSha256: receipt.sha256,
+      }) === true;
+      // The raw identity is only available to the internal rehearsal path.
+      return !dependencies.verifyReviewTicket && receipt.versionId === request.inspectedVersionId &&
+        receipt.sha256 === request.inspectedDocumentSha256;
+    };
+    if (!isBoundToDownload()) return { recorded: false, reason: "OBSERVATION_MISMATCH" } as const;
     // Fetch and hash bytes outside DB locks. The writer below reauthorizes and
     // rechecks the exact evidence pointer and canonical source before commit.
     const proof = await prepareIndependentOriginalInvoiceReview({
@@ -134,6 +144,7 @@ export function createOriginalInvoiceDecisionRecorder(dependencies: ReviewerDepe
           evidence.documentByteLength !== receipt.byteLength || evidence.documentSha256 !== proof.observedDocumentSha256) return unavailable;
 
       const events = await readEvents(tx, actor, evidenceId);
+      if (!isBoundToDownload()) return unavailable;
       if (events.length) {
         return events.length === 1 && matchesReplay(events[0], evidence) ? recorded(events[0].id, true) : unavailable;
       }

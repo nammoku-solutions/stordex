@@ -1,4 +1,5 @@
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireTenant } from "@/lib/session";
@@ -9,6 +10,8 @@ import { INVOICE_STATUS_LABEL, INVOICE_STATUS_BADGE } from "../_status";
 import { InvoiceStatusActions } from "./InvoiceStatusActions";
 import { b2bCreditDraftEnabled } from "@/lib/b2b-credit-draft-feature";
 import { b2bCreditPreviewEnabled } from "@/lib/b2b-credit-preview-feature";
+import { evidenceUatEnabled } from "@/lib/b2b-credit-evidence-uat";
+const InvoiceEvidencePanel = dynamic(() => import("./InvoiceEvidencePanel").then(module => module.InvoiceEvidencePanel));
 
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -141,6 +144,8 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           </div>
         </section>
       )}
+      {evidenceUatEnabled() && mayManageInvoices(role) &&
+        <InvoiceEvidencePanel invoiceId={inv.id} canSubmit={inv.status === "ISSUED" || inv.status === "PAID"} />}
       {mayManageInvoices(role) && <InvoiceStatusActions id={inv.id} status={inv.status} />}
     </>
   );

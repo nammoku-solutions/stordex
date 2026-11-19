@@ -87,6 +87,7 @@ export function createOriginalInvoiceReviewDownloader(dependencies: Readonly<{
         } }),
         // Server-side handoff to future review UI. Not a URL or a permission.
         inspection: { inspectedVersionId: receipt.versionId, inspectedDocumentSha256: receipt.sha256 },
+        reviewer: actor,
       } as const;
     } catch {
       // No provider/transaction information or partial content in a refusal.
