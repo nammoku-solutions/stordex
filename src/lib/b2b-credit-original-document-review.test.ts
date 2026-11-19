@@ -56,4 +56,16 @@ describe("independent original document review preparation", () => {
     await expect(review(fixture(), vi.fn().mockRejectedValue(new Error("provider failure"))))
       .resolves.toEqual({ ready: false, reason: "DOCUMENT_UNAVAILABLE" });
   });
+
+  it("can corroborate an explicit rejection without treating the document as JPY", async () => {
+    const x = fixture();
+    const input = { ...x, observation: { ...x.observation, originalInvoiceNumber: "I-002", explicitCurrency: "USD" } };
+    const read = vi.fn().mockResolvedValue(bytes);
+    await expect(review(input, read, "REJECTED")).resolves.toMatchObject({
+      ready: true, observedDocumentSha256: digest, currencyVerified: false, financialPostingAllowed: false,
+    });
+    await expect(review({ ...input, observation: { ...input.observation, inspectedOriginal: false } }, read, "REJECTED"))
+      .resolves.toEqual({ ready: false, reason: "OBSERVATION_MISMATCH" });
+    expect(read).toHaveBeenCalledTimes(1);
+  });
 });

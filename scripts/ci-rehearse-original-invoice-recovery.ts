@@ -16,6 +16,9 @@ import { confirmedOriginalInvoiceEvidenceId,
   type ConfirmedOriginalInvoice, type recordConfirmedOriginalInvoice,
 } from "../src/lib/b2b-credit-original-document-recording";
 import { createOriginalInvoiceLedgerRecorder } from "../src/lib/b2b-credit-original-document-ledger";
+import {
+  createOriginalInvoiceDecisionRecorder, type OriginalInvoiceDecisionInput,
+} from "../src/lib/b2b-credit-original-document-decision";
 import { loadTrustedOriginalInvoiceSource } from "../src/lib/b2b-credit-original-document-snapshot";
 import { buildSyntheticPdf } from "./smoke-stordex-evidence-sandbox";
 
@@ -163,6 +166,100 @@ async function main() {
       await client.query(`UPDATE "User" SET role='ADMIN' WHERE id=$1`, [actor]);
     }
 
+    // Exercise the actual writer with the exact-version storage adapter.
+    const reviewer = "ci-m12-reviewer";
+    const makeDecision = (
+      userId: string, tenantId = seller,
+      readStoredVersion: Parameters<typeof createOriginalInvoiceDecisionRecorder>[0]["readStoredVersion"] = storage.read,
+    ) => createOriginalInvoiceDecisionRecorder({
+      db: writerDb, requireReviewer: async () => ({ id: userId, tenantId }), readStoredVersion,
+    });
+    const decisionInput: OriginalInvoiceDecisionInput = {
+      invoiceId, evidenceId: pending.evidenceId, eventId: randomUUID(), decision: "VERIFIED",
+      reason: "Independent reviewer confirmed explicit JPY on the original",
+      observation: { originalInvoiceNumber: sourceInvoiceNumber, explicitCurrency: "JPY", inspectedOriginal: true },
+      inspectedVersionId: version, inspectedDocumentSha256: hash(bytes),
+    };
+    assert.equal((await makeDecision(actor)(decisionInput)).recorded, false);
+    assert.equal((await makeDecision("ci-m12-foreign-admin", "ci-m12-foreign")(decisionInput)).recorded, false);
+    assert.equal((await makeDecision(reviewer)({ ...decisionInput, inspectedVersionId: "other-version" })).recorded, false);
+    assert.equal((await makeDecision(reviewer)({ ...decisionInput,
+      observation: { ...decisionInput.observation, explicitCurrency: "USD" },
+    })).recorded, false);
+    assert.equal(reads, 2, "scope, version and observation must be checked before retrieving PDF bytes");
+    const corruptRead = makeDecision(reviewer, seller, async (scope, receipt) => {
+      await storage.read(scope, receipt);
+      return Buffer.alloc(bytes.byteLength);
+    });
+    assert.deepEqual(await corruptRead(decisionInput), { recorded: false, reason: "DOCUMENT_UNAVAILABLE" });
+    const roleChangedOnRead = makeDecision(reviewer, seller, async (scope, receipt) => {
+      const fetched = await storage.read(scope, receipt);
+      await client.query(`UPDATE "User" SET role='STAFF' WHERE id=$1`, [reviewer]);
+      return fetched;
+    });
+    try {
+      assert.equal((await roleChangedOnRead(decisionInput)).recorded, false);
+    } finally {
+      await client.query(`UPDATE "User" SET role='ADMIN' WHERE id=$1`, [reviewer]);
+    }
+    const changedOnRead = makeDecision(reviewer, seller, async (scope, receipt) => {
+      const fetched = await storage.read(scope, receipt);
+      await client.query('UPDATE "OrderItem" SET "itemId"=$2 WHERE id=$1', [lineA, replacementItemId]);
+      return fetched;
+    });
+    try {
+      assert.equal((await changedOnRead(decisionInput)).recorded, false);
+    } finally {
+      await client.query('UPDATE "OrderItem" SET "itemId"=$2 WHERE id=$1', [lineA, itemId]);
+    }
+    const verified = await makeDecision(reviewer)(decisionInput);
+    assert.equal(verified.recorded, true);
+    if (!verified.recorded) throw new Error("Decision recording failed");
+    assert.equal(verified.financialPostingAllowed, false);
+    assert.deepEqual(await makeDecision(reviewer)(decisionInput), { ...verified, replayed: true });
+    assert.equal((await makeDecision(reviewer)({ ...decisionInput, reason: "An alternative review rationale" })).recorded, false);
+    assert.equal((await makeDecision("ci-m12-checker")(decisionInput)).recorded, false);
+    const { rows: decisionRows } = await client.query(
+      'SELECT "eventType","reviewerUserId","observedCurrencyCode","observedDocumentSha256" ' +
+      'FROM "B2BInvoiceCurrencyEvidenceEvent" WHERE "evidenceId"=$1', [pending.evidenceId],
+    );
+    assert.deepEqual(decisionRows, [{ eventType: "VERIFIED", reviewerUserId: reviewer,
+      observedCurrencyCode: "JPY", observedDocumentSha256: hash(bytes) }]);
+
+    const rejectedReceipt = { ...confirmed, submission: { ...confirmed.submission, receipt: {
+      ...pending.receipt, key: `b2b-credit-evidence/${seller}/${invoiceId}/${randomUUID()}.pdf`,
+    } } };
+    const rejectedId = confirmedOriginalInvoiceEvidenceId(rejectedReceipt);
+    assert.equal((await submit({ ...rejectedReceipt.submission, evidenceId: rejectedId })).status, "INSERTED");
+    const mockExact = async (_scope: unknown, receipt: typeof pending.receipt) => {
+      assert.deepEqual(receipt, rejectedReceipt.submission.receipt);
+      return Buffer.from(bytes);
+    };
+    const rejectedInput = { ...decisionInput, evidenceId: rejectedId, eventId: randomUUID(),
+      decision: "REJECTED" as const, reason: "Exact original did not establish JPY",
+      observation: { ...decisionInput.observation, explicitCurrency: "USD" } };
+    assert.equal((await makeDecision(reviewer, seller, mockExact)({ ...rejectedInput, eventId: decisionInput.eventId })).recorded, false);
+    let readyCount = 0;
+    let unblock!: () => void;
+    const barrier = new Promise<void>(resolve => { unblock = resolve; });
+    const concurrentReads: typeof mockExact = async (scope, receipt) => {
+      const payload = await mockExact(scope, receipt);
+      if (++readyCount === 2) unblock();
+      await Promise.race([barrier, delay(5000, undefined, { ref: false }).then(() => { throw new Error("Both reviews must reach storage"); })]);
+      return payload;
+    };
+    const competing = await Promise.all([
+      makeDecision(reviewer, seller, concurrentReads)(rejectedInput),
+      makeDecision("ci-m12-checker", seller, concurrentReads)({ ...rejectedInput, eventId: randomUUID() }),
+    ]);
+    assert.equal(competing.filter(result => result.recorded).length, 1);
+    const { rows: rejections } = await client.query(
+      'SELECT "eventType","observedCurrencyCode" FROM "B2BInvoiceCurrencyEvidenceEvent" WHERE "evidenceId"=$1', [rejectedId],
+    );
+    assert.deepEqual(rejections, [{ eventType: "REJECTED", observedCurrencyCode: null }]);
+    assert.equal(readyCount, 2);
+    console.log("ORIGINAL_INVOICE_DECISION_REHEARSAL_PASS (same version, reauthorization, replay and competing decisions)");
+
     // Change the referenced item and line details without altering invoice totals.
     // Confirm the writer waits for the change to commit before rereading.
     await client.query("BEGIN");
@@ -191,7 +288,7 @@ async function main() {
     }
     const { rows: [unchanged] } = await client.query(
       'SELECT count(*)::int AS count, min("documentSha256") AS digest FROM "B2BInvoiceCurrencyEvidence" ' +
-      'WHERE "sellerTenantId"=$1 AND "invoiceId"=$2', [seller, invoiceId],
+      'WHERE "sellerTenantId"=$1 AND "invoiceId"=$2 AND "documentObjectRef"=$3', [seller, invoiceId, key],
     );
     assert.deepEqual(unchanged, { count: 1, digest: hash(bytes) });
     console.log("ORIGINAL_INVOICE_RECOVERY_REHEARSAL_PASS (Prisma writer, exact replay, role removal and original line race)");
