@@ -4,12 +4,19 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
+import { setTimeout as delay } from "node:timers/promises";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "../src/generated/prisma/client";
 import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, type S3Client } from "@aws-sdk/client-s3";
 import pg from "pg";
 import { createOriginalInvoiceRecordingCheckpoint } from "../src/lib/b2b-credit-original-document-checkpoint";
 import { createOriginalInvoicePrivateStorage } from "../src/lib/b2b-credit-original-document-storage";
 import type { OriginalInvoiceWriteIntent } from "../src/lib/b2b-credit-original-document-intake";
-import type { recordConfirmedOriginalInvoice } from "../src/lib/b2b-credit-original-document-recording";
+import { confirmedOriginalInvoiceEvidenceId,
+  type ConfirmedOriginalInvoice, type recordConfirmedOriginalInvoice,
+} from "../src/lib/b2b-credit-original-document-recording";
+import { createOriginalInvoiceLedgerRecorder } from "../src/lib/b2b-credit-original-document-ledger";
+import { loadTrustedOriginalInvoiceSource } from "../src/lib/b2b-credit-original-document-snapshot";
 import { buildSyntheticPdf } from "./smoke-stordex-evidence-sandbox";
 
 type RecordPort = Parameters<typeof recordConfirmedOriginalInvoice>[1]["recordIfCurrent"];
@@ -21,18 +28,50 @@ async function main() {
     url === "postgresql://stordex:stordex@localhost:5432/stordex?schema=public",
     "Evidence recovery rehearsal requires the disposable GitHub Actions PostgreSQL service");
   const client = new pg.Client({ connectionString: url });
+  const writerDb = new PrismaClient({ adapter: new PrismaPg({ connectionString: url }) });
   const dir = await mkdtemp(join(tmpdir(), "stordex-recovery-"));
   try {
     await client.connect();
     const { rows: [database] } = await client.query(
-      "SELECT current_database() AS db, current_setting('neon.project_id',true) AS neon_project",
+      "SELECT pg_backend_pid() AS pid, current_database() AS db, current_setting('neon.project_id',true) AS neon_project",
     );
     assert.equal(database.db, "stordex");
     assert.equal(database.neon_project, null);
     const seller = "ci-m12-seller";
-    const invoiceId = "ci-m12-invoice";
+    const invoiceId = "ci-recovery-invoice";
     const actor = "ci-m12-maker";
-    const sourceInvoiceNumber = "CI-INV-0001";
+    const sourceInvoiceNumber = "CI-INV-RECOVERY";
+    const orderId = "ci-recovery-order";
+    const itemId = "ci-recovery-item";
+    const lineA = "ci-recovery-line-a";
+    const lineB = "ci-recovery-line-b";
+    const customer = "ci-m12-customer";
+    await client.query(
+      'INSERT INTO "Invoice" ("id","tenantId","invoiceNumber","customerId","periodYear","periodMonth",' +
+      '"status","subtotal","tax","total","updatedAt") ' +
+      "VALUES ($1,$2,$3,$4,2026,11,'ISSUED',4400,440,4840,now())",
+      [invoiceId, seller, sourceInvoiceNumber, customer],
+    );
+    await client.query(
+      'INSERT INTO "Order" ("id","tenantId","orderNumber","customerId","subtotal","tax","total","updatedAt") ' +
+      "VALUES ($1,$2,'CI-RECOVERY-ORDER',$3,4400,440,4840,now())",
+      [orderId, seller, customer],
+    );
+    await client.query(
+      'INSERT INTO "Item" ("id","tenantId","code","name","unit","updatedAt") ' +
+      "VALUES ($1,$2,'CI-RECOVERY-ITEM','Synthetic recovery item','box',now())",
+      [itemId, seller],
+    );
+    await client.query(
+      'INSERT INTO "OrderItem" ("id","orderId","itemId","itemName","unit","quantity","unitPrice","amount") ' +
+      "VALUES ($1,$3,$4,'Synthetic recovery item','box',1,2200,2200), ($2,$3,$4,'Synthetic recovery item','box',1,2200,2200)",
+      [lineA, lineB, orderId, itemId],
+    );
+    await client.query('INSERT INTO "InvoiceOrder" ("invoiceId","orderId") VALUES ($1,$2)', [invoiceId, orderId]);
+    const source = await writerDb.$transaction(tx =>
+      loadTrustedOriginalInvoiceSource(tx, { id: actor, tenantId: seller }, invoiceId));
+    assert.ok(source.accepted);
+    const ledgerRecorder = createOriginalInvoiceLedgerRecorder(writerDb);
     const config = {
       bucket: "stordex-synthetic-ci", expectedBucketOwner: "123456789012",
       kmsKeyArn: "arn:aws:kms:ap-northeast-1:123456789012:key/12345678-1234-1234-1234-123456789012",
@@ -65,19 +104,9 @@ async function main() {
     } as unknown as S3Client;
     const storage = createOriginalInvoicePrivateStorage(fakeS3, config);
 
-    // A CI-only transaction port for this single known zero-order fixture.
-    // The eventual application port must use the full canonical source snapshot.
-    async function currentSource() {
-      return (await client.query(
-        'SELECT i."invoiceNumber", i.status, i.subtotal, i.tax, i.total, u.role, t.status AS "tenantStatus" ' +
-        'FROM "Invoice" i JOIN "Tenant" t ON t.id=i."tenantId" JOIN "User" u ON u."tenantId"=t.id ' +
-        'WHERE i.id=$1 AND t.id=$2 AND u.id=$3 FOR SHARE OF i,t,u',
-        [invoiceId, seller, actor],
-      )).rows[0];
-    }
     const intent: OriginalInvoiceWriteIntent = {
       identity: { sellerTenantId: seller, invoiceId, key, sha256: hash(bytes), byteLength: bytes.byteLength },
-      sourceInvoiceNumber, submittedByUserId: actor, invoiceSnapshotSha256: hash(JSON.stringify(await currentSource())),
+      sourceInvoiceNumber, submittedByUserId: actor, invoiceSnapshotSha256: source.source.snapshotSha256,
     };
     const first = await createOriginalInvoiceRecordingCheckpoint(dir);
     const id = await first.saveIntent(intent);
@@ -86,45 +115,10 @@ async function main() {
 
     let loseDbResponse = true;
     const recordIfCurrent: RecordPort = async row => {
-      const { receipt } = row;
-      await client.query("BEGIN");
-      let committed = false;
-      try {
-        const source = await currentSource();
-        if (!source || source.invoiceNumber !== row.sourceInvoiceNumber || !["ISSUED", "PAID"].includes(source.status) ||
-            !["ADMIN", "OWNER"].includes(source.role) || source.tenantStatus !== "ACTIVE" ||
-            hash(JSON.stringify(source)) !== row.invoiceSnapshotSha256 ||
-            receipt.sellerTenantId !== seller || receipt.invoiceId !== invoiceId || row.submittedByUserId !== actor) {
-          await client.query("ROLLBACK");
-          return { status: "SOURCE_CHANGED" };
-        }
-        const inserted = await client.query(
-          'INSERT INTO "B2BInvoiceCurrencyEvidence" ("id","sellerTenantId","invoiceId","sourceInvoiceNumber",' +
-          '"documentObjectRef","documentVersionId","documentByteLength","documentSha256","invoiceSnapshotSha256","submittedByUserId") ' +
-          'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT ("documentObjectRef","documentVersionId") DO NOTHING',
-          [row.evidenceId, seller, invoiceId, row.sourceInvoiceNumber, receipt.key, receipt.versionId,
-            receipt.byteLength, receipt.sha256, row.invoiceSnapshotSha256, row.submittedByUserId],
-        );
-        const { rows: [stored] } = await client.query(
-          'SELECT * FROM "B2BInvoiceCurrencyEvidence" WHERE "sellerTenantId"=$1 AND "invoiceId"=$2 ' +
-          'AND "documentObjectRef"=$3 AND "documentVersionId"=$4',
-          [seller, invoiceId, receipt.key, receipt.versionId],
-        );
-        await client.query("COMMIT");
-        committed = true;
-        if (loseDbResponse) throw new Error("synthetic lost acknowledgement after database commit");
-        if (!stored) return { status: "CONFLICT" };
-        return { status: inserted.rowCount ? "INSERTED" : "EXISTING", record: {
-          evidenceId: stored.id, sourceInvoiceNumber: stored.sourceInvoiceNumber, submittedByUserId: stored.submittedByUserId,
-          invoiceSnapshotSha256: stored.invoiceSnapshotSha256, receipt: {
-            sellerTenantId: stored.sellerTenantId, invoiceId: stored.invoiceId, key: stored.documentObjectRef,
-            versionId: stored.documentVersionId, sha256: stored.documentSha256, byteLength: stored.documentByteLength,
-          },
-        } };
-      } catch (error) {
-        if (!committed) await client.query("ROLLBACK");
-        throw error;
-      }
+      const result = await ledgerRecorder.recordIfCurrent(row);
+      assert.ok(result.status === "INSERTED" || result.status === "EXISTING");
+      if (loseDbResponse) throw new Error("synthetic lost acknowledgement after database commit");
+      return result;
     };
     const second = await createOriginalInvoiceRecordingCheckpoint(dir);
     assert.deepEqual(await second.pendingIntentIds(), [id]);
@@ -149,9 +143,58 @@ async function main() {
       'SELECT count(*)::int AS count FROM "B2BInvoiceCurrencyEvidenceEvent" WHERE "evidenceId"=$1', [result.evidenceId],
     );
     assert.equal(decisions.count, 0);
-    console.log("ORIGINAL_INVOICE_RECOVERY_REHEARSAL_PASS (synthetic S3, real disposable PostgreSQL, one PUT and one ledger row)");
+    const confirmed: ConfirmedOriginalInvoice = {
+      stored: true, evidenceRecorded: false, currencyVerified: false, financialPostingAllowed: false,
+      submission: { sourceInvoiceNumber, submittedByUserId: actor, invoiceSnapshotSha256: intent.invoiceSnapshotSha256,
+        receipt: { ...intent.identity, versionId: version } },
+    };
+    const pending = { ...confirmed.submission, evidenceId: confirmedOriginalInvoiceEvidenceId(confirmed) };
+    const submit = ledgerRecorder.recordIfCurrent;
+    assert.equal((await submit({ ...pending, evidenceId: "wrong-id" })).status, "CONFLICT");
+    assert.equal((await submit({ ...pending, submittedByUserId: "ci-m12-foreign-admin" })).status, "SOURCE_CHANGED");
+    assert.equal((await submit({ ...pending, receipt: { ...pending.receipt, sha256: "a".repeat(64) } })).status, "CONFLICT");
+    assert.deepEqual((await Promise.all([submit(pending), submit(pending)])).map(x => x.status), ["EXISTING", "EXISTING"]);
+    await client.query(`UPDATE "User" SET role='STAFF' WHERE id=$1`, [actor]);
+    try {
+      assert.equal((await submit(pending)).status, "SOURCE_CHANGED");
+    } finally {
+      await client.query(`UPDATE "User" SET role='ADMIN' WHERE id=$1`, [actor]);
+    }
+
+    // Change the signed line details without altering any invoice totals.
+    // Confirm the writer waits for the change to commit before rereading.
+    await client.query("BEGIN");
+    let racing: ReturnType<RecordPort> | undefined;
+    try {
+      await client.query('UPDATE "OrderItem" SET amount=2199,"unitPrice"=2199 WHERE id=$1', [lineA]);
+      await client.query('UPDATE "OrderItem" SET amount=2201,"unitPrice"=2201 WHERE id=$1', [lineB]);
+      racing = submit(pending);
+      // Attach a handler immediately so any early SQL error remains test output.
+      void racing.catch(() => {});
+      let blocked = false;
+      for (let attempts = 0; attempts < 80; attempts++) {
+        const { rows: [wait] } = await client.query(
+          "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE $1=ANY(pg_blocking_pids(pid))) AS blocked",
+          [database.pid],
+        );
+        if (wait.blocked) { blocked = true; break; }
+        await delay(50);
+      }
+      assert.ok(blocked, "writer must wait on an in-flight original line edit");
+      await client.query("COMMIT");
+      assert.equal((await racing).status, "SOURCE_CHANGED");
+    } finally {
+      await client.query("ROLLBACK");
+      await racing?.catch(() => {});
+    }
+    const { rows: [unchanged] } = await client.query(
+      'SELECT count(*)::int AS count, min("documentSha256") AS digest FROM "B2BInvoiceCurrencyEvidence" ' +
+      'WHERE "sellerTenantId"=$1 AND "invoiceId"=$2', [seller, invoiceId],
+    );
+    assert.deepEqual(unchanged, { count: 1, digest: hash(bytes) });
+    console.log("ORIGINAL_INVOICE_RECOVERY_REHEARSAL_PASS (Prisma writer, exact replay, role removal and original line race)");
   } finally {
-    await client.end();
+    await Promise.all([client.end(), writerDb.$disconnect()]);
     await rm(dir, { recursive: true, force: true });
   }
 }

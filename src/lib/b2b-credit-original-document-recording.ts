@@ -9,8 +9,8 @@ import { isValidOriginalInvoiceStorageReceipt } from "./b2b-credit-original-docu
 export type ConfirmedOriginalInvoice = Extract<Awaited<ReturnType<typeof storeInspectedOriginalInvoice>>, { stored: true }>;
 type Stored = ConfirmedOriginalInvoice;
 type Submission = Stored["submission"];
-type PendingRecord = Readonly<Submission & { evidenceId: string }>;
-type RecordAttempt =
+export type PendingRecord = Readonly<Submission & { evidenceId: string }>;
+export type RecordAttempt =
   | Readonly<{ status: "INSERTED" | "EXISTING"; record: PendingRecord }>
   | Readonly<{ status: "SOURCE_CHANGED" | "CONFLICT" | "RETRYABLE" }>;
 
@@ -46,7 +46,7 @@ export function confirmedOriginalInvoiceEvidenceId(stored: Stored): string {
   ])).digest("hex");
 }
 
-function sameRecord(candidate: PendingRecord, record: PendingRecord) {
+export function sameOriginalInvoiceEvidenceRecord(candidate: PendingRecord, record: PendingRecord) {
   return record != null && record.receipt != null &&
     candidate.evidenceId === record.evidenceId &&
     candidate.sourceInvoiceNumber === record.sourceInvoiceNumber &&
@@ -89,7 +89,8 @@ export async function recordConfirmedOriginalInvoice(
     }
     if (result?.status === "RETRYABLE") continue;
     if (result?.status === "SOURCE_CHANGED") return { recorded: false, reason: "SOURCE_CHANGED" } as const;
-    if ((result?.status !== "INSERTED" && result?.status !== "EXISTING") || !sameRecord(candidate, result.record)) {
+    if ((result?.status !== "INSERTED" && result?.status !== "EXISTING") ||
+        !sameOriginalInvoiceEvidenceRecord(candidate, result.record)) {
       return { recorded: false, reason: "RECEIPT_CONFLICT" } as const;
     }
     return { recorded: true, evidenceId, currencyVerified: false, financialPostingAllowed: false } as const;
