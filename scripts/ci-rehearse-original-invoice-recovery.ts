@@ -17,7 +17,7 @@ import { confirmedOriginalInvoiceEvidenceId,
 } from "../src/lib/b2b-credit-original-document-recording";
 import { createOriginalInvoiceLedgerRecorder } from "../src/lib/b2b-credit-original-document-ledger";
 import {
-  createOriginalInvoiceDecisionRecorder, type OriginalInvoiceDecisionInput,
+  createOriginalInvoiceDecisionRecorder, createOriginalInvoiceRevocationRecorder, type OriginalInvoiceDecisionInput,
 } from "../src/lib/b2b-credit-original-document-decision";
 import { loadTrustedOriginalInvoiceSource } from "../src/lib/b2b-credit-original-document-snapshot";
 import { buildSyntheticPdf } from "./smoke-stordex-evidence-sandbox";
@@ -292,6 +292,45 @@ async function main() {
     );
     assert.deepEqual(unchanged, { count: 1, digest: hash(bytes) });
     console.log("ORIGINAL_INVOICE_RECOVERY_REHEARSAL_PASS (Prisma writer, exact replay, role removal and original line race)");
+
+    // Revocation must work on historical evidence even after the source changed.
+    const revokeAs = (id: string, tenantId = seller) => createOriginalInvoiceRevocationRecorder({
+      db: writerDb, requireReviewer: async () => ({ id, tenantId }),
+    });
+    const revoke = revokeAs("ci-m12-checker");
+    const revokeInput = {
+      invoiceId, evidenceId: pending.evidenceId, eventId: randomUUID(),
+      reason: "Original invoice details changed after the document was verified",
+    };
+    assert.equal((await revokeAs(actor)(revokeInput)).recorded, false);
+    assert.equal((await revokeAs("ci-m12-foreign-admin", "ci-m12-foreign")(revokeInput)).recorded, false);
+    assert.equal((await revokeAs("ci-m12-staff")(revokeInput)).recorded, false);
+    assert.equal((await revoke({ ...revokeInput, evidenceId: rejectedId })).recorded, false);
+    assert.equal((await revoke({ ...revokeInput, invoiceId: "ci-m12-invoice" })).recorded, false);
+    const readsBeforeRevocation = reads;
+    const revocations = await Promise.all([revoke(revokeInput), revoke(revokeInput)]);
+    const [firstRevocation] = revocations.filter(r => r.recorded && !r.replayed);
+    assert.ok(firstRevocation?.recorded);
+    assert.deepEqual(revocations.filter(r => r.recorded && r.replayed), [{ ...firstRevocation, replayed: true }]);
+    assert.equal(firstRevocation.financialPostingAllowed, false);
+    assert.equal((await revoke({ ...revokeInput, eventId: randomUUID() })).recorded, false);
+    assert.equal((await revoke({ ...revokeInput, reason: "A different reason for this decision" })).recorded, false);
+    assert.equal(reads, readsBeforeRevocation);
+    const { rows: history } = await client.query(
+      'SELECT id,"eventType","observedCurrencyCode","observedDocumentSha256" FROM "B2BInvoiceCurrencyEvidenceEvent" ' +
+      'WHERE "evidenceId"=$1 ORDER BY "eventType"', [pending.evidenceId],
+    );
+    assert.deepEqual(history, [
+      { id: firstRevocation.decisionEventId, eventType: "REVOKED", observedCurrencyCode: null, observedDocumentSha256: hash(bytes) },
+      { id: verified.decisionEventId, eventType: "VERIFIED", observedCurrencyCode: "JPY", observedDocumentSha256: hash(bytes) },
+    ]);
+    // Restore the synthetic source so the verification replay is blocked by
+    // the revocation itself, not by stale invoice details.
+    await client.query('UPDATE "OrderItem" SET amount=2200,"unitPrice"=2200,"itemId"=$2 WHERE id=$1', [lineA, itemId]);
+    await client.query('UPDATE "OrderItem" SET amount=2200,"unitPrice"=2200 WHERE id=$1', [lineB]);
+    assert.equal((await makeDecision(reviewer)(decisionInput)).recorded, false);
+    assert.equal(reads, readsBeforeRevocation);
+    console.log("ORIGINAL_INVOICE_REVOCATION_REHEARSAL_PASS (historical verification retained, no S3 call, no reactivation)");
   } finally {
     await Promise.all([client.end(), writerDb.$disconnect()]);
     await rm(dir, { recursive: true, force: true });

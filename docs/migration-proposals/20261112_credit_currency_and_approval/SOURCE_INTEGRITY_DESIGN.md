@@ -22,7 +22,7 @@ The proposed SQL has \`FOR SHARE\` on the Invoice and checks its amount/tax-rate
 3. A cancelled Invoice blocks new review.
 4. The DRAFT/VOID-only database constraint, no financial amounts stored, no production/staging mutation remain true.
 
-The current draft SQL cannot make a historical review irrevocable against a future Invoice edit. Future financial writers must revalidate the source fingerprint, unchanged issue context, current verified-and-unrevoked evidence, credit allocation, competing posted credits, two-user accounting signoff and amount caps inside a serializable, idempotent transaction. They must never treat the presence of an accepted review row as a live grant.
+The current draft SQL cannot make a historical review irrevocable against a future Invoice edit. Evidence decisions and CreditNote review audit inserts take the same evidence-row mutex in READ COMMITTED and reread the event history after acquiring the lock. A REVOKED event permanently disqualifies that evidence, even when its timestamp matches or predates the VERIFIED event. A future financial writer must independently revalidate the source fingerprint, unchanged issue context, currently verified and non-revoked evidence, credit allocation, competing posted credits, two-user accounting signoff and amount caps in its idempotent transaction. Its transaction design must prevent a stale snapshot from bypassing revocation. An accepted review row is never a live grant.
 
 ## Prisma and migration plan
 

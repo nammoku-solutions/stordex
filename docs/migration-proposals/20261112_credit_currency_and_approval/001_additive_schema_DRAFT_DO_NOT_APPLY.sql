@@ -244,8 +244,12 @@ RETURNS trigger LANGUAGE plpgsql AS $currency_event$
 DECLARE
   source_evidence RECORD;
   reviewer RECORD;
-  prior_event TEXT;
 BEGIN
+  -- The evidence lock orders writes, but it does not change an old
+  -- transaction snapshot. Read the event history afresh after taking it.
+  IF current_setting('transaction_isolation') <> 'read committed' THEN
+    RAISE EXCEPTION 'Currency evidence event writes require READ COMMITTED';
+  END IF;
   SELECT * INTO source_evidence FROM "B2BInvoiceCurrencyEvidence"
     WHERE id=NEW."evidenceId" AND "sellerTenantId"=NEW."sellerTenantId"
     FOR UPDATE;
@@ -264,13 +268,22 @@ BEGIN
        source_evidence."invoiceSnapshotSha256" THEN
     RAISE EXCEPTION 'Original document/source hash mismatch';
   END IF;
-  SELECT "eventType" INTO prior_event FROM "B2BInvoiceCurrencyEvidenceEvent"
-    WHERE "evidenceId"=NEW."evidenceId"
-    ORDER BY "createdAt" DESC,"id" DESC LIMIT 1;
-  IF NEW."eventType" IN ('VERIFIED','REJECTED') AND prior_event IS NOT NULL THEN
+  IF NEW."eventType" IN ('VERIFIED','REJECTED') AND EXISTS (
+    SELECT 1 FROM "B2BInvoiceCurrencyEvidenceEvent"
+    WHERE "evidenceId"=NEW."evidenceId" AND "sellerTenantId"=NEW."sellerTenantId"
+  ) THEN
     RAISE EXCEPTION 'Currency evidence already reviewed';
   END IF;
-  IF NEW."eventType"='REVOKED' AND prior_event IS DISTINCT FROM 'VERIFIED' THEN
+  -- Revocation wins regardless of timestamp ties, clock drift or event IDs.
+  IF NEW."eventType"='REVOKED' AND (
+    NOT EXISTS (
+      SELECT 1 FROM "B2BInvoiceCurrencyEvidenceEvent"
+      WHERE "evidenceId"=NEW."evidenceId" AND "sellerTenantId"=NEW."sellerTenantId" AND "eventType"='VERIFIED'
+    ) OR EXISTS (
+      SELECT 1 FROM "B2BInvoiceCurrencyEvidenceEvent"
+      WHERE "evidenceId"=NEW."evidenceId" AND "sellerTenantId"=NEW."sellerTenantId" AND "eventType"='REVOKED'
+    )
+  ) THEN
     RAISE EXCEPTION 'Only an independently verified evidence can be revoked';
   END IF;
   NEW."createdAt" := clock_timestamp();
@@ -282,8 +295,8 @@ CREATE TRIGGER "B2BInvoiceCurrencyEvidenceEvent_insert_guard"
   FOR EACH ROW EXECUTE FUNCTION stordex_guard_currency_evidence_event_insert();
 
 -- A decision stays an audit record, never a state transition. The original
--- amount hash is not verifiable in SQL alone: future writer must recompute it
--- from trusted Invoice+Order+line snapshots inside serializable transaction.
+-- amount hash is not verifiable in SQL alone: the future audit writer must
+-- lock and recompute the trusted Invoice+Order+line snapshot in this transaction.
 CREATE FUNCTION stordex_guard_credit_approval_review_insert()
 RETURNS trigger LANGUAGE plpgsql AS $credit_review$
 DECLARE
@@ -292,8 +305,10 @@ DECLARE
   reviewer RECORD;
   accountant RECORD;
   evidence RECORD;
-  latest_event TEXT;
 BEGIN
+  IF current_setting('transaction_isolation') <> 'read committed' THEN
+    RAISE EXCEPTION 'Credit review audit writes require READ COMMITTED';
+  END IF;
   SELECT * INTO credit FROM "B2BCreditNote"
     WHERE id=NEW."creditNoteId" AND "sellerTenantId"=NEW."sellerTenantId"
       AND "originalInvoiceId"=NEW."invoiceId" FOR UPDATE;
@@ -320,10 +335,14 @@ BEGIN
       evidence."invoiceSnapshotSha256" THEN
     RAISE EXCEPTION 'Review invoice hash/evidence mismatch';
   END IF;
-  SELECT "eventType" INTO latest_event FROM "B2BInvoiceCurrencyEvidenceEvent"
-    WHERE "evidenceId"=NEW."evidenceId"
-    ORDER BY "createdAt" DESC,"id" DESC LIMIT 1;
-  IF latest_event IS DISTINCT FROM 'VERIFIED' THEN
+  IF NOT EXISTS (
+    SELECT 1 FROM "B2BInvoiceCurrencyEvidenceEvent"
+    WHERE "evidenceId"=NEW."evidenceId" AND "sellerTenantId"=NEW."sellerTenantId"
+      AND "eventType"='VERIFIED' AND "observedCurrencyCode"='JPY'
+  ) OR EXISTS (
+    SELECT 1 FROM "B2BInvoiceCurrencyEvidenceEvent"
+    WHERE "evidenceId"=NEW."evidenceId" AND "sellerTenantId"=NEW."sellerTenantId" AND "eventType"='REVOKED'
+  ) THEN
     RAISE EXCEPTION 'Credit review requires verified and non-revoked JPY evidence';
   END IF;
   SELECT u."tenantId",u.role::text AS role,t.status::text AS tenant_status
