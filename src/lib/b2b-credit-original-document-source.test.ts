@@ -2,12 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   prepareAuthenticatedOriginalInvoiceDocument as prepare,
   prepareAuthenticatedOriginalInvoiceReview as review,
+  downloadAuthenticatedOriginalInvoiceForReview as download,
 } from "./b2b-credit-original-document-source";
 
 const mocks = vi.hoisted(() => ({
-  session: vi.fn(), user: vi.fn(), invoice: vi.fn(), transaction: vi.fn(),
+  session: vi.fn(), sessionUser: vi.fn(), user: vi.fn(), invoice: vi.fn(), transaction: vi.fn(),
 }));
-vi.mock("@/lib/session", () => ({ requireSession: mocks.session }));
+vi.mock("@/lib/session", () => ({ requireSession: mocks.session, readSessionUser: mocks.sessionUser }));
 vi.mock("@/lib/db", () => ({ prisma: { $transaction: mocks.transaction } }));
 
 const actor = { id: "user-one", tenantId: "tenant-a", role: "ADMIN" };
@@ -33,6 +34,26 @@ beforeEach(() => {
   mocks.user.mockResolvedValue(actor);
   mocks.invoice.mockResolvedValue(invoice());
   mocks.transaction.mockImplementation(callback => callback(tx));
+});
+
+describe("authenticated original invoice review download boundary", () => {
+  it("does not disclose PDF metadata or perform I/O for malformed or unauthenticated requests", async () => {
+    mocks.sessionUser.mockResolvedValue(null);
+    const storageRead = vi.fn();
+    const malformed = await download({ invoiceId: "invoice-one", evidenceId: "../other" }, storageRead);
+    expect(mocks.sessionUser).not.toHaveBeenCalled();
+    const anonymous = await download({ invoiceId: "invoice-one", evidenceId: "evidence-one" }, storageRead);
+    expect(mocks.sessionUser).toHaveBeenCalledTimes(1);
+    for (const result of [malformed, anonymous]) {
+      expect(result.available).toBe(false);
+      expect(result.response.status).toBe(404);
+      expect(result.response.body).toBeNull();
+      expect(result.response.headers.get("cache-control")).toBe("private, no-store");
+      expect(result.response.headers.get("location")).toBeNull();
+    }
+    expect(mocks.transaction).not.toHaveBeenCalled();
+    expect(storageRead).not.toHaveBeenCalled();
+  });
 });
 
 describe("authenticated original invoice source preparation", () => {

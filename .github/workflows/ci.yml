@@ -96,7 +96,7 @@ jobs:
       - name: Rehearse unapproved CreditNote migration 12 on disposable CI DB ONLY
         run: node scripts/ci-rehearse-credit-migration12.mjs
 
-      - name: Rehearse original invoice recovery, decisions and revocation against disposable CI DB ONLY
+      - name: Rehearse private original invoice download, recovery, decisions and revocation in CI ONLY
         run: node --import tsx scripts/ci-rehearse-original-invoice-recovery.ts
 
       - name: Rehearse synthetic CreditNote review and evidence revocation races in CI ONLY

@@ -3,6 +3,11 @@ import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
+/** Identity only. The protected data path must revalidate current membership. */
+export async function readSessionUser() {
+  return (await getServerSession(authOptions))?.user ?? null;
+}
+
 /**
  * Returns the current authenticated session, or redirects to /login.
  * Use in server components and server actions to enforce tenant scope.
