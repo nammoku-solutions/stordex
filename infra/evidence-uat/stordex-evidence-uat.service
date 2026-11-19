@@ -1,0 +1,30 @@
+[Unit]
+Description=Stordex Staging Node host for evidence UAT
+Wants=network-online.target stordex-evidence-clamd.service
+After=network-online.target stordex-evidence-clamd.service
+RequiresMountsFor=/var/lib/stordex-evidence
+
+[Service]
+Type=simple
+User=stordex
+Group=stordex
+SupplementaryGroups=stordex-evidence
+WorkingDirectory=/opt/stordex/current
+Environment=NODE_ENV=production
+Environment=APP_ENV=staging
+Environment=STORDEX_EVIDENCE_UAT_CHECKPOINT_DIR=/var/lib/stordex-evidence/checkpoints
+Environment=STORDEX_EVIDENCE_UAT_CLAMD_SOCKET=/run/stordex-clamd/clamd.sock
+EnvironmentFile=/etc/stordex/staging.env
+ExecStartPre=/usr/bin/mountpoint -q /var/lib/stordex-evidence
+ExecStart=/usr/bin/node node_modules/next/dist/bin/next start --hostname 0.0.0.0 --port 3000
+Restart=on-failure
+RestartSec=5s
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/stordex-evidence/checkpoints /opt/stordex/current/.next/cache
+
+[Install]
+WantedBy=multi-user.target

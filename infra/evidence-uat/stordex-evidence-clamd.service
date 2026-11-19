@@ -1,0 +1,21 @@
+[Unit]
+Description=Stordex Staging private PDF scanner
+After=clamav-freshclam.service
+
+[Service]
+Type=simple
+User=clamav
+Group=stordex-evidence
+RuntimeDirectory=stordex-clamd
+RuntimeDirectoryMode=0750
+ExecStart=/usr/sbin/clamd --config-file=/etc/stordex/clamd.conf
+Restart=on-failure
+RestartSec=15s
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+RestrictAddressFamilies=AF_UNIX
+
+[Install]
+WantedBy=multi-user.target
