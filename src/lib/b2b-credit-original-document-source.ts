@@ -11,7 +11,8 @@ import { prepareIndependentOriginalInvoiceReview } from "./b2b-credit-original-d
 import { isValidOriginalInvoiceStorageReceipt } from "./b2b-credit-original-document-storage";
 import { loadTrustedOriginalInvoiceSource, type TrustedSource } from "./b2b-credit-original-document-snapshot";
 import {
-  createOriginalInvoiceDecisionRecorder, type OriginalInvoiceDecisionInput,
+  createOriginalInvoiceDecisionRecorder, createOriginalInvoiceRevocationRecorder,
+  type OriginalInvoiceDecisionInput, type OriginalInvoiceRevocationInput,
 } from "./b2b-credit-original-document-decision";
 
 const ID = /^[A-Za-z0-9_-]{3,128}$/;
@@ -143,4 +144,11 @@ export async function recordAuthenticatedOriginalInvoiceDecision(
     db: prisma, requireReviewer: async () => (await requireSession()).user, readStoredVersion,
   });
   return record(input);
+}
+
+/** Internal only. Revocation does not fetch PDF bytes or alter financial state. */
+export async function revokeAuthenticatedOriginalInvoiceVerification(input: OriginalInvoiceRevocationInput) {
+  return createOriginalInvoiceRevocationRecorder({
+    db: prisma, requireReviewer: async () => (await requireSession()).user,
+  })(input);
 }

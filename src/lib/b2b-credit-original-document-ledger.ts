@@ -12,15 +12,21 @@ import {
   loadTrustedOriginalInvoiceSource, MAX_LINES_PER_ORDER, MAX_ORDERS,
 } from "./b2b-credit-original-document-snapshot";
 
-export async function lockOriginalInvoiceSource(
-  tx: Prisma.TransactionClient, actor: string, seller: string, invoice: string,
+export async function lockActiveOriginalInvoiceSellerManager(
+  tx: Prisma.TransactionClient, actor: string, seller: string,
 ): Promise<boolean> {
   const membership = await tx.$queryRaw<{ id: string }[]>`
     SELECT u.id FROM "User" u JOIN "Tenant" t ON t.id=u."tenantId"
     WHERE u.id=${actor} AND t.id=${seller} AND u.role IN ('OWNER','ADMIN') AND t.status='ACTIVE'
     FOR SHARE OF u,t
   `;
-  if (membership.length !== 1) return false;
+  return membership.length === 1;
+}
+
+export async function lockOriginalInvoiceSource(
+  tx: Prisma.TransactionClient, actor: string, seller: string, invoice: string,
+): Promise<boolean> {
+  if (!await lockActiveOriginalInvoiceSellerManager(tx, actor, seller)) return false;
   const headers = await tx.$queryRaw<{ id: string }[]>`
     SELECT i.id FROM "Invoice" i WHERE i.id=${invoice} AND i."tenantId"=${seller}
     AND i.status IN ('ISSUED','PAID') FOR UPDATE OF i

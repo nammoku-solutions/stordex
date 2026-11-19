@@ -8,6 +8,9 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import pg from "pg";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "../src/generated/prisma/client.ts";
+import { createOriginalInvoiceRevocationRecorder } from "../src/lib/b2b-credit-original-document-decision.ts";
 const parsed = new URL(process.env.DATABASE_URL || "postgresql://invalid.invalid/no");
 if (
   process.env.CI !== "true" ||
@@ -284,8 +287,11 @@ try {
   );
 
   const revFirst=await syntheticReturnCredit(21,1);
-  const revConn=await connection(),approveConn=await connection();
+  const revConn=await connection(),approveConn=await connection(),oldSnapshot=await connection();
   try {
+    await oldSnapshot.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+    const oldEvents = 'SELECT "eventType" FROM "B2BInvoiceCurrencyEvidenceEvent" WHERE "evidenceId"=$1';
+    assert.deepEqual((await oldSnapshot.query(oldEvents,[revFirst.evidence])).rows,[{eventType:"VERIFIED"}]);
     await revConn.query("BEGIN");
     // Reserve this evidence row until the revocation has committed.
     await revConn.query(
@@ -301,17 +307,30 @@ try {
     await revConn.query("COMMIT");
     await attempt;
     assertions++;
+    assert.deepEqual((await oldSnapshot.query(oldEvents,[revFirst.evidence])).rows,[{eventType:"VERIFIED"}]);
+    await assert.rejects(
+      oldSnapshot.query(insertApproval,approvalArgs(21,revFirst)),
+      /Credit review audit writes require READ COMMITTED/,
+      "a pinned old snapshot cannot approve evidence after revocation",
+    );
+    assertions++;
     await checkScalar(
       'SELECT count(*)::int AS v FROM "B2BCreditApprovalReviewEvent" WHERE "creditNoteId"=$1',
       [revFirst.credit],0,"revoked evidence never authorizes a new review",
     );
   } finally {
     await revConn.query("ROLLBACK").catch(()=>{});
-    await Promise.all([revConn.end(),approveConn.end()]);
+    await oldSnapshot.query("ROLLBACK").catch(()=>{});
+    await Promise.all([revConn.end(),approveConn.end(),oldSnapshot.end()]);
   }
 
   const approveFirst=await syntheticReturnCredit(22,1);
-  const approve=await connection(),revoke=await connection();
+  const approve=await connection();
+  const revokeDb = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
+  const revoke = createOriginalInvoiceRevocationRecorder({
+    db: revokeDb, requireReviewer: async () => ({ id: checker, tenantId: seller }),
+  });
+  let attemptedRevoke;
   try {
     await approve.query("BEGIN");
     // This lock is also taken inside the future review trigger, ensuring
@@ -320,12 +339,12 @@ try {
       'SELECT id FROM "B2BInvoiceCurrencyEvidence" WHERE id=$1 FOR UPDATE',
       [approveFirst.evidence],
     );
-    const attemptedRevoke=revoke.query(
-      insertRevocation,revocationArgs(22,approveFirst.evidence),
-    );
+    attemptedRevoke = revoke({ invoiceId, evidenceId: approveFirst.evidence,
+      eventId: uid(225), reason: "Evidence no longer trustworthy after the recorded review" });
+    void attemptedRevoke.catch(() => {});
     await approve.query(insertApproval,approvalArgs(22,approveFirst));
     await approve.query("COMMIT");
-    await attemptedRevoke;
+    assert.equal((await attemptedRevoke).recorded, true, "application revocation must follow the historical review");
     await checkScalar(
       'SELECT count(*)::int AS v FROM "B2BCreditApprovalReviewEvent" WHERE "creditNoteId"=$1',
       [approveFirst.credit],1,"historical review persists when evidence revoked afterwards",
@@ -338,12 +357,14 @@ try {
     // A historical accepted review with subsequently revoked evidence is
     // NOT an authorization for credit issuing. Financial writer doesn't exist.
     await reject(
-      insertApproval,approvalArgs(22,approveFirst,{0:id("second-approval"),1:uid(224)}),
+      insertApproval,approvalArgs(22,approveFirst,{0:id("second-approval"),1:uid(2255)}),
       "approval audit cannot be reused or silently re-approved after revocation",
+      /Credit review requires verified and non-revoked JPY evidence/,
     );
   } finally {
     await approve.query("ROLLBACK").catch(()=>{});
-    await Promise.all([approve.end(),revoke.end()]);
+    await attemptedRevoke?.catch(() => {});
+    await Promise.all([approve.end(),revokeDb.$disconnect()]);
   }
 
   // Race C: an Invoice financial update commits before a review can take a
