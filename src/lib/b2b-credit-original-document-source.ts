@@ -10,6 +10,9 @@ import { prepareOriginalInvoiceForPrivateStorage } from "./b2b-credit-original-d
 import { prepareIndependentOriginalInvoiceReview } from "./b2b-credit-original-document-review";
 import { isValidOriginalInvoiceStorageReceipt } from "./b2b-credit-original-document-storage";
 import { loadTrustedOriginalInvoiceSource, type TrustedSource } from "./b2b-credit-original-document-snapshot";
+import {
+  createOriginalInvoiceDecisionRecorder, type OriginalInvoiceDecisionInput,
+} from "./b2b-credit-original-document-decision";
 
 const ID = /^[A-Za-z0-9_-]{3,128}$/;
 const isId = (value: unknown): value is string => typeof value === "string" && ID.test(value);
@@ -129,4 +132,15 @@ export async function prepareAuthenticatedOriginalInvoiceReview(input: Readonly<
   // Avoid running S3 requests inside the Prisma transaction. A future event
   // writer must recheck authorization, source hash and evidence in its own tx.
   return prepareIndependentOriginalInvoiceReview({ ...trusted.result, observation }, dependencies.readStoredVersion);
+}
+
+/** Internal only. No route or caller-controlled storage port is registered. */
+export async function recordAuthenticatedOriginalInvoiceDecision(
+  input: OriginalInvoiceDecisionInput,
+  readStoredVersion: Parameters<typeof prepareIndependentOriginalInvoiceReview>[1],
+) {
+  const record = createOriginalInvoiceDecisionRecorder({
+    db: prisma, requireReviewer: async () => (await requireSession()).user, readStoredVersion,
+  });
+  return record(input);
 }

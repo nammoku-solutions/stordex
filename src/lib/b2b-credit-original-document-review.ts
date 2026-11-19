@@ -38,11 +38,13 @@ function sourceAndReviewerMatch(input: ReviewInputs): boolean {
 export async function prepareIndependentOriginalInvoiceReview(
   input: ReviewInputs,
   readStoredVersion: (scope: { sellerTenantId: string; invoiceId: string }, receipt: OriginalInvoiceStorageReceipt) => Promise<Uint8Array>,
+  decision: "VERIFIED" | "REJECTED" = "VERIFIED",
 ) {
   const { invoice, submission, observation } = input;
   if (!sourceAndReviewerMatch(input)) return { ready: false, reason: "REVIEW_UNAVAILABLE" } as const;
-  if (observation.inspectedOriginal !== true || observation.explicitCurrency !== "JPY" ||
-      observation.originalInvoiceNumber !== invoice.invoiceNumber) {
+  if (observation.inspectedOriginal !== true || (decision !== "VERIFIED" && decision !== "REJECTED") ||
+      (decision === "VERIFIED" && (observation.explicitCurrency !== "JPY" ||
+        observation.originalInvoiceNumber !== invoice.invoiceNumber))) {
     return { ready: false, reason: "OBSERVATION_MISMATCH" } as const;
   }
   try {

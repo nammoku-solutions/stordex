@@ -12,7 +12,7 @@ import {
   loadTrustedOriginalInvoiceSource, MAX_LINES_PER_ORDER, MAX_ORDERS,
 } from "./b2b-credit-original-document-snapshot";
 
-async function lockSource(
+export async function lockOriginalInvoiceSource(
   tx: Prisma.TransactionClient, actor: string, seller: string, invoice: string,
 ): Promise<boolean> {
   const membership = await tx.$queryRaw<{ id: string }[]>`
@@ -90,7 +90,9 @@ export function createOriginalInvoiceLedgerRecorder(db: Pick<PrismaClient, "$tra
       const { evidenceId, receipt, submittedByUserId, invoiceSnapshotSha256, sourceInvoiceNumber } = candidate;
       const { sellerTenantId, invoiceId, key, versionId, sha256, byteLength } = receipt;
       return db.$transaction(async (tx): Promise<RecordAttempt> => {
-        if (!await lockSource(tx, submittedByUserId, sellerTenantId, invoiceId)) return { status: "SOURCE_CHANGED" };
+        if (!await lockOriginalInvoiceSource(tx, submittedByUserId, sellerTenantId, invoiceId)) {
+          return { status: "SOURCE_CHANGED" };
+        }
         const check = await loadTrustedOriginalInvoiceSource(tx, { id: submittedByUserId, tenantId: sellerTenantId }, invoiceId);
         if (!check.accepted || check.source.snapshotSha256 !== invoiceSnapshotSha256 ||
             check.source.invoice.invoiceNumber !== sourceInvoiceNumber) return { status: "SOURCE_CHANGED" };
