@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   m12-local-recovery:
-    name: Migration #12 encrypted backup and restore (disposable)
+    name: "Migration #12 encrypted backup and restore (disposable)"
     runs-on: ubuntu-latest
     timeout-minutes: 8
     services:

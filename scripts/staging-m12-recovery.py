@@ -21,7 +21,7 @@ SOURCE = ("dry-feather-14704968", "br-sparkling-boat-ao9nrctp", "neondb")
 RECOVERY = ("delicate-rice-23940930", "br-ancient-voice-aoutl8qq", "neondb")
 IDENTITY = """SELECT json_build_array(current_setting('neon.project_id', true),
   current_setting('neon.branch_id', true), current_database())"""
-TABLES = """SELECT json_agg(tablename ORDER BY tablename COLLATE "C")
+TABLES = """SELECT COALESCE(json_agg(tablename ORDER BY tablename COLLATE "C"), '[]'::json)
   FROM pg_catalog.pg_tables WHERE schemaname='public'"""
 LEDGER = """SELECT json_agg(json_build_array(migration_name,checksum,finished_at IS NOT NULL,
   rolled_back_at IS NOT NULL) ORDER BY migration_name COLLATE "C")
@@ -84,8 +84,11 @@ def expected_ledger():
 
 
 def sha_file(path):
+    digest = hashlib.sha256()
     with path.open("rb") as stream:
-        return hashlib.file_digest(stream, "sha256").hexdigest()
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def quoted_ident(name):
@@ -192,7 +195,7 @@ def restore(env, out, crypto):
     sql(env, "CREATE DATABASE " + quoted_ident(name) + " TEMPLATE template0;")
     dest = dict(env, PGDATABASE=name)
     attest(dest, (*RECOVERY[:2], name))
-    require(json.loads(sql(dest, TABLES + ";")) is None, "The new recovery DB is not empty.")
+    require(json.loads(sql(dest, TABLES + ";")) == [], "The new recovery DB is not empty.")
     pipe(decrypt_command(archive),
          ["pg_restore", "-w", "--dbname=" + name, "--no-owner", "--no-acl",
           "--single-transaction", "--exit-on-error"], crypto, dest)
@@ -214,7 +217,7 @@ def main():
     args = parser.parse_args()
     require((args.phase == "restore") == (args.directory is not None),
             "Use backup (no path) or restore <backup directory>.")
-    require(sys.version_info >= (3, 11), "Python 3.11 or newer required.")
+    require(sys.version_info >= (3, 10), "Python 3.10 or newer required.")
     require(sys.stdin.isatty(), "Run this interactively in your local WSL terminal.")
     for tool in ("git", "psql", "pg_dump", "pg_restore", "gpg"):
         require(shutil.which(tool), f"Missing local command: {tool}")
