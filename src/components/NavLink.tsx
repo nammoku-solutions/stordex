@@ -1,9 +1,7 @@
 "use client";
 
 import Link, { useLinkStatus } from "next/link";
-import { usePathname } from "next/navigation";
 import clsx from "clsx";
-import { activeNavHref } from "@/lib/navigation";
 
 function LinkPendingIndicator() {
   const { pending } = useLinkStatus();
@@ -15,15 +13,19 @@ function LinkPendingIndicator() {
   ) : null;
 }
 
-export function NavLink({ href, label }: { href: string; label: string }) {
-  const pathname = usePathname();
-  const active = activeNavHref(pathname) === href;
+export function NavLink({ href, label, active, onNavigate }: {
+  href: string;
+  label: string;
+  active: boolean;
+  onNavigate?: () => void;
+}) {
   return (
     <Link
       href={href}
+      onClick={onNavigate}
       aria-current={active ? "page" : undefined}
       className={clsx(
-        "flex items-center gap-2 px-3 py-2 rounded-md transition",
+        "flex min-h-11 items-center gap-2 px-3 py-2 rounded-md transition focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-sky-300",
         active
           ? "bg-brand-600 text-white"
           : "text-slate-300 hover:bg-slate-800 hover:text-white"
