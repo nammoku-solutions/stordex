@@ -57,7 +57,10 @@
   },
   "overrides": {
     "esbuild": "0.28.2",
-    "deepmerge-ts": "^8.0.1"
+    "deepmerge-ts": "^8.0.1",
+    "@prisma/config": {
+      "effect": "3.22.1"
+    }
   },
   "engines": {
     "node": "22.x"
