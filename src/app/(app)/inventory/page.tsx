@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { dateTimeJP, num, MOVEMENT_TYPE_LABEL, formatMovementQuantity } from "@/lib/format";
 import { MovementForm } from "./MovementForm";
 import { belowMinimumStock, onDemandRemaining } from "@/lib/inventory-policy";
+import { LOW_STOCK_SECTION_ID } from "@/lib/daily-work";
 
 export const dynamic = "force-dynamic";
 
@@ -65,8 +66,9 @@ export default async function InventoryPage() {
             <MovementForm items={items} />
           </div>
 
-          <div className="card p-6">
-            <h2 className="text-lg font-semibold mb-4">
+          <section id={LOW_STOCK_SECTION_ID} tabIndex={-1} aria-labelledby="low-stock-title"
+            className="card scroll-mt-20 p-6 focus:outline-2 focus:outline-offset-2 focus:outline-brand-600 md:scroll-mt-4">
+            <h2 id="low-stock-title" className="text-lg font-semibold mb-4">
               常備在庫品の最低在庫割れ
             </h2>
             {lowAlerts.length === 0 ? (
@@ -86,7 +88,7 @@ export default async function InventoryPage() {
                 ))}
               </ul>
             )}
-          </div>
+          </section>
           <div className="card p-6">
             <h2 className="text-lg font-semibold mb-3">受注後仕入品の残在庫・仕入不足</h2>
             <p className="text-xs text-slate-600 mb-3">

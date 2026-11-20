@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db";
 import { requireTenant } from "@/lib/session";
 import { PageHeader } from "@/components/PageHeader";
 import { dateJP, yen } from "@/lib/format";
+import { AWAITING_RECEIPT_STATUS, singleQuery, type SearchParams } from "@/lib/daily-work";
+import type { PurchaseOrderStatus } from "@/generated/prisma/enums";
 import { PO_STATUS_LABEL as STATUS_LABEL, PO_STATUS_BADGE as STATUS_BADGE } from "./_status";
 
 export const dynamic = "force-dynamic";
@@ -10,15 +12,18 @@ export const dynamic = "force-dynamic";
 export default async function PurchaseOrdersPage({
   searchParams,
 }: {
-  searchParams: { q?: string; status?: string };
+  searchParams: SearchParams;
 }) {
   const { tenantId } = await requireTenant();
-  const q = searchParams.q?.trim() ?? "";
-  const status = searchParams.status?.trim() ?? "";
+  const params = await searchParams;
+  const q = singleQuery(params.q);
+  const requestedStatus = singleQuery(params.status);
+  const status = Object.hasOwn(STATUS_LABEL, requestedStatus) ? requestedStatus as PurchaseOrderStatus : undefined;
+  const onlyAwaitingReceipt = status === AWAITING_RECEIPT_STATUS;
   const pos = await prisma.purchaseOrder.findMany({
     where: {
       tenantId,
-      ...(status ? { status: status as any } : {}),
+      ...(status ? { status } : {}),
       ...(q
         ? {
             OR: [
@@ -44,9 +49,15 @@ export default async function PurchaseOrdersPage({
           </Link>
         }
       />
+      {onlyAwaitingReceipt && (
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-2 rounded-lg bg-brand-50 px-4 py-3 text-sm text-slate-800">
+          <p><strong>発注済み・未入荷のみ表示中。</strong> 商品が届いたら、発注番号を開いて実際に届いた数を登録します。</p>
+          <Link href="/purchase-orders" className="font-medium text-brand-700 underline">すべての発注を見る</Link>
+        </div>
+      )}
       <form className="mb-4 flex gap-2 flex-wrap" action="/purchase-orders">
-        <input name="q" defaultValue={q} className="input max-w-sm" placeholder="番号・仕入先で検索" />
-        <select name="status" defaultValue={status} className="input max-w-xs">
+        <input aria-label="発注番号・仕入先" name="q" defaultValue={q} className="input max-w-sm" placeholder="番号・仕入先で検索" />
+        <select aria-label="発注の状態" name="status" defaultValue={status ?? ""} className="input max-w-xs">
           <option value="">すべての状態</option>
           {Object.entries(STATUS_LABEL).map(([k, v]) => (
             <option key={k} value={k}>{v}</option>
@@ -88,7 +99,7 @@ export default async function PurchaseOrdersPage({
             {pos.length === 0 && (
               <tr>
                 <td colSpan={7} className="text-center text-slate-500 py-8">
-                  発注がありません
+                  {q ? "検索条件に合う発注がありません" : onlyAwaitingReceipt ? "入荷待ちの発注はありません" : "該当する発注がありません"}
                 </td>
               </tr>
             )}

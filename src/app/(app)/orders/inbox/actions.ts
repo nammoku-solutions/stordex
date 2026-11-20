@@ -33,5 +33,6 @@ export async function rejectInboundPurchaseOrder(formData: FormData) {
   });
   if (rejected.count !== 1) throw new Error("対象の注文は処理済みです");
   revalidatePath("/orders/inbox");
+  revalidatePath("/dashboard");
   redirect("/orders/inbox");
 }

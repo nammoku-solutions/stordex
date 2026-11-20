@@ -4,6 +4,7 @@ import { requireTenant } from "@/lib/session";
 import { PageHeader } from "@/components/PageHeader";
 import { dateJP, yen, ORDER_STATUS_LABEL } from "@/lib/format";
 import { PO_STATUS_LABEL } from "../../purchase-orders/_status";
+import { dailyWorkLinks, INBOUND_REVIEW_STATUS, singleQuery, type SearchParams } from "@/lib/daily-work";
 
 export const dynamic = "force-dynamic";
 
@@ -14,10 +15,11 @@ const labels: Record<string, string> = {
   CANCELLED: "発注者が取消",
 };
 
-export default async function InboundOrdersPage() {
+export default async function InboundOrdersPage({ searchParams }: { searchParams: SearchParams }) {
   const { tenantId } = await requireTenant();
+  const onlyPending = singleQuery((await searchParams).view) === "pending";
   const records = await prisma.intercompanyOrder.findMany({
-    where: { sellerTenantId: tenantId },
+    where: { sellerTenantId: tenantId, ...(onlyPending ? { status: INBOUND_REVIEW_STATUS } : {}) },
     include: {
       buyer: { select: { name: true, slug: true } },
       sellerOrder: { select: { id: true, orderNumber: true, status: true } },
@@ -33,6 +35,16 @@ export default async function InboundOrdersPage() {
         title="企業間受注・受信トレイ"
         description="取引先企業から届いた発注書を確認し、自社の受注に取り込みます"
       />
+      <nav aria-label="受信した注文の表示範囲" className="mb-4 flex flex-wrap gap-2">
+        <Link href="/orders/inbox" aria-current={onlyPending ? undefined : "page"}
+          className={onlyPending ? "btn-secondary min-h-11" : "btn-primary min-h-11"}>
+          すべての受信
+        </Link>
+        <Link href={dailyWorkLinks.pendingInbound} aria-current={onlyPending ? "page" : undefined}
+          className={onlyPending ? "btn-primary min-h-11" : "btn-secondary min-h-11"}>
+          確認待ちのみ
+        </Link>
+      </nav>
       <div className="card table-wrap">
         <table className="tbl">
           <thead>
@@ -62,7 +74,9 @@ export default async function InboundOrdersPage() {
               </tr>
             ))}
             {records.length === 0 && (
-              <tr><td colSpan={7} className="text-center text-slate-500 py-8">受信した企業間発注はありません</td></tr>
+              <tr><td colSpan={7} className="text-center text-slate-500 py-8">
+                {onlyPending ? "確認待ちの注文はありません" : "受信した企業間発注はありません"}
+              </td></tr>
             )}
           </tbody>
         </table>

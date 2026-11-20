@@ -121,6 +121,7 @@ export async function setPurchaseOrderStatus(id: string, status: PurchaseOrderSt
   revalidatePath(`/purchase-orders/${id}`);
   revalidatePath("/inventory");
   revalidatePath("/orders/inbox");
+  revalidatePath("/dashboard");
 }
 
 /**
@@ -172,4 +173,5 @@ export async function deletePurchaseOrder(id: string) {
   }
   await prisma.purchaseOrder.deleteMany({ where: { id, tenantId } });
   revalidatePath("/purchase-orders");
+  revalidatePath("/dashboard");
 }
