@@ -138,6 +138,14 @@ def census(env, snap):
     return {"ledger": history, "tables": dict(zip(tables, records, strict=True))}
 
 
+def require_pg16_clients():
+    # Newer pg_restore clients can emit settings that PostgreSQL 16 cannot parse.
+    for tool in ("pg_dump", "pg_restore"):
+        version = subprocess.check_output([tool, "--version"], text=True)
+        require(re.search(r"\(PostgreSQL\) 16(?:\.|\b)", version),
+                f"Use the PostgreSQL 16 version of {tool} for both Neon databases.")
+
+
 def gpg_env():
     env = without_pg()
     env["GPG_TTY"] = os.ttyname(sys.stdin.fileno())
@@ -221,6 +229,7 @@ def main():
     require(sys.stdin.isatty(), "Run this interactively in your local WSL terminal.")
     for tool in ("git", "psql", "pg_dump", "pg_restore", "gpg"):
         require(shutil.which(tool), f"Missing local command: {tool}")
+    require_pg16_clients()
     os.umask(0o077)
     crypto = gpg_env()
     if args.phase == "backup":

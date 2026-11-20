@@ -11,6 +11,7 @@ spec = importlib.util.spec_from_file_location("staging_m12_recovery", path)
 m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 assert os.environ.get("GITHUB_ACTIONS") == "true" and os.environ.get("CI") == "true"
+m.require_pg16_clients()
 os.umask(0o077)
 base = dict(m.without_pg(), PGHOST="localhost", PGPORT="5432", PGUSER="stordex",
             PGPASSWORD="stordex", PGDATABASE="stordex", PGSSLMODE="disable")

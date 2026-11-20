@@ -64,7 +64,7 @@ SQL は CI で照合した候補からバイト単位でコピーしたため、
 
 ### WSL でのバックアップと独立 Restore
 
-Jun の WSL で、Python 3.10+、接続先 PostgreSQL と互換の `psql`・`pg_dump`・`pg_restore`、GPG を使う。いつもの Neon の**直接接続**（接続先に `-pooler` がないもの）のホスト名、DB ロール、パスワードを端末内だけで入力する。保管パスフレーズはローカルで管理し、チャットや Git に貼らない。
+Jun の WSL で、Python 3.10+、PostgreSQL 16 のクライアント（`psql`・`pg_dump`・`pg_restore`）、GPG を使う。いつもの Neon の**直接接続**（接続先に `-pooler` がないもの）のホスト名、DB ロール、パスワードを端末内だけで入力する。保管パスフレーズはローカルで管理し、チャットや Git に貼らない。
 
 ```bash
 # Backup: stordex-staging (dry-feather-14704968)
