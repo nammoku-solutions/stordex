@@ -60,3 +60,25 @@ SQL は CI で照合した候補からバイト単位でコピーしたため、
 5. **Staging UAT。** 合成 PDF のみを使用し、[Staging 検証手順](STAGING_EVIDENCE_UAT.md) を通す。元請求書、CreditNote、在庫、決済を変更しない。通し検証後はフラグを OFF に戻す。
 
 詳細条件は [リリースゲート](RUNBOOK_AND_RELEASE_GATE.md)。このレビュー候補の準備で、バックアップ・Restore・実適用はいずれも実行しない。
+
+
+### WSL でのバックアップと独立 Restore
+
+Jun の WSL で、Python 3.11+、接続先 PostgreSQL と互換の `psql`・`pg_dump`・`pg_restore`、GPG を使う。いつもの Neon の**直接接続**（接続先に `-pooler` がないもの）のホスト名、DB ロール、パスワードを端末内だけで入力する。保管パスフレーズはローカルで管理し、チャットや Git に貼らない。
+
+```bash
+# Backup: stordex-staging (dry-feather-14704968)
+# Branch: staging (br-sparkling-boat-ao9nrctp), database: neondb
+python3 scripts/staging-m12-recovery.py backup
+
+# Restore: stordex-recovery-test (delicate-rice-23940930)
+# Branch: production (br-ancient-voice-aoutl8qq), maintenance database: neondb
+# Restore destination: a NEW stordex_m12_restore_* database, created by the script
+read -r -p 'Local backup directory: ' STORDEX_M12_BACKUP_DIR
+python3 scripts/staging-m12-recovery.py restore "$STORDEX_M12_BACKUP_DIR"
+unset STORDEX_M12_BACKUP_DIR
+```
+
+`backup` が表示した `~/stordex-private-backups/m12-...` の実際のフルパスを入力する。バックアップは `public` の29テーブルと11本の履歴を同じ PostgreSQL スナップショットから取得し、平文ファイルを作らず GPG AES-256 に直接流す。`restore` は暗号化ファイルの SHA-256 と復号を確認し、新しい空 DB にだけ復元する。復元後は全29テーブルの行数と内容ハッシュ、および11本の履歴を照合する。
+
+共有するのは `RESTORE_PASS` の1行のみ。バックアップ、マニフェスト、パスフレーズはローカルに残す。再実行で既存の DB を使い回したり削除したりしない。失敗時は `STOP` と新規復元 DB 名が表示されていればその名前を連絡する。Staging への適用時は別途、書き込み停止とこのバックアップ以降の変更がないことを確認する。

@@ -10,6 +10,38 @@ permissions:
   contents: read
 
 jobs:
+  m12-local-recovery:
+    name: Migration #12 encrypted backup and restore (disposable)
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: stordex
+          POSTGRES_PASSWORD: stordex
+          POSTGRES_DB: stordex
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U stordex"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Confirm local PostgreSQL and GPG clients
+        run: |
+          if ! command -v pg_dump >/dev/null || ! command -v psql >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends postgresql-client-16
+          fi
+          pg_dump --version
+          gpg --version
+      - name: Smoke test synthetic-only backup and restore
+        run: python3 scripts/ci-smoke-staging-m12-recovery.py
+
   test:
     name: Audit / Migrate / Typecheck / Test / Build
     runs-on: ubuntu-latest
