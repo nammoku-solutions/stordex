@@ -172,6 +172,21 @@ def verify_archive(archive, env):
     subprocess.run(decrypt_command(archive), env=env, stdout=subprocess.DEVNULL, check=True)
 
 
+def checked_restore_list(archive, crypto):
+    # template0 already contains public. Omit just that CREATE SCHEMA entry
+    # instead of dropping anything in the target or ignoring restore errors.
+    with subprocess.Popen(decrypt_command(archive), env=crypto, stdout=subprocess.PIPE) as decrypt:
+        listed = subprocess.run(["pg_restore", "--list"], stdin=decrypt.stdout, env=crypto,
+                                capture_output=True, encoding="utf-8")
+        # --list may stop reading after the header. Drain the rest without
+        # keeping plaintext so GPG still verifies the entire archive.
+        with open(os.devnull, "wb") as sink:
+            shutil.copyfileobj(decrypt.stdout, sink)
+        require(decrypt.wait() == 0 and listed.returncode == 0, "Archive or its contents list is invalid.")
+    public_schema = re.compile(r"^\d+;\s+\d+\s+\d+\s+SCHEMA\s+-\s+public(?:\s|$)")
+    return "\n".join(line for line in listed.stdout.splitlines() if not public_schema.match(line)) + "\n"
+
+
 def backup(env, out, crypto):
     with snapshot(env, SOURCE) as snap:
         manifest = census(env, snap)
@@ -195,7 +210,7 @@ def restore(env, out, crypto):
             manifest["ledger"] == expected_ledger() and len(manifest["tables"]) == 29,
             "Select a matching Migration #12 backup directory.")
     require(sha_file(archive) == manifest["archive_sha256"], "Encrypted archive checksum mismatch.")
-    verify_archive(archive, crypto)
+    restore_list = checked_restore_list(archive, crypto)
     name = "stordex_m12_restore_" + datetime.now(timezone.utc).strftime("%Y%m%dt%H%M%Sz_") + uuid4().hex[:8]
     require(RECOVERY_DB.fullmatch(name), "Invalid recovery DB name.")
     print(f"New recovery DB: {name}", flush=True)
@@ -204,9 +219,13 @@ def restore(env, out, crypto):
     dest = dict(env, PGDATABASE=name)
     attest(dest, (*RECOVERY[:2], name))
     require(json.loads(sql(dest, TABLES + ";")) == [], "The new recovery DB is not empty.")
-    pipe(decrypt_command(archive),
-         ["pg_restore", "-w", "--dbname=" + name, "--no-owner", "--no-acl",
-          "--single-transaction", "--exit-on-error"], crypto, dest)
+    # pg_restore's list file contains metadata only, not table contents.
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8") as toc:
+        toc.write(restore_list)
+        toc.flush()
+        pipe(decrypt_command(archive),
+             ["pg_restore", "-w", "--dbname=" + name, "--no-owner", "--no-acl",
+              "--single-transaction", "--exit-on-error", "--use-list=" + toc.name], crypto, dest)
     with snapshot(dest, (*RECOVERY[:2], name)) as snap:
         observed = census(dest, snap)
     require(observed["tables"] == manifest["tables"], "Restored table content differs from the backup snapshot.")
