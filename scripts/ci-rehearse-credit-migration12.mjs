@@ -3,14 +3,13 @@
  * DANGEROUS DDL is only permitted in GitHub Actions' disposable localhost
  * PostgreSQL 16 service named "stordex". Never points to Neon/Staging/Production.
  *
- * Draft SQL remains outside prisma/migrations: this runner is a CI rehearsal,
+ * This verifies the proposed or registered SQL on synthetic fixtures only. It is
  * NOT a live migration, operational runbook or financial approval.
  */
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import pg from "pg";
+import { loadMigration12, migrationName, sha256 } from "./ci-credit-m12-source.mjs";
 
 const url = new URL(process.env.DATABASE_URL || "postgresql://missing.invalid/not-allowed");
 if (
@@ -26,15 +25,7 @@ if (
   throw new Error("Refusing Migration #12 rehearsal outside disposable CI localhost PostgreSQL");
 }
 
-const source = readFileSync(join(
-  process.cwd(), "docs", "migration-proposals",
-  "20261112_credit_currency_and_approval",
-  "001_additive_schema_DRAFT_DO_NOT_APPLY.sql",
-), "utf8");
-
-if (!source.includes("DO NOT RUN ON STAGING OR PRODUCTION.")) {
-  throw new Error("Refusing unmarked migration proposal");
-}
+const { sql, formal, expectedCount } = loadMigration12();
 const sha = "ab".repeat(32);
 const docSha = "cd".repeat(32);
 const base = "ci-m12-";
@@ -101,12 +92,18 @@ try {
   const migrationCount = Number((await client.query(
     'SELECT count(*)::integer AS n FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL',
   )).rows[0].n);
-  assert.equal(migrationCount, 11);
-  console.log("PASS: 11 existing Prisma migrations on isolated CI PostgreSQL");
-
-  // Execute this draft DDL only after committed Prisma migrations, Typecheck,
-  // Vitest, Prisma drift check and Next build have completed in disposable CI.
-  await client.query(source);
+  assert.equal(migrationCount, expectedCount);
+  if (formal) {
+    const record = await client.query(
+      'SELECT checksum FROM "_prisma_migrations" ' +
+        'WHERE migration_name=$1 AND finished_at IS NOT NULL AND rolled_back_at IS NULL',
+      [migrationName],
+    );
+    assert.deepEqual(record.rows, [{ checksum: sha256(sql) }]);
+  } else {
+    // Prisma has not discovered the proposal on proposal-only checkouts.
+    await client.query(sql.toString("utf8"));
+  }
   const tables = (await client.query(
     "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename IN " +
       "('B2BInvoiceCurrencyEvidence','B2BInvoiceCurrencyEvidenceEvent'," +
@@ -120,7 +117,7 @@ try {
       "'B2BCreditApprovalReviewEvent')",
   )).rows;
   assert.equal(triggers.length, 6);
-  console.log("PASS: draft SQL DDL applied only to throwaway CI database (3 tables, 6 triggers)");
+  console.log("PASS: Migration #12 schema on throwaway CI database (3 tables, 6 triggers)");
 
   await client.query(
     'INSERT INTO "Tenant" ("id","name","slug","updatedAt") VALUES ' +
@@ -289,12 +286,12 @@ try {
     'SELECT count(*)::integer AS n FROM "_prisma_migrations" ' +
       'WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL',
   )).rows[0].n);
-  assert.equal(stillMigrationCount, 11);
+  assert.equal(stillMigrationCount, expectedCount);
   console.log(
     "PASS: " + testCount +
     " PostgreSQL evidence/tenant/role/immutability/race/credit-preflight assertions",
   );
-  console.log("PASS: no new Prisma migration record; DRAFT/VOID issue gate untouched");
+  console.log("PASS: expected Prisma migration history unchanged and DRAFT/VOID issue gate untouched");
 } finally {
   await client.end().catch(() => {});
 }
