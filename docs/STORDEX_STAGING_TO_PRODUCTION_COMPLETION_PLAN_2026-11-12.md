@@ -1,6 +1,8 @@
 # Stordex — bounded plan from current Staging to initial Production
 Updated: 2026-11-18. Planning artifact; not a deployment authorization.
 
+> Historical plan. The smaller initial-release scope and current progress, including the deferral of PDF evidence UAT, are tracked in [Stordex v1 release scope](STORDEX_V1_RELEASE_SCOPE.md).
+
 ## Product finish line
 
 Initial Production is "done" only after:
