@@ -20,6 +20,7 @@ export async function sendPurchaseOrderToPartner(formData: FormData) {
 
   revalidatePath("/purchase-orders");
   revalidatePath("/orders/inbox");
+  revalidatePath("/dashboard");
   revalidatePath(`/purchase-orders/${purchaseOrderId}`);
   redirect(`/purchase-orders/${purchaseOrderId}?sent=1`);
 }
