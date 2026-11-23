@@ -8,6 +8,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import pg from "pg";
+import { loadMigration12 } from "./ci-credit-m12-source.mjs";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client.ts";
 import { createOriginalInvoiceRevocationRecorder } from "../src/lib/b2b-credit-original-document-decision.ts";
@@ -22,6 +23,7 @@ if (
   parsed.searchParams.toString() !== "schema=public" ||
   !["postgres:", "postgresql:"].includes(parsed.protocol)
 ) throw Error("Refusing approval rehearsal outside disposable local GitHub Actions PostgreSQL");
+const { expectedCount } = loadMigration12();
 const connectionString = process.env.DATABASE_URL;
 const client = new pg.Client({ connectionString });
 const prefix = "ci-m12-";
@@ -154,7 +156,7 @@ try {
   )).rows[0];
   assert.equal(state.db,"stordex");
   assert.equal(state.neon,null);
-  assert.equal(state.migrations,11);
+  assert.equal(state.migrations,expectedCount);
   assert.ok(state.evidence_events>=2,"CI must run prerequisite ledger rehearsal first");
 
   await client.query(
@@ -583,7 +585,7 @@ try {
   );
   await checkScalar(
     'SELECT count(*)::int AS v FROM "_prisma_migrations" WHERE finished_at IS NOT NULL',
-    [],11,"draft migration never installed into Prisma migration history",
+    [],expectedCount,"synthetic reviews do not alter Prisma migration history",
   );
   console.log("PASS: "+assertions+" positive CreditNote audit, review-vs-revocation, tenant, and non-posting assertions");
   console.log("PASS: all financial posting remains disabled; Neon Staging was not connected");

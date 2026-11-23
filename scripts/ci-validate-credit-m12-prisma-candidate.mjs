@@ -8,6 +8,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
+import { loadMigration12 } from "./ci-credit-m12-source.mjs";
 
 const file=process.argv[2];
 const url=new URL(process.env.DATABASE_URL || "postgresql://invalid.invalid/no");
@@ -24,6 +25,7 @@ assert.ok(
 );
 const schema=readFileSync(file,"utf8");
 const committed=readFileSync("prisma/schema.prisma","utf8");
+const { formal }=loadMigration12();
 function model(name) {
   const start=schema.indexOf("model "+name+" {");
   assert.ok(start>=0,"Missing Prisma model "+name);
@@ -41,8 +43,8 @@ for(const name of expected){
   assert.match(m,/\bid\s+String\s+@id/);
   assert.match(m,/\bsellerTenantId\s+String\b/);
   assert.match(m,/@relation\(/);
-  assert.ok(!committed.includes("model "+name+" {"),
-    "Candidate audit table already present in committed operational schema: "+name);
+  assert.equal(committed.includes("model "+name+" {"),formal,
+    "Committed model and migration registration disagree: "+name);
 }
 const header=model("B2BInvoiceCurrencyEvidence");
 const evidenceEvent=model("B2BInvoiceCurrencyEvidenceEvent");
@@ -72,7 +74,7 @@ assert.match(review,/\bcandidateTotal\s+Int\b/);
 assert.match(model("B2BCreditNote"),/\bstatus\s+B2BCreditStatus\b/);
 assert.match(model("Invoice"),/\bstatus\s+InvoiceStatus\b/);
 const digest=createHash("sha256").update(schema,"utf8").digest("hex");
-console.log("PASS: Prisma draft-only candidate schema includes all three modeled audit tables and source relationships");
-console.log("PASS: operating prisma/schema.prisma still excludes unapproved ledgers and is unchanged");
+console.log("PASS: disposable Prisma introspection includes all three modeled audit tables and source relationships");
+console.log("PASS: checked-in Prisma schema matches migration registration state");
 console.log("PASS: disposable Prisma candidate SHA-256="+digest);
 console.log("NOTE: Prisma schema validation does not validate PostgreSQL triggers or partial unique indexes");

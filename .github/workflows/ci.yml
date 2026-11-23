@@ -10,6 +10,39 @@ permissions:
   contents: read
 
 jobs:
+  m12-local-recovery:
+    name: "Migration #12 encrypted backup and restore (disposable)"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: stordex
+          POSTGRES_PASSWORD: stordex
+          POSTGRES_DB: stordex
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U stordex"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Confirm local PostgreSQL and GPG clients
+        run: |
+          if [[ ! -x /usr/lib/postgresql/16/bin/pg_dump || ! -x /usr/lib/postgresql/16/bin/pg_restore ]]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends postgresql-client-16
+          fi
+          echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH"
+          /usr/lib/postgresql/16/bin/pg_dump --version
+          gpg --version
+      - name: Smoke test synthetic-only backup and restore
+        run: python3 scripts/ci-smoke-staging-m12-recovery.py
+
   test:
     name: Audit / Migrate / Typecheck / Test / Build
     runs-on: ubuntu-latest
@@ -91,9 +124,9 @@ jobs:
           sudo apt-get install -y --no-install-recommends clamav-daemon qpdf
           node --import tsx scripts/ci-smoke-original-invoice-clamd.ts
 
-      # Only the ephemeral PostgreSQL 16 service is modified. This does NOT
-      # create a Prisma migration or touch Neon Staging or AWS Production.
-      - name: Rehearse unapproved CreditNote migration 12 on disposable CI DB ONLY
+      # Only the ephemeral PostgreSQL 16 service is modified. The dedicated
+      # upgrade check below starts at 11 even if this job migrated to 12.
+      - name: Verify CreditNote migration 12 and its guards on disposable CI DB ONLY
         run: node scripts/ci-rehearse-credit-migration12.mjs
 
       - name: Rehearse private original invoice download, recovery, decisions and revocation in CI ONLY
@@ -102,7 +135,7 @@ jobs:
       - name: Rehearse synthetic CreditNote review and evidence revocation races in CI ONLY
         run: node --import tsx scripts/ci-rehearse-credit-migration12-approval.mjs
 
-      - name: Introspect unapproved audit schema with Prisma 7 on disposable CI DB ONLY
+      - name: Introspect audit schema with Prisma 7 on disposable CI DB ONLY
         run: |
           set -euo pipefail
           npx prisma db pull --print > "$RUNNER_TEMP/stordex-credit-m12-introspected.prisma"
