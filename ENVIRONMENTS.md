@@ -5,7 +5,7 @@ Stordex は Local / Staging / Production の 3 段階で運用します。
 | Environment | Purpose | Database | Application |
 |---|---|---|---|
 | Local | 開発・自動テスト・機能確認 | PostgreSQL 16 local/Docker | Next.js dev server |
-| Staging | UAT・外部動作確認 | Neon PostgreSQL | Vercel Preview |
+| Staging | UAT・外部動作確認 | Neon PostgreSQL | Vercel（`staging.stordex.jp`で検証） |
 | Production | 本番 | Aurora Serverless v2 PostgreSQL 16 | SST / OpenNext on AWS |
 
 共通 runtime baseline は **Node.js 22** です。
@@ -111,17 +111,17 @@ Vercel Project には最低限次を設定します。
 - `NEXTAUTH_URL`
 - `APP_ENV=staging`
 
-`.github/workflows/deploy-staging.yml` は `develop` push で Vercel Preview deployment を実行します。
+`.github/workflows/deploy-staging.yml` は過去の `develop` push に連動するVercel CLI構成です。現在のUATの正本は `staging` ブランチのVercel Git連携ビルドをREADYまで確認し、`staging.stordex.jp`へ割り当てる運用です。別のPreview URLはUATに使用しません。
 
 ### Staging DB operations (populated Neon Staging)
 
-**現在のStagingを新規DBとして初期化しないこと。** 2026-11-03時点でNeon project `dry-feather-14704968`、branch `br-sparkling-boat-ao9nrctp`、database `neondb`には5件のPrisma migrationが適用済みで、UATデータが存在します。
+**現在のStagingを新規DBとして初期化しないこと。** 2026-11-25の読み取り専用照合ではNeon project `dry-feather-14704968`、branch `br-sparkling-boat-ao9nrctp`、database `neondb`に32テーブル・12件の完了Prisma migration、未完了0件、UATデータが存在します。Migration #12のソース整合はPR #187で完了しています。
 
 以下は既存Stagingで**実行しない**でください：`npm run db:migrate:staging`、`npm run db:seed:staging`、`prisma db push`、`./scripts/start-staging.sh --schema`、`--seed`、既に成功済みの`--baseline`/`--inventory`。これらは既存データや履歴を変え得ます。
 
 次の新規migration時は、レビュー済みPR・テストDBでのリハーサル・**新規取得した**Stagingバックアップと隔離復元テスト・Neon project/branch/dbの照合・オーナーの明示的な書込み承認・事後独立検証が必須です。以前の在庫移行専用`--check`は固定データ指紋を検証するため、UAT後の一般ヘルスチェックとして流用しません。
 
-Stagingの正式URLは`https://staging.stordex.jp`です。2026-11-03時点ではPR #89のUAT済みVercel Preview（commit `0a052891`）へAliasを手動で割り当てています。新しいPreviewの作成だけではStaging Aliasが自動的に移るとは限りません。Alias更新時にproject/commit/環境を必ず確認し、Productionのdomainに触れないでください。
+Stagingの正式URLは`https://staging.stordex.jp`です。現在は`staging`のPR/CI PASS後、該当コミットのVercelビルドREADYを確認してからStaging Aliasを割り当てます。新しいビルドだけではAliasが更新されるとは限りません。Alias更新時にproject/commit/環境を照合し、Productionのdomainには触れないでください。
 
 ## 4. Production (AWS)
 
