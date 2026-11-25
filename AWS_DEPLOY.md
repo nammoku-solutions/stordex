@@ -67,54 +67,17 @@ DatabaseUrl
 
 ## 5. GitHub Actions production deployment
 
-通常の production deployment は `.github/workflows/deploy-prod.yml` を使用します。
+**現行の `.github/workflows/deploy-prod.yml` は手動 `workflow_dispatch` 専用であり、`main`へのpushで本番デプロイしません。** `confirm_production=DEPLOY`、GitHub `production` Environmentの保護、Codex Astra全体レビューPASS、およびオーナーの明示的な承認が必要です。
 
-`main` push 後の流れ:
+実行経路: 手動トリガー → Environment保護 → GitHub Actions OIDCによるAWS IAM Role引受 → `aws sts get-caller-identity` → Node 22 / `npm ci` → production dependency audit → `prisma generate` → `npx sst deploy --stage prod`。
 
-1. production workflow が起動
-2. GitHub Environment `production` の保護ルールを通過
-3. AWS credential setup (`ap-northeast-1`)
-4. `npm ci`（lockfile から SST 4.17.1 を含む依存を再現）
-5. `npm audit --omit=dev --audit-level=low`
-6. Prisma client generation
-7. `npx sst deploy --stage prod`
-
-workflow が dependency audit で停止した場合、audit を無効化して deploy を続行するのではなく依存関係を先に修正します。
-
-**重要:** 現行 production workflow は application/infrastructure deploy のみで、private Aurora への Prisma migration を GitHub-hosted runner から自動実行しません。初回 production rollout では Aurora 作成後に VPC 内から接続可能な controlled migration path で `prisma migrate deploy` を実行します。
+workflowは**アプリ/インフラのデプロイのみ**で、VPC内のプライベートAuroraに対するPrismaマイグレーションは別の制御された手順です。初回リリースで実行順・接続方法・リカバリー/バックアップ検証を決定し、個別承認を受けてください。
 
 ## 6. AWS authentication
 
-### Current
+現行GitHub workflowは長期アクセスキーを使わず、GitHub Actions OIDCによる`aws-actions/configure-aws-credentials`を使用します。GitHub `production` Environment secret `AWS_DEPLOY_ROLE_ARN` と、AWS側のOIDC providerおよび最小権限のIAM Role/Trust設定が必要です（Issue #4）。**repoのワークフローがOIDC対応していることは、実AWS側の設定完了や動作検証を意味しません。** Regionは`ap-northeast-1`に固定。
 
-現行 workflow は次の GitHub Secrets を使う方式です。
-
-```text
-AWS_ACCESS_KEY_ID
-AWS_SECRET_ACCESS_KEY
-```
-
-Region は secret にせず、`sst.config.ts` と workflow の両方で `ap-northeast-1` に合わせています。
-
-Secret の値は repository に書きません。
-
-### Recommended future state
-
-実 AWS 側の IAM role / trust policy を確認できるタイミングで、GitHub Actions OIDC に移行してください。
-
-目標:
-
-```text
-GitHub Actions
-    |
-OIDC short-lived identity
-    |
-AWS IAM deployment role
-    |
-SST resources required by Stordex
-```
-
-移行時は SST が実際に必要とする AWS permissions を検証し、いきなり狭すぎる policy を production workflow へ適用しないでください。
+アクセスキーやSecret値をIssue/CIログ/READMEに貼り付けないでください。
 
 ## 7. Manual deployment
 
